@@ -3,3 +3,8 @@ __pycache__/
 
 cosmic-applet-apsta/target/
 cosmic-applet-apsta/Cargo.lock
+build/
+dist/
+*.egg-info/
+.packaging-venv/
+.venv/
