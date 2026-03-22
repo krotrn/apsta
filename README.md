@@ -123,8 +123,15 @@ apsta will prompt if these are missing when hostapd mode is needed.
 ## CLI Usage
 
 ```bash
+# Show version
+apsta --version
+
 # Detect hardware capability (shows both nmcli and hostapd support levels)
 apsta detect
+
+# Detect/status as machine-readable JSON
+apsta detect --json
+apsta status --json
 
 # Start hotspot (auto-detects best method — tries nmcli, then hostapd, then --force)
 sudo apsta start
@@ -151,6 +158,29 @@ apsta recommend
 # Auto-start on boot + survive sleep/wake
 sudo apsta enable
 sudo apsta disable
+```
+
+### Shell completion
+
+Generate completion scripts directly from apsta:
+
+```bash
+apsta completion bash
+apsta completion zsh
+apsta completion fish
+```
+
+Install manually:
+
+```bash
+# bash
+apsta completion bash | sudo tee /etc/bash_completion.d/apsta >/dev/null
+
+# zsh
+apsta completion zsh | sudo tee /usr/local/share/zsh/site-functions/_apsta >/dev/null
+
+# fish
+apsta completion fish | sudo tee /etc/fish/completions/apsta.fish >/dev/null
 ```
 
 ---

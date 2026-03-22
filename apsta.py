@@ -34,6 +34,8 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
+__version__ = "0.5.0"
+
 # ── Config ────────────────────────────────────────────────────────────────────
 #
 # Config lives in /etc/apsta/ not ~/.config/apsta/ because every operation
@@ -407,12 +409,88 @@ def _find_usb_iface_by_path(dev_path: Path) -> Tuple[Optional[str], Optional[str
 # ── Commands ───────────────────────────────────────────────────────────────────
 
 def cmd_detect(args):
-    head("apsta — Hardware Detection")
-
     ifaces = get_wifi_interfaces()
     if not ifaces:
+        if getattr(args, "json", False):
+            print(json.dumps({"error": "No WiFi interfaces found."}))
         err("No WiFi interfaces found.")
         sys.exit(1)
+
+    target = next((i for i in ifaces if i.state == "UP"), ifaces[0])
+    cap = get_hardware_capability(target.name)
+
+    if cap.supports_ap_sta_concurrent:
+        verdict = {
+            "level": "ok",
+            "mode": "nmcli",
+            "messages": [
+                "Your hardware supports AP+STA simultaneously (nmcli mode).",
+                "apsta can create a hotspot without dropping your WiFi.",
+            ],
+            "next": "sudo apsta start",
+        }
+    elif cap.supports_ap_sta_split:
+        verdict = {
+            "level": "ok",
+            "mode": "hostapd",
+            "messages": [
+                "Your hardware supports AP+STA simultaneously (hostapd mode).",
+                "apsta will use hostapd + dnsmasq to share WiFi without disconnecting.",
+            ],
+            "next": "sudo apsta start",
+            "note": "requires hostapd and dnsmasq installed",
+        }
+    elif cap.supports_ap:
+        verdict = {
+            "level": "warn",
+            "mode": "force-only",
+            "messages": [
+                "Your hardware supports AP mode but NOT concurrent AP+STA.",
+                "Starting a hotspot will disconnect your current WiFi.",
+            ],
+            "next": "sudo apsta start --force",
+        }
+    else:
+        verdict = {
+            "level": "error",
+            "mode": "unsupported",
+            "messages": [
+                "Your hardware does not support AP mode.",
+                "A USB WiFi adapter is required.",
+            ],
+            "next": "apsta recommend",
+        }
+
+    if getattr(args, "json", False):
+        payload = {
+            "interfaces": [
+                {
+                    "name": i.name,
+                    "mac": i.mac,
+                    "state": i.state,
+                    "connected_ssid": i.connected_ssid,
+                }
+                for i in ifaces
+            ],
+            "target_interface": target.name,
+            "capability": {
+                "interface": cap.interface,
+                "supports_ap": cap.supports_ap,
+                "supports_sta": cap.supports_sta,
+                "supports_ap_sta_concurrent": cap.supports_ap_sta_concurrent,
+                "supports_ap_sta_split": cap.supports_ap_sta_split,
+                "max_interfaces": cap.max_interfaces,
+                "supported_modes": cap.supported_modes,
+                "combinations": cap.combinations,
+                "driver": cap.driver,
+                "chipset": cap.chipset,
+            },
+            "verdict": verdict,
+        }
+        print(json.dumps(payload, indent=2))
+        return
+
+    head("apsta — Hardware Detection")
 
     print()
     info(f"Found {len(ifaces)} WiFi interface(s):")
@@ -420,11 +498,8 @@ def cmd_detect(args):
         connected = f"connected to {C.GREEN}{iface.connected_ssid}{C.RESET}" if iface.connected_ssid else f"{C.DIM}not connected{C.RESET}"
         print(f"     {C.BOLD}{iface.name}{C.RESET}  [{iface.mac}]  {connected}")
 
-    target = next((i for i in ifaces if i.state == "UP"), ifaces[0])
     print()
     info(f"Analysing {C.BOLD}{target.name}{C.RESET} ...")
-
-    cap = get_hardware_capability(target.name)
 
     head("Capability Report")
 
@@ -447,16 +522,16 @@ def cmd_detect(args):
 
     print()
     head("Verdict")
-    if cap.supports_ap_sta_concurrent:
+    if verdict["mode"] == "nmcli":
         ok("Your hardware supports AP+STA simultaneously (nmcli mode).")
         ok("apsta can create a hotspot without dropping your WiFi.")
         info("Run:  sudo apsta start")
-    elif cap.supports_ap_sta_split:
+    elif verdict["mode"] == "hostapd":
         ok("Your hardware supports AP+STA simultaneously (hostapd mode).")
         ok("apsta will use hostapd + dnsmasq to share WiFi without disconnecting.")
         info("Run:  sudo apsta start")
         info("Note: requires hostapd and dnsmasq installed.")
-    elif cap.supports_ap:
+    elif verdict["mode"] == "force-only":
         warn("Your hardware supports AP mode but NOT concurrent AP+STA.")
         warn("Starting a hotspot will disconnect your current WiFi.")
         print()
@@ -694,14 +769,10 @@ def _stop_hostapd_ap_sta(ap_iface: str, base_iface: str) -> None:
 # ── cmd_start ─────────────────────────────────────────────────────────────────
 
 def cmd_start(args):
-    require_root()
-    head("apsta — Starting Hotspot")
-
     config = load_config()
     ifaces = get_wifi_interfaces()
-
     if not ifaces:
-        err("No WiFi interfaces found.")
+        err("No WiFi interfaces found. Run: apsta detect")
         sys.exit(1)
 
     iface_name = config.get("interface") or ifaces[0].name
@@ -941,16 +1012,70 @@ def cmd_stop(args):
 
 
 def cmd_status(args):
+    config = load_config()
+    method = config.get("start_method")
+
+    ifaces = get_wifi_interfaces()
+
+    if getattr(args, "json", False):
+        active = []
+        active_cons = run_out("nmcli -t -f NAME,TYPE,DEVICE,STATE con show --active")
+        for line in active_cons.splitlines():
+            parts = line.split(":")
+            if len(parts) >= 4:
+                active.append({
+                    "name": parts[0],
+                    "type": parts[1],
+                    "device": parts[2],
+                    "state": parts[3],
+                })
+
+        clients = []
+        if method == "hostapd" and DNSMASQ_LEASES.exists():
+            try:
+                leases = DNSMASQ_LEASES.read_text().strip()
+                for line in leases.splitlines():
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        clients.append({
+                            "hostname": parts[3],
+                            "mac": parts[1],
+                            "ip": parts[2],
+                        })
+            except OSError:
+                pass
+
+        payload = {
+            "method": method,
+            "interfaces": [
+                {
+                    "name": i.name,
+                    "mac": i.mac,
+                    "state": i.state,
+                    "connected_ssid": i.connected_ssid,
+                }
+                for i in ifaces
+            ],
+            "active_connections": active,
+            "clients": clients,
+            "config": {
+                "ssid": config.get("ssid"),
+                "band": config.get("band"),
+                "channel": config.get("channel"),
+                "ap_interface": config.get("ap_interface"),
+                "base_interface": config.get("base_interface"),
+            },
+        }
+        print(json.dumps(payload, indent=2))
+        return
+
     head("apsta — Status")
     print()
 
-    config = load_config()
-    method = config.get("start_method")
     if method:
         info(f"Active method:  {C.BOLD}{method}{C.RESET}")
         print()
 
-    ifaces = get_wifi_interfaces()
     active_cons = run_out("nmcli -t -f NAME,TYPE,DEVICE,STATE con show --active")
 
     info("Active network connections:")
@@ -1483,6 +1608,119 @@ def _check_dependencies():
         sys.exit(1)
 
 
+def cmd_completion(args):
+    shell = args.shell
+    if shell == "bash":
+        print(_completion_bash())
+    elif shell == "zsh":
+        print(_completion_zsh())
+    elif shell == "fish":
+        print(_completion_fish())
+    else:
+        err(f"Unsupported shell: {shell}")
+        sys.exit(2)
+
+
+def _completion_bash() -> str:
+    return r'''_apsta_complete() {
+    local cur prev
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    local commands="detect start stop status config enable disable scan-usb recommend completion"
+
+    if [[ ${COMP_CWORD} -eq 1 ]]; then
+    COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
+    return 0
+    fi
+
+    case "${COMP_WORDS[1]}" in
+    start)
+        COMPREPLY=( $(compgen -W "--force --json" -- "${cur}") )
+        ;;
+    detect|status)
+        COMPREPLY=( $(compgen -W "--json" -- "${cur}") )
+        ;;
+    config)
+        COMPREPLY=( $(compgen -W "--set" -- "${cur}") )
+        ;;
+    completion)
+        COMPREPLY=( $(compgen -W "bash zsh fish" -- "${cur}") )
+        ;;
+    esac
+}
+
+complete -F _apsta_complete apsta'''
+
+
+def _completion_zsh() -> str:
+    return r'''#compdef apsta
+
+_apsta() {
+    local -a commands
+    commands=(
+        'detect:Detect hardware AP+STA capability'
+        'start:Start hotspot'
+        'stop:Stop hotspot'
+        'status:Show status'
+        'config:View/edit config'
+        'enable:Install auto-start hooks'
+        'disable:Disable auto-start hooks'
+        'scan-usb:Detect USB WiFi adapters'
+        'recommend:Suggest USB adapters to buy'
+        'completion:Print shell completion script'
+    )
+
+    _arguments -C \
+        '1:command:->cmds' \
+        '*::arg:->args'
+
+    case $state in
+        cmds)
+            _describe 'command' commands
+            ;;
+        args)
+            case $words[2] in
+                start)
+                    _values 'options' --force --json
+                    ;;
+                detect|status)
+                    _values 'options' --json
+                    ;;
+                config)
+                    _values 'options' --set
+                    ;;
+                completion)
+                    _values 'shell' bash zsh fish
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_apsta "$@"'''
+
+
+def _completion_fish() -> str:
+    return r'''complete -c apsta -f
+complete -c apsta -n "__fish_use_subcommand" -a "detect" -d "Detect hardware AP+STA capability"
+complete -c apsta -n "__fish_use_subcommand" -a "start" -d "Start hotspot"
+complete -c apsta -n "__fish_use_subcommand" -a "stop" -d "Stop hotspot"
+complete -c apsta -n "__fish_use_subcommand" -a "status" -d "Show status"
+complete -c apsta -n "__fish_use_subcommand" -a "config" -d "View/edit config"
+complete -c apsta -n "__fish_use_subcommand" -a "enable" -d "Install auto-start hooks"
+complete -c apsta -n "__fish_use_subcommand" -a "disable" -d "Disable auto-start hooks"
+complete -c apsta -n "__fish_use_subcommand" -a "scan-usb" -d "Detect USB WiFi adapters"
+complete -c apsta -n "__fish_use_subcommand" -a "recommend" -d "Suggest USB adapters"
+complete -c apsta -n "__fish_use_subcommand" -a "completion" -d "Print shell completion script"
+
+complete -c apsta -n "__fish_seen_subcommand_from start" -l force -d "Force single-interface mode"
+complete -c apsta -n "__fish_seen_subcommand_from start detect status" -l json -d "Output JSON"
+complete -c apsta -n "__fish_seen_subcommand_from config" -l set -d "Set config key"
+complete -c apsta -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"'''
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="apsta",
@@ -1499,6 +1737,7 @@ commands:
   disable       Uninstall systemd service + sleep hook
   scan-usb      Detect plugged-in USB WiFi adapters + AP+STA capability
   recommend     Suggest USB adapters to buy if built-in card lacks AP+STA
+  completion    Print shell completion script
 
 start methods (tried in order):
   1. nmcli virtual interface   — true concurrent AP+STA
@@ -1507,30 +1746,44 @@ start methods (tried in order):
 
 examples:
   apsta detect
+  apsta detect --json
   sudo apsta start
   sudo apsta start --force
+  apsta status --json
   apsta config --set ssid=MyHotspot
+  apsta completion zsh > ~/.zsh/completions/_apsta
   sudo apsta enable
         """
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("detect",    help="Detect hardware AP+STA capability")
+    p_detect = sub.add_parser("detect", help="Detect hardware AP+STA capability")
+    p_detect.add_argument("--json", action="store_true", help="Output machine-readable JSON")
 
     p_start = sub.add_parser("start", help="Start hotspot")
-    p_start.add_argument("--force", action="store_true",
-                         help="Skip AP+STA attempts and force single-interface mode (drops WiFi)")
+    p_start.add_argument(
+        "--force",
+        action="store_true",
+        help="Skip AP+STA attempts and force single-interface mode (drops WiFi)",
+    )
+    p_start.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
 
-    sub.add_parser("stop",      help="Stop hotspot")
-    sub.add_parser("status",    help="Show status")
-    sub.add_parser("enable",    help="Install systemd service + sleep hook")
-    sub.add_parser("disable",   help="Uninstall systemd service + sleep hook")
-    sub.add_parser("scan-usb",  help="Detect USB WiFi adapters + AP+STA capability")
+    sub.add_parser("stop", help="Stop hotspot")
+
+    p_status = sub.add_parser("status", help="Show status")
+    p_status.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    sub.add_parser("enable", help="Install systemd service + sleep hook")
+    sub.add_parser("disable", help="Uninstall systemd service + sleep hook")
+    sub.add_parser("scan-usb", help="Detect USB WiFi adapters + AP+STA capability")
     sub.add_parser("recommend", help="Suggest USB adapters to buy")
 
+    p_completion = sub.add_parser("completion", help="Print shell completion script")
+    p_completion.add_argument("shell", choices=["bash", "zsh", "fish"], help="Target shell")
+
     p_config = sub.add_parser("config", help="View/edit config")
-    p_config.add_argument("--set", metavar="KEY=VALUE",
-                          help="Set a config value (e.g. --set ssid=MyHotspot)")
+    p_config.add_argument("--set", metavar="KEY=VALUE", help="Set a config value (e.g. --set ssid=MyHotspot)")
 
     args = parser.parse_args()
 
@@ -1538,18 +1791,21 @@ examples:
         parser.print_help()
         sys.exit(0)
 
-    _check_dependencies()
+    commands_without_deps = {"completion"}
+    if args.command not in commands_without_deps:
+        _check_dependencies()
 
     dispatch = {
-        "detect":    cmd_detect,
-        "start":     cmd_start,
-        "stop":      cmd_stop,
-        "status":    cmd_status,
-        "config":    cmd_config,
-        "enable":    cmd_enable,
-        "disable":   cmd_disable,
-        "scan-usb":  cmd_scan_usb,
+        "detect": cmd_detect,
+        "start": cmd_start,
+        "stop": cmd_stop,
+        "status": cmd_status,
+        "config": cmd_config,
+        "enable": cmd_enable,
+        "disable": cmd_disable,
+        "scan-usb": cmd_scan_usb,
         "recommend": cmd_recommend,
+        "completion": cmd_completion,
     }
 
     try:
