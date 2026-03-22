@@ -99,10 +99,43 @@ Key technical decisions:
 
 ## Install
 
+### One command (recommended)
+
 ```bash
-git clone https://github.com/yourusername/apsta
+pipx install git+https://github.com/krotrn/apsta.git
+```
+
+Then use it immediately:
+
+```bash
+apsta detect
+sudo apsta start
+```
+
+### Alternatives
+
+Script install:
+
+```bash
+git clone https://github.com/krotrn/apsta
 cd apsta
 sudo ./install.sh
+```
+
+Install from local clone with pipx:
+
+```bash
+git clone https://github.com/krotrn/apsta
+cd apsta
+pipx install .
+```
+
+Editable install (development workflow):
+
+```bash
+git clone https://github.com/krotrn/apsta
+cd apsta
+python3 -m pip install -e .
 ```
 
 **Required dependencies** (all default on Ubuntu/Pop!\_OS/Fedora/Arch):

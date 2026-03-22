@@ -732,7 +732,7 @@ def main():
     # Verify apsta is installed before opening the window
     if not Path(APSTA).exists():
         print(f"Error: apsta not found at {APSTA}")
-        print("Install apsta first: https://github.com/yourusername/apsta")
+        print("Install apsta first: https://github.com/krotrn/apsta")
         raise SystemExit(1)
 
     app = ApstaApp()

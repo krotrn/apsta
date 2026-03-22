@@ -30,11 +30,12 @@ import time
 import random
 import signal
 import textwrap
+import tempfile
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 #
@@ -1389,6 +1390,87 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 SLEEP_HOOK_DEST  = Path("/usr/lib/systemd/system-sleep/apsta-sleep")
 SERVICE_DEST     = Path("/etc/systemd/system/apsta.service")
 
+EMBEDDED_SLEEP_HOOK = """#!/usr/bin/env bash
+# /usr/lib/systemd/system-sleep/apsta-sleep  (systemd)
+# /etc/pm/sleep.d/10_apsta                   (pm-utils / OpenRC)
+
+APSTA=\"/usr/local/bin/apsta\"
+STATE_FILE=\"/run/apsta-was-active\"
+CONFIG=\"/etc/apsta/config.json\"
+
+case \"$1/$2\" in
+    pre/* | suspend/* | hibernate/*)
+        ACTION=\"before_sleep\"
+        ;;
+    post/* | resume/* | thaw/*)
+        ACTION=\"after_sleep\"
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+case \"$ACTION\" in
+    before_sleep)
+        if [ -f \"$CONFIG\" ]; then
+            AP_IFACE=$(python3 -c "
+import json, sys
+try:
+    c = json.load(open(sys.argv[1]))
+    print(c.get('ap_interface') or '')
+except: print('')
+" \"$CONFIG\" 2>/dev/null)
+            if [ -n \"$AP_IFACE\" ]; then
+                touch \"$STATE_FILE\"
+                \"$APSTA\" stop
+            fi
+        fi
+        ;;
+
+    after_sleep)
+        if [ -f \"$STATE_FILE\" ]; then
+            rm -f \"$STATE_FILE\"
+            nm-online --timeout 15 -x --quiet 2>/dev/null
+            \"$APSTA\" start
+        fi
+        ;;
+esac
+
+exit 0
+"""
+
+EMBEDDED_SERVICE_UNIT = """[Unit]
+Description=apsta - AP+STA WiFi hotspot manager
+After=NetworkManager.service network.target
+Wants=NetworkManager.service
+PartOf=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/nm-online -q --timeout 30
+ExecStart=/usr/local/bin/apsta start
+ExecStop=/usr/local/bin/apsta stop
+TimeoutStopSec=5
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+def _write_embedded_system_files() -> Tuple[Path, Path]:
+    tmp_dir = Path(tempfile.mkdtemp(prefix="apsta-system-"))
+    sleep_hook_src = tmp_dir / "apsta-sleep"
+    service_src = tmp_dir / "apsta.service"
+
+    sleep_hook_src.write_text(EMBEDDED_SLEEP_HOOK)
+    sleep_hook_src.chmod(0o755)
+    service_src.write_text(EMBEDDED_SERVICE_UNIT)
+    service_src.chmod(0o644)
+
+    return sleep_hook_src, service_src
+
 # ── Init system detection ──────────────────────────────────────────────────────
 
 def _detect_init() -> str:
@@ -1436,15 +1518,8 @@ def cmd_enable(args):
     if not system_dir.exists():
         print()
         warn(f"Bundled system/ directory not found at: {system_dir}")
-        warn("apsta was likely installed as a standalone file, not from the full repo.")
-        info("To get the system files, clone the full repo:")
-        print(f"     {C.DIM}git clone https://github.com/yourusername/apsta")
-        print(f"     cd apsta && sudo ./install.sh{C.RESET}")
-        print()
-        info("The binary has been installed to /usr/local/bin/apsta.")
-        info("Re-run 'sudo apsta enable' from the cloned repo to finish setup.")
-        print()
-        sys.exit(1)
+        info("Using embedded default service/hook templates from this apsta package.")
+        sleep_hook_src, service_src = _write_embedded_system_files()
 
     init = _detect_init()
     info(f"Detected init system: {C.BOLD}{init}{C.RESET}")

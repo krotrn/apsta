@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.75"
 description = "COSMIC panel applet for apsta — AP+STA WiFi hotspot manager"
 license = "MIT"
-repository = "https://github.com/yourusername/apsta"
+repository = "https://github.com/krotrn/apsta"
 
 [[bin]]
 name = "cosmic-applet-apsta"
