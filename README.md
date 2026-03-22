@@ -102,8 +102,10 @@ Key technical decisions:
 ### One command (recommended)
 
 ```bash
-pipx install git+https://github.com/krotrn/apsta.git
+sudo apt update && sudo apt install -y pipx network-manager iw iproute2 usbutils pciutils hostapd dnsmasq python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 && pipx ensurepath && pipx install git+https://github.com/krotrn/apsta.git
 ```
+
+This one-liner is for Ubuntu/Pop!\_OS and installs all required system packages plus `apsta`.
 
 Then use it immediately:
 
