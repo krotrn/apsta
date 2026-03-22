@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 apsta - Smart AP+STA (simultaneous hotspot + WiFi client) manager
-Phase 3: USB dongle detection + adapter recommendations
+Phase 4: hostapd-based AP+STA for cards without nmcli concurrent support
 
 Usage:
     apsta detect              # Check if your hardware supports AP+STA
@@ -13,6 +13,11 @@ Usage:
     apsta disable             # Uninstall systemd service + sleep hook
     apsta scan-usb            # Detect plugged-in USB WiFi adapters + their AP+STA capability
     apsta recommend           # Suggest USB adapters to buy if built-in card lacks AP+STA
+
+Phase 4 start strategy (tried in order):
+    1. nmcli hotspot on virtual interface  — true concurrent AP+STA (best)
+    2. hostapd on virtual interface        — works on Intel AX200 and similar
+    3. nmcli hotspot on same interface     — drops WiFi (--force only)
 """
 
 import subprocess
@@ -23,8 +28,10 @@ import argparse
 import re
 import time
 import random
+import signal
+import textwrap
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -45,7 +52,20 @@ DEFAULT_CONFIG = {
     "ap_interface": None,     # set at runtime, cleared on stop
     "base_interface": None,   # actual STA iface name saved at start, used by stop
     "active_con_name": None,  # NM connection profile name saved at start, used by stop
+    "start_method": None,     # "nmcli", "hostapd", or "nmcli-force" — set at start
 }
+
+# Paths for hostapd runtime files
+HOSTAPD_CONF    = Path("/tmp/apsta-hostapd.conf")
+HOSTAPD_PID     = Path("/tmp/apsta-hostapd.pid")
+DNSMASQ_CONF    = Path("/tmp/apsta-dnsmasq.conf")
+DNSMASQ_PID     = Path("/tmp/apsta-dnsmasq.pid")
+DNSMASQ_LEASES  = Path("/tmp/apsta-dnsmasq.leases")
+
+# IP address assigned to the AP interface in hostapd mode
+AP_IP           = "192.168.42.1"
+AP_SUBNET       = "192.168.42.0/24"
+DHCP_RANGE      = ("192.168.42.10", "192.168.42.100")
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 
@@ -96,10 +116,11 @@ class HardwareCapability:
     interface: str
     supports_ap: bool
     supports_sta: bool
-    supports_ap_sta_concurrent: bool
+    supports_ap_sta_concurrent: bool   # nmcli-level: AP+managed in same combo block
+    supports_ap_sta_split: bool        # hostapd-level: AP and managed in separate blocks, #channels<=1
     max_interfaces: int
     supported_modes: list
-    combinations: list      # raw combination strings
+    combinations: list
     driver: str
     chipset: str
 
@@ -107,19 +128,14 @@ def get_wifi_interfaces() -> List[WifiInterface]:
     """Parse ip link output to find WiFi interfaces."""
     ifaces = []
     result = run_out("ip link show")
-    # match lines like: 3: wlo1: <...> ...
     for match in re.finditer(r"^\d+: (\w+):.*$", result, re.MULTILINE):
         name = match.group(1)
-        # check if it's a wifi interface via iw
         check = run(f"iw dev {name} info")
         if check.returncode != 0:
             continue
-        # get MAC
         mac_match = re.search(r"addr ([\w:]+)", check.stdout)
         mac = mac_match.group(1) if mac_match else "unknown"
-        # check if UP
         state = "UP" if "UP" in match.group(0) else "DOWN"
-        # get connected SSID
         ssid = None
         ssid_result = run_out(f"iw dev {name} link")
         ssid_match = re.search(r"SSID: (.+)", ssid_result)
@@ -129,19 +145,17 @@ def get_wifi_interfaces() -> List[WifiInterface]:
     return ifaces
 
 def get_hardware_capability(iface: str) -> HardwareCapability:
-    """Parse iw list to determine AP+STA support."""
     iw_output = run_out("iw list")
 
-    # supported modes
     modes = re.findall(r"\* (\w[\w/ ]+)", iw_output)
     supported_modes = [m.strip() for m in modes if len(m.strip()) < 30]
 
     supports_ap  = any("AP" in m and "VLAN" not in m for m in supported_modes)
     supports_sta = any(m.strip() == "managed" for m in supported_modes)
 
-    # valid interface combinations - this is the key check
     combinations = []
     ap_sta_concurrent = False
+    ap_sta_split      = False
     max_ifaces = 1
 
     combo_section = re.search(
@@ -150,36 +164,58 @@ def get_hardware_capability(iface: str) -> HardwareCapability:
     )
     if combo_section:
         combo_text = combo_section.group(1)
-        combo_lines = []
-        for l in combo_text.splitlines():
-            stripped = l.strip()
 
-            if not stripped.startswith("* #{"):
+        # Join continuation lines into single combo entries.
+        # The format is:
+        #   * #{ managed } <= 1, #{ AP } <= 1, #{ P2P-device } <= 1,
+        #     total <= 3, #channels <= 1
+        # The second line starts with spaces but NOT with "* #{".
+        # We join it onto the previous line so the parser sees one string.
+        joined_lines = []
+        for line in combo_text.splitlines():
+            stripped = line.strip()
+            if not stripped:
                 continue
-            if "total <=" not in stripped:
-                continue
-            combo_lines.append(stripped)
+            if stripped.startswith("* #{"):
+                joined_lines.append(stripped)
+            elif joined_lines:
+                # Continuation line — append to previous entry
+                joined_lines[-1] += " " + stripped
 
-        for line in combo_lines:
-            combinations.append(line)
-            has_ap  = bool(re.search(r"\bAP\b", line))
-            has_sta = bool(re.search(r"\bmanaged\b", line))
-            total_match = re.search(r"total <= (\d+)", line)
+        for entry in joined_lines:
+            if "total <=" not in entry:
+                continue
+            combinations.append(entry)
+
+            channels_match = re.search(r"#channels <= (\d+)", entry)
+            channels = int(channels_match.group(1)) if channels_match else 99
+
+            total_match = re.search(r"total <= (\d+)", entry)
             total = int(total_match.group(1)) if total_match else 1
-            if has_ap and has_sta and total >= 2:
-                ap_sta_concurrent = True
-                max_ifaces = max(max_ifaces, total)
 
-    # get driver name
+            groups = re.findall(r"#\{([^}]+)\}", entry)
+
+            has_ap_group  = any("AP" in g and "VLAN" not in g for g in groups)
+            has_sta_group = any("managed" in g for g in groups)
+
+            if has_ap_group and has_sta_group:
+                max_ifaces = max(max_ifaces, total)
+                same_group = any(
+                    "AP" in g and "managed" in g and "VLAN" not in g
+                    for g in groups
+                )
+                if same_group and total >= 2:
+                    ap_sta_concurrent = True
+                elif not same_group and total >= 2 and channels <= 1:
+                    ap_sta_split = True
+
     driver = ""
     phy_match = re.search(r"Wiphy (\w+)", iw_output)
     if phy_match:
-        phy = phy_match.group(1)
         driver_path = f"/sys/class/net/{iface}/device/driver"
         if os.path.islink(driver_path):
             driver = os.path.basename(os.readlink(driver_path))
 
-    # chipset from lspci or lsusb
     chipset = ""
     lspci = run_out("lspci | grep -i wireless")
     if lspci:
@@ -194,6 +230,7 @@ def get_hardware_capability(iface: str) -> HardwareCapability:
         supports_ap=supports_ap,
         supports_sta=supports_sta,
         supports_ap_sta_concurrent=ap_sta_concurrent,
+        supports_ap_sta_split=ap_sta_split,
         max_interfaces=max_ifaces,
         supported_modes=supported_modes,
         combinations=combinations,
@@ -202,22 +239,6 @@ def get_hardware_capability(iface: str) -> HardwareCapability:
     )
 
 # ── USB WiFi chipset database ──────────────────────────────────────────────────
-#
-# Source: morrownr/USB-WiFi (the authoritative Linux USB WiFi reference).
-# Only chipsets with confirmed in-kernel drivers and AP+STA concurrent support
-# are listed. VID:PID entries cover the most common adapters per chipset.
-# Realtek chipsets are intentionally excluded — their out-of-kernel drivers
-# are unmaintained and AP+STA support is unreliable across distros.
-#
-# Fields per entry:
-#   chipset        : silicon identifier
-#   driver         : in-kernel module name
-#   ap_sta         : True if driver exposes concurrent AP+STA interface combinations
-#   min_kernel     : minimum kernel version string for AP mode support
-#   wifi_gen       : "WiFi 5", "WiFi 6", "WiFi 6E", "WiFi 7"
-#   vid_pids       : list of (vendor_id, product_id) hex strings
-#   buy_search     : short search term for finding adapters online
-#   notes          : important caveats (BT interference, min kernel, etc.)
 
 @dataclass
 class UsbChipset:
@@ -226,7 +247,7 @@ class UsbChipset:
     ap_sta:     bool
     min_kernel: str
     wifi_gen:   str
-    vid_pids:   List[Tuple[str, str]]   # (vid, pid) both lowercase hex, no 0x prefix
+    vid_pids:   List[Tuple[str, str]]
     buy_search: str
     notes:      str
 
@@ -238,11 +259,11 @@ USB_CHIPSET_DB: List[UsbChipset] = [
         min_kernel="5.19",
         wifi_gen="WiFi 6",
         vid_pids=[
-            ("0e8d", "7961"),  # standard MediaTek VID/PID
-            ("3574", "6211"),  # Comfast CF-952AX / CF-953AX
-            ("13b1", "0045"),  # Linksys AE6000 (some revisions)
-            ("0846", "9060"),  # Netgear A8000
-            ("2357", "0138"),  # TP-Link Archer TX20U
+            ("0e8d", "7961"),
+            ("3574", "6211"),
+            ("13b1", "0045"),
+            ("0846", "9060"),
+            ("2357", "0138"),
         ],
         buy_search="mt7921au USB WiFi Linux",
         notes="Best overall choice. Avoid adapters with Bluetooth enabled (causes USB3 interference). Kernel 6.6+ recommended.",
@@ -254,7 +275,7 @@ USB_CHIPSET_DB: List[UsbChipset] = [
         min_kernel="6.7",
         wifi_gen="WiFi 7",
         vid_pids=[
-            ("0846", "9100"),  # Netgear A9000
+            ("0846", "9100"),
         ],
         buy_search="mt7925u USB WiFi 7 Linux",
         notes="WiFi 7. Requires kernel 6.7+. Limited adapter availability as of 2025.",
@@ -266,11 +287,11 @@ USB_CHIPSET_DB: List[UsbChipset] = [
         min_kernel="4.19",
         wifi_gen="WiFi 5",
         vid_pids=[
-            ("0e8d", "7612"),  # standard MediaTek VID/PID
-            ("7392", "b711"),  # Edimax EW-7822UAC
-            ("2357", "0103"),  # TP-Link Archer T4U v1
-            ("0b05", "17d1"),  # ASUS USB-AC55
-            ("0846", "9053"),  # Netgear A6210
+            ("0e8d", "7612"),
+            ("7392", "b711"),
+            ("2357", "0103"),
+            ("0b05", "17d1"),
+            ("0846", "9053"),
         ],
         buy_search="mt7612u USB WiFi Linux",
         notes="Mature, rock-solid driver. AC1200 dual-band. Plug and play on almost any Linux distro.",
@@ -282,9 +303,9 @@ USB_CHIPSET_DB: List[UsbChipset] = [
         min_kernel="4.19",
         wifi_gen="WiFi 5",
         vid_pids=[
-            ("0e8d", "7610"),  # standard MediaTek VID/PID
-            ("7392", "a711"),  # Edimax EW-7711UAC
-            ("2357", "0105"),  # TP-Link Archer T1U
+            ("0e8d", "7610"),
+            ("7392", "a711"),
+            ("2357", "0105"),
         ],
         buy_search="mt7610u USB WiFi Linux",
         notes="AC600 single-band 5GHz. Very stable. Good for hotspot-only dongle use.",
@@ -293,29 +314,15 @@ USB_CHIPSET_DB: List[UsbChipset] = [
 
 @dataclass
 class UsbWifiDevice:
-    """A USB WiFi adapter detected on the system."""
     vid:        str
     pid:        str
-    name:       str          # from lsusb description
-    interface:  Optional[str]   # kernel interface name if assigned (e.g. wlan1)
-    driver:     Optional[str]   # kernel module if loaded
-    chipset_db: Optional[UsbChipset]  # matched entry from USB_CHIPSET_DB, or None
+    name:       str
+    interface:  Optional[str]
+    driver:     Optional[str]
+    chipset_db: Optional[UsbChipset]
 
 
 def scan_usb_wifi() -> List[UsbWifiDevice]:
-    """
-    Detect USB WiFi adapters by walking /sys/bus/usb/devices/ directly.
-
-    Driving the scan from sysfs (not lsusb) solves the duplicate-dongle problem:
-    if a user plugs in two identical mt7921au adapters with the same VID:PID,
-    lsusb emits two identical lines and a VID:PID lookup returns the first sysfs
-    match for both — assigning wlan1 to both entries and missing wlan2.
-    By iterating sysfs entries first we get one UsbWifiDevice per physical port,
-    each with the correct interface. lsusb is used only to fetch the human-readable
-    device name, keyed by Bus+Device number which is always unique.
-    """
-    # Build a lookup table: (bus, devnum) -> human-readable name from lsusb
-    # lsusb line: "Bus 002 Device 003: ID abcd:1234 TP-Link Corp. Archer T4U"
     lsusb_names: dict = {}
     lsusb_out = run_out("lsusb")
     for line in lsusb_out.splitlines():
@@ -341,15 +348,12 @@ def scan_usb_wifi() -> List[UsbWifiDevice]:
         except OSError:
             continue
 
-        # Match against chipset DB
         matched_chipset = None
         for cs in USB_CHIPSET_DB:
             if (vid, pid) in cs.vid_pids:
                 matched_chipset = cs
                 break
 
-        # Get human-readable name from lsusb lookup
-        # /sys/.../busnum and devnum files hold the bus/device numbers
         name = ""
         try:
             busnum = (dev_path / "busnum").read_text().strip().zfill(3)
@@ -358,15 +362,12 @@ def scan_usb_wifi() -> List[UsbWifiDevice]:
         except OSError:
             pass
 
-        # If not in DB, check name for WiFi keywords before including
         if not matched_chipset:
             wifi_keywords = ("wireless", "wlan", "wifi", "802.11", "wi-fi", "mediatek", "ralink")
             if not any(k in name.lower() for k in wifi_keywords):
                 continue
 
-        # Find the kernel interface and driver for this specific sysfs entry
         iface, driver = _find_usb_iface_by_path(dev_path)
-
         devices.append(UsbWifiDevice(
             vid=vid, pid=pid, name=name,
             interface=iface, driver=driver,
@@ -377,13 +378,6 @@ def scan_usb_wifi() -> List[UsbWifiDevice]:
 
 
 def _find_usb_iface_by_path(dev_path: Path) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Given a /sys/bus/usb/devices/<entry> path, find the kernel network interface
-    name and loaded driver for that specific physical USB port.
-
-    Taking dev_path directly (instead of VID/PID) means two identical adapters
-    on different ports each get their own correct interface, never the same one.
-    """
     for subdir in dev_path.iterdir():
         if not subdir.is_dir():
             continue
@@ -422,7 +416,6 @@ def cmd_detect(args):
         connected = f"connected to {C.GREEN}{iface.connected_ssid}{C.RESET}" if iface.connected_ssid else f"{C.DIM}not connected{C.RESET}"
         print(f"     {C.BOLD}{iface.name}{C.RESET}  [{iface.mac}]  {connected}")
 
-    # use first UP interface, or first available
     target = next((i for i in ifaces if i.state == "UP"), ifaces[0])
     print()
     info(f"Analysing {C.BOLD}{target.name}{C.RESET} ...")
@@ -437,9 +430,10 @@ def cmd_detect(args):
         info(f"Chipset:  {cap.chipset}")
 
     print()
-    _print_cap("AP mode (hotspot)",       cap.supports_ap)
-    _print_cap("STA mode (WiFi client)",  cap.supports_sta)
-    _print_cap("AP+STA simultaneous",     cap.supports_ap_sta_concurrent)
+    _print_cap("AP mode (hotspot)",             cap.supports_ap)
+    _print_cap("STA mode (WiFi client)",         cap.supports_sta)
+    _print_cap("AP+STA simultaneous (nmcli)",    cap.supports_ap_sta_concurrent)
+    _print_cap("AP+STA simultaneous (hostapd)",  cap.supports_ap_sta_split)
 
     if cap.combinations:
         print()
@@ -450,9 +444,14 @@ def cmd_detect(args):
     print()
     head("Verdict")
     if cap.supports_ap_sta_concurrent:
-        ok("Your hardware supports AP+STA simultaneously.")
+        ok("Your hardware supports AP+STA simultaneously (nmcli mode).")
         ok("apsta can create a hotspot without dropping your WiFi.")
         info("Run:  sudo apsta start")
+    elif cap.supports_ap_sta_split:
+        ok("Your hardware supports AP+STA simultaneously (hostapd mode).")
+        ok("apsta will use hostapd + dnsmasq to share WiFi without disconnecting.")
+        info("Run:  sudo apsta start")
+        info("Note: requires hostapd and dnsmasq installed.")
     elif cap.supports_ap:
         warn("Your hardware supports AP mode but NOT concurrent AP+STA.")
         warn("Starting a hotspot will disconnect your current WiFi.")
@@ -462,7 +461,6 @@ def cmd_detect(args):
         print(f"     2. Use a USB WiFi dongle as the AP interface")
         print(f"     3. Accept the tradeoff: disconnect WiFi, run hotspot")
         print()
-        # Phase 3: check if a capable USB dongle is already plugged in
         usb_devices = scan_usb_wifi()
         capable = [d for d in usb_devices if d.chipset_db and d.chipset_db.ap_sta]
         if capable:
@@ -485,8 +483,205 @@ def cmd_detect(args):
 def _print_cap(label: str, value: bool):
     icon = f"{C.GREEN}✔{C.RESET}" if value else f"{C.RED}✘{C.RESET}"
     status = f"{C.GREEN}supported{C.RESET}" if value else f"{C.RED}not supported{C.RESET}"
-    print(f"     {icon}  {label:<30} {status}")
+    print(f"     {icon}  {label:<38} {status}")
 
+
+# ── Phase 4: hostapd AP+STA ───────────────────────────────────────────────────
+
+def _check_hostapd_deps() -> bool:
+    """Return True if hostapd and dnsmasq are both installed."""
+    missing = []
+    for binary in ("hostapd", "dnsmasq"):
+        if not run_out(f"command -v {binary}"):
+            missing.append(binary)
+    if missing:
+        warn(f"hostapd mode requires: {', '.join(missing)}")
+        info("Install with:  sudo apt install " + " ".join(missing))
+        return False
+    return True
+
+
+def _write_hostapd_conf(ap_iface: str, ssid: str, password: str, channel: str) -> None:
+    """Write hostapd configuration file for AP+STA mode."""
+    # hw_mode: g = 2.4 GHz, a = 5 GHz
+    # We always use 2.4 GHz for hostapd mode since the virtual interface
+    # must share the physical channel with the STA connection.
+    conf = textwrap.dedent(f"""\
+        interface={ap_iface}
+        driver=nl80211
+        ssid={ssid}
+        hw_mode=g
+        channel={channel}
+        wpa=2
+        wpa_passphrase={password}
+        wpa_key_mgmt=WPA-PSK
+        rsn_pairwise=CCMP
+        # Allow hostapd to manage the interface directly without
+        # requiring it to be brought UP first — needed because
+        # `ip link set ap0 up` returns EBUSY when wlo1 is in use.
+        ignore_broadcast_ssid=0
+    """)
+    HOSTAPD_CONF.write_text(conf)
+
+
+def _write_dnsmasq_conf(ap_iface: str) -> None:
+    """Write dnsmasq configuration for DHCP on the AP interface."""
+    conf = textwrap.dedent(f"""\
+        interface={ap_iface}
+        bind-interfaces
+        dhcp-range={DHCP_RANGE[0]},{DHCP_RANGE[1]},24h
+        dhcp-leasefile={DNSMASQ_LEASES}
+        # Don't read /etc/resolv.conf — use Google DNS for hotspot clients
+        no-resolv
+        server=8.8.8.8
+        server=8.8.4.4
+    """)
+    DNSMASQ_CONF.write_text(conf)
+
+
+def _start_hostapd_ap_sta(
+    base_iface: str,
+    ssid: str,
+    password: str,
+    channel: str,
+) -> Optional[str]:
+    """
+    Start AP+STA using hostapd on a virtual interface.
+
+    Steps:
+      1. Create virtual ap0 interface on top of base_iface
+      2. Assign randomized locally-administered MAC
+      3. Tell NM to ignore ap0 (not base_iface — that stays connected)
+      4. Write hostapd + dnsmasq configs
+      5. Start hostapd (brings ap0 up itself)
+      6. Assign IP to ap0
+      7. Start dnsmasq for DHCP
+      8. Enable NAT so hotspot clients get internet
+
+    Returns the ap interface name on success, None on failure.
+    """
+    ap_iface = f"{base_iface}_ap"
+
+    # Remove stale virtual interface if it exists
+    run(f"iw dev {ap_iface} del 2>/dev/null")
+
+    # Create virtual AP interface
+    result = run(f"iw dev {base_iface} interface add {ap_iface} type __ap")
+    if result.returncode != 0:
+        warn(f"Could not create virtual interface {ap_iface}: {result.stderr.strip()}")
+        return None
+
+    # Assign randomized locally-administered MAC to avoid duplicate MAC rejection.
+    # Keep base_iface MAC unchanged — NM uses it to track the STA connection.
+    rand_mac = "02:%02x:%02x:%02x:%02x:%02x" % tuple(random.randint(0, 255) for _ in range(5))
+    run(f"ip link set {ap_iface} down 2>/dev/null")
+    mac_result = run(f"ip link set {ap_iface} address {rand_mac}")
+    if mac_result.returncode != 0:
+        warn(f"Could not set MAC for {ap_iface} — proceeding anyway.")
+
+    # Tell NM to ignore ap0 ONLY — base_iface stays managed and connected
+    run(f"nmcli dev set {ap_iface} managed no")
+
+    # Write configs
+    _write_hostapd_conf(ap_iface, ssid, password, channel)
+    _write_dnsmasq_conf(ap_iface)
+
+    # Start hostapd in background
+    # hostapd brings the interface up itself — ip link set up is not needed
+    # and returns EBUSY because the physical radio is in use by base_iface.
+    hostapd_result = run(
+        f"hostapd -B -P {HOSTAPD_PID} {HOSTAPD_CONF}"
+    )
+    if hostapd_result.returncode != 0:
+        warn(f"hostapd failed to start: {hostapd_result.stderr.strip() or hostapd_result.stdout.strip()}")
+        run(f"iw dev {ap_iface} del 2>/dev/null")
+        return None
+
+    # Wait briefly for hostapd to initialize
+    time.sleep(1)
+
+    # Verify hostapd actually came up
+    iw_info = run_out(f"iw dev {ap_iface} info")
+    if "AP" not in iw_info and not HOSTAPD_PID.exists():
+        warn("hostapd started but AP interface did not come up.")
+        run(f"iw dev {ap_iface} del 2>/dev/null")
+        return None
+
+    # Assign IP address to ap_iface
+    run(f"ip addr flush dev {ap_iface} 2>/dev/null")
+    ip_result = run(f"ip addr add {AP_IP}/24 dev {ap_iface}")
+    if ip_result.returncode != 0:
+        warn(f"Could not assign IP to {ap_iface}: {ip_result.stderr.strip()}")
+
+    # Start dnsmasq for DHCP
+    dnsmasq_result = run(
+        f"dnsmasq --conf-file={DNSMASQ_CONF} --pid-file={DNSMASQ_PID}"
+    )
+    if dnsmasq_result.returncode != 0:
+        warn(f"dnsmasq failed: {dnsmasq_result.stderr.strip()} — clients won't get IP addresses.")
+
+    # Enable IP forwarding and NAT so hotspot clients get internet
+    # through base_iface's connection.
+    run("sysctl -w net.ipv4.ip_forward=1 > /dev/null")
+
+    # Flush any existing MASQUERADE rules for this interface to avoid duplicates
+    run(f"iptables -t nat -D POSTROUTING -s {AP_SUBNET} -o {base_iface} -j MASQUERADE 2>/dev/null")
+    run(f"iptables -t nat -A POSTROUTING -s {AP_SUBNET} -o {base_iface} -j MASQUERADE")
+
+    # Allow forwarding between ap_iface and base_iface
+    run(f"iptables -D FORWARD -i {ap_iface} -o {base_iface} -j ACCEPT 2>/dev/null")
+    run(f"iptables -D FORWARD -i {base_iface} -o {ap_iface} -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null")
+    run(f"iptables -A FORWARD -i {ap_iface} -o {base_iface} -j ACCEPT")
+    run(f"iptables -A FORWARD -i {base_iface} -o {ap_iface} -m state --state RELATED,ESTABLISHED -j ACCEPT")
+
+    return ap_iface
+
+
+def _stop_hostapd_ap_sta(ap_iface: str, base_iface: str) -> None:
+    """Tear down hostapd-based AP+STA setup cleanly."""
+
+    # Stop hostapd
+    if HOSTAPD_PID.exists():
+        try:
+            pid = int(HOSTAPD_PID.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+            time.sleep(0.5)
+        except (ValueError, ProcessLookupError, OSError):
+            pass
+        HOSTAPD_PID.unlink(missing_ok=True)
+    else:
+        run("pkill -f 'hostapd.*apsta' 2>/dev/null")
+
+    # Stop dnsmasq
+    if DNSMASQ_PID.exists():
+        try:
+            pid = int(DNSMASQ_PID.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+        except (ValueError, ProcessLookupError, OSError):
+            pass
+        DNSMASQ_PID.unlink(missing_ok=True)
+
+    # Remove iptables rules
+    run(f"iptables -t nat -D POSTROUTING -s {AP_SUBNET} -o {base_iface} -j MASQUERADE 2>/dev/null")
+    run(f"iptables -D FORWARD -i {ap_iface} -o {base_iface} -j ACCEPT 2>/dev/null")
+    run(f"iptables -D FORWARD -i {base_iface} -o {ap_iface} -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null")
+
+    # Remove virtual interface
+    if ap_iface and ap_iface != base_iface:
+        result = run(f"iw dev {ap_iface} del")
+        if result.returncode == 0:
+            ok(f"Removed virtual interface {ap_iface}")
+        else:
+            warn(f"Could not remove {ap_iface} (may already be gone)")
+
+    # Re-enable NM management of base_iface (it was never unmanaged in hostapd mode,
+    # but ap_iface was set unmanaged — NM will clean that up on interface removal)
+    HOSTAPD_CONF.unlink(missing_ok=True)
+    DNSMASQ_CONF.unlink(missing_ok=True)
+    DNSMASQ_LEASES.unlink(missing_ok=True)
+
+
+# ── cmd_start ─────────────────────────────────────────────────────────────────
 
 def cmd_start(args):
     require_root()
@@ -499,7 +694,6 @@ def cmd_start(args):
         err("No WiFi interfaces found.")
         sys.exit(1)
 
-    # pick interface
     iface_name = config.get("interface") or ifaces[0].name
     target = next((i for i in ifaces if i.name == iface_name), None)
     if not target:
@@ -507,27 +701,17 @@ def cmd_start(args):
         info("Run:  apsta config --set interface=none   to reset to auto-detect")
         info("Run:  apsta detect                        to list available interfaces")
         sys.exit(1)
-    cap = get_hardware_capability(target.name)
 
+    cap = get_hardware_capability(target.name)
     print()
 
     if not cap.supports_ap:
         err("AP mode not supported on this interface. Run: apsta detect")
         sys.exit(1)
 
-    if target.connected_ssid and not cap.supports_ap_sta_concurrent and not args.force:
-        warn(f"Currently connected to '{target.connected_ssid}'.")
-        warn("Concurrent AP+STA not supported — starting hotspot will disconnect WiFi.")
-        warn("Use --force to proceed, or connect via ethernet first.")
-        sys.exit(1)
-
     ssid     = config.get("ssid")     or DEFAULT_CONFIG["ssid"]
     password = config.get("password") or DEFAULT_CONFIG["password"]
 
-    # Dynamically derive channel AND band from the STA's current frequency.
-    # This solves two problems in one:
-    #   1. Single-radio EBUSY: AP must match STA channel exactly.
-    #   2. Band mismatch: 5 GHz channel + band=bg is invalid and always fails.
     detected_channel, detected_band = _get_sta_channel_band(target.name)
 
     if detected_channel and detected_band:
@@ -535,12 +719,6 @@ def cmd_start(args):
         band    = detected_band
         info(f"Detected STA frequency → channel {channel}, band {'5 GHz' if band == 'a' else '2.4 GHz'}")
 
-        # Edge case: DFS channels (52–144) are regulatory-blocked for AP use
-        # in most countries at the kernel level (mac80211 regulatory domain).
-        # Additionally, on single-radio cards (the common case), the AP must
-        # share the exact same channel as the STA — so falling back to channel
-        # 36 would cause EBUSY because the hardware cannot split across channels.
-        # The only correct path is to tell the user clearly and abort.
         if _is_dfs_channel(channel):
             err(f"Channel {channel} is a DFS channel (range 52–144).")
             err("AP mode on DFS channels is blocked by kernel regulatory rules in most countries.")
@@ -556,59 +734,96 @@ def cmd_start(args):
             info("Then run:  sudo apsta start")
             sys.exit(1)
     else:
-        # Not currently connected — use config values as-is.
-        # Use `or` not .get(key, default) — if a key exists but is None
-        # (e.g. user ran: apsta config --set channel=none), .get() returns
-        # None and nmcli receives "channel None", which it rejects.
         channel = config.get("channel") or DEFAULT_CONFIG["channel"]
         band    = config.get("band")    or DEFAULT_CONFIG["band"]
         info(f"Not connected to STA — using configured channel {channel}, band {band}")
 
-    if cap.supports_ap_sta_concurrent:
-        info("Concurrent AP+STA supported — creating virtual AP interface...")
-        ap_iface = _create_virtual_ap_iface(target.name)
-        if not ap_iface:
-            warn("Virtual interface creation failed, falling back to same interface.")
-            ap_iface = target.name
-    else:
-        ap_iface = target.name
-
-    info(f"Starting hotspot on {C.BOLD}{ap_iface}{C.RESET}")
     info(f"SSID:     {ssid}")
     info(f"Password: {password}")
     info(f"Band:     {'5 GHz' if band == 'a' else '2.4 GHz'}  (channel {channel})")
     print()
 
+    # ── Strategy selection ────────────────────────────────────────────────────
+    #
+    # Try in order of preference:
+    #   1. nmcli with virtual interface  — true concurrent, no hostapd needed
+    #   2. hostapd with virtual interface — works on Intel AX200 and similar
+    #   3. nmcli --force                 — drops WiFi (only with --force flag)
+
+    if cap.supports_ap_sta_concurrent:
+        # Strategy 1: nmcli on virtual interface
+        info("Strategy: nmcli concurrent AP+STA (virtual interface)")
+        ap_iface = _create_virtual_ap_iface(target.name)
+        if not ap_iface:
+            warn("Virtual interface creation failed, falling back to hostapd.")
+            ap_iface = None
+
+        if ap_iface:
+            result = run(
+                f"nmcli device wifi hotspot ifname {ap_iface} "
+                f"ssid '{ssid}' password '{password}' band {band} channel {channel}"
+            )
+            if result.returncode == 0:
+                _finalize_nmcli_start(config, target, ap_iface, ssid)
+                config["start_method"] = "nmcli"
+                save_config(config)
+                return
+            else:
+                warn("nmcli hotspot failed on virtual interface, trying hostapd.")
+                run(f"iw dev {ap_iface} del 2>/dev/null")
+
+    if cap.supports_ap_sta_split and not args.force:
+        # Strategy 2: hostapd on virtual interface
+        info("Strategy: hostapd concurrent AP+STA (virtual interface)")
+
+        if not _check_hostapd_deps():
+            warn("Install hostapd and dnsmasq to enable this mode.")
+            warn("Falling back to --force mode which will disconnect WiFi.")
+            if not target.connected_ssid:
+                # Not connected anyway, just proceed
+                pass
+            else:
+                err("Cannot start hotspot without disconnecting WiFi.")
+                info("Options:")
+                info("  sudo apt install hostapd dnsmasq   then retry")
+                info("  sudo apsta start --force           to disconnect WiFi and proceed")
+                sys.exit(1)
+        else:
+            ap_iface = _start_hostapd_ap_sta(target.name, ssid, password, channel)
+            if ap_iface:
+                config["ap_interface"]    = ap_iface
+                config["base_interface"]  = target.name
+                config["active_con_name"] = None  # not used in hostapd mode
+                config["start_method"]    = "hostapd"
+                save_config(config)
+
+                ok(f"Hotspot '{ssid}' is live on {ap_iface}  (hostapd mode)")
+                ok(f"Still connected to '{target.connected_ssid}'")
+                ok(f"Hotspot gateway: {AP_IP}  —  clients get {DHCP_RANGE[0]}–{DHCP_RANGE[1]}")
+                info("Stop with:  sudo apsta stop")
+                print()
+                return
+            else:
+                warn("hostapd mode failed. Falling back to --force mode.")
+
+    # Strategy 3: nmcli --force (drops WiFi)
+    if not args.force and target.connected_ssid:
+        warn(f"Currently connected to '{target.connected_ssid}'.")
+        warn("Concurrent AP+STA not supported — starting hotspot will disconnect WiFi.")
+        warn("Use --force to proceed, or install hostapd/dnsmasq for AP+STA mode.")
+        sys.exit(1)
+
+    info("Strategy: nmcli hotspot (single interface — WiFi will disconnect)")
+    ap_iface = target.name
     result = run(
         f"nmcli device wifi hotspot ifname {ap_iface} "
         f"ssid '{ssid}' password '{password}' band {band} channel {channel}"
     )
 
     if result.returncode == 0:
-        # extract the actual connection name NM assigned (may differ from ssid)
-        # nmcli prints: "Device 'wlo1' successfully activated with '...UUID...'."
-        # we need the profile name, not UUID — query NM directly
-        active_con_name = _get_active_hotspot_con_name(ap_iface)
-
-        # persist state so cmd_stop can tear down exactly the right things.
-        # base_interface is saved explicitly here — cmd_stop must not rely on
-        # config.get("interface") which may be None (auto-detect).
-        config["ap_interface"]      = ap_iface
-        config["base_interface"]    = target.name
-        config["active_con_name"]   = active_con_name or ssid
+        _finalize_nmcli_start(config, target, ap_iface, ssid)
+        config["start_method"] = "nmcli-force"
         save_config(config)
-
-        ok(f"Hotspot '{ssid}' is live on {ap_iface}")
-        if ap_iface == target.name:
-            # Same interface used for AP — the STA connection was replaced.
-            # Only print a warning if the user was previously connected to something.
-            if target.connected_ssid:
-                warn(f"WiFi disconnected from '{target.connected_ssid}' (single interface in use).")
-                info("Stop hotspot to reconnect:  sudo apsta stop")
-        else:
-            # Different interfaces — STA connection should still be alive.
-            if target.connected_ssid:
-                ok(f"Still connected to '{target.connected_ssid}'")
     else:
         err("Failed to start hotspot.")
         print(f"\n{C.DIM}{result.stderr}{C.RESET}")
@@ -617,53 +832,80 @@ def cmd_start(args):
     print()
 
 
+def _finalize_nmcli_start(config: dict, target: WifiInterface, ap_iface: str, ssid: str):
+    """Save state and print status after a successful nmcli hotspot start."""
+    active_con_name = _get_active_hotspot_con_name(ap_iface)
+    config["ap_interface"]    = ap_iface
+    config["base_interface"]  = target.name
+    config["active_con_name"] = active_con_name or ssid
+    save_config(config)
+
+    ok(f"Hotspot '{ssid}' is live on {ap_iface}")
+    if ap_iface == target.name:
+        if target.connected_ssid:
+            warn(f"WiFi disconnected from '{target.connected_ssid}' (single interface in use).")
+            info("Stop hotspot to reconnect:  sudo apsta stop")
+    else:
+        if target.connected_ssid:
+            ok(f"Still connected to '{target.connected_ssid}'")
+    info("Stop with:  sudo apsta stop")
+    print()
+
+
+# ── cmd_stop ──────────────────────────────────────────────────────────────────
+
 def cmd_stop(args):
     require_root()
     head("apsta — Stopping Hotspot")
     print()
 
     config = load_config()
+    method = config.get("start_method")
 
-    # use the connection name we saved at start time — not the hardcoded "Hotspot"
-    # which breaks for multi-word SSIDs and non-default NM naming
-    con_name = config.get("active_con_name") or "Hotspot"
-
-    result = run(f"nmcli connection down '{con_name}'")
-    if result.returncode == 0:
-        ok(f"Hotspot connection '{con_name}' stopped.")
+    if method == "hostapd":
+        ap_iface   = config.get("ap_interface")
+        base_iface = config.get("base_interface") or ""
+        if ap_iface:
+            _stop_hostapd_ap_sta(ap_iface, base_iface)
+            ok("Hotspot stopped.")
+        else:
+            warn("No active hostapd hotspot found in config.")
     else:
-        warn(f"Could not bring down '{con_name}', scanning for active hotspot connections...")
-        # fallback: find any active 802-11 AP-mode connection
-        active = run_out("nmcli -t -f NAME,TYPE,MODE con show --active")
-        hotspot_cons = [
-            l.split(":")[0] for l in active.splitlines()
-            if l.split(":")[-1].strip().lower() in ("ap", "hotspot")
-            or "hotspot" in l.lower()
-        ]
-        if hotspot_cons:
-            for con in hotspot_cons:
-                run(f"nmcli connection down '{con}'")
-                ok(f"Stopped: {con}")
-        else:
-            warn("No active hotspot connection found.")
-
-    # clean up virtual interface only if we created one.
-    # Use base_interface saved at start time — not config["interface"] which
-    # may be None (auto-detect setting), causing the _ap suffix check to be
-    # the only guard, which is fragile.
-    ap_iface   = config.get("ap_interface")
-    base_iface = config.get("base_interface") or config.get("interface") or ""
-    if ap_iface and ap_iface != base_iface and ap_iface.endswith("_ap"):
-        result = run(f"iw dev {ap_iface} del")
+        # nmcli or nmcli-force stop
+        con_name = config.get("active_con_name") or "Hotspot"
+        result = run(f"nmcli connection down '{con_name}'")
         if result.returncode == 0:
-            ok(f"Removed virtual interface {ap_iface}")
+            ok(f"Hotspot connection '{con_name}' stopped.")
         else:
-            warn(f"Could not remove {ap_iface} (may already be gone)")
+            warn(f"Could not bring down '{con_name}', scanning for active hotspot connections...")
+            active = run_out("nmcli -t -f NAME,TYPE,MODE con show --active")
+            hotspot_cons = [
+                l.split(":")[0] for l in active.splitlines()
+                if l.split(":")[-1].strip().lower() in ("ap", "hotspot")
+                or "hotspot" in l.lower()
+            ]
+            if hotspot_cons:
+                for con in hotspot_cons:
+                    run(f"nmcli connection down '{con}'")
+                    ok(f"Stopped: {con}")
+            else:
+                warn("No active hotspot connection found.")
 
-    # clear runtime state from config
+        # Clean up virtual interface if one was created
+        ap_iface   = config.get("ap_interface")
+        base_iface = config.get("base_interface") or config.get("interface") or ""
+        if ap_iface and ap_iface != base_iface and ap_iface.endswith("_ap"):
+            result = run(f"iw dev {ap_iface} del")
+            if result.returncode == 0:
+                ok(f"Removed virtual interface {ap_iface}")
+            else:
+                warn(f"Could not remove {ap_iface} (may already be gone)")
+
+    # Clear runtime state
     config["ap_interface"]    = None
     config["base_interface"]  = None
     config["active_con_name"] = None
+    config["start_method"]    = None
     save_config(config)
 
     print()
@@ -672,6 +914,12 @@ def cmd_stop(args):
 def cmd_status(args):
     head("apsta — Status")
     print()
+
+    config = load_config()
+    method = config.get("start_method")
+    if method:
+        info(f"Active method:  {C.BOLD}{method}{C.RESET}")
+        print()
 
     ifaces = get_wifi_interfaces()
     active_cons = run_out("nmcli -t -f NAME,TYPE,DEVICE,STATE con show --active")
@@ -690,6 +938,22 @@ def cmd_status(args):
         connected = f"→ {C.GREEN}{iface.connected_ssid}{C.RESET}" if iface.connected_ssid else f"{C.DIM}idle{C.RESET}"
         print(f"     {C.BOLD}{iface.name}{C.RESET}  {connected}")
 
+    # Show hostapd clients if active
+    if method == "hostapd" and DNSMASQ_LEASES.exists():
+        print()
+        info("Connected clients:")
+        try:
+            leases = DNSMASQ_LEASES.read_text().strip()
+            if leases:
+                for line in leases.splitlines():
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        print(f"     {parts[3]}  [{parts[1]}]  {parts[2]}")
+            else:
+                print(f"     {C.DIM}No clients connected{C.RESET}")
+        except OSError:
+            pass
+
     print()
 
 
@@ -699,13 +963,12 @@ def cmd_config(args):
     print()
 
     if args.set:
-        require_root()  # reading config is fine without root; writing /etc/apsta/ requires it
+        require_root()
         key, _, val = args.set.partition("=")
         if key not in DEFAULT_CONFIG:
             err(f"Unknown config key: {key}")
             err(f"Valid keys: {', '.join(DEFAULT_CONFIG.keys())}")
             sys.exit(1)
-        # allow clearing nullable keys with "none" or ""
         if val.lower() in ("none", "null", ""):
             config[key] = None
             save_config(config)
@@ -727,7 +990,6 @@ def cmd_config(args):
 
 
 def cmd_scan_usb(args):
-    """Detect plugged-in USB WiFi adapters and report their AP+STA capability."""
     head("apsta — USB WiFi Adapter Scan")
     print()
 
@@ -771,7 +1033,6 @@ def cmd_scan_usb(args):
                 info("  1. Driver not loaded — check:  lsmod | grep " + (cs.driver or "mt7921u"))
                 info("  2. Missing firmware — check:   sudo dmesg | grep firmware")
         else:
-            # Unknown chipset — show what we know
             print(f"  {C.DIM}Unknown chipset{C.RESET}  [{vid_pid}]")
             print(f"       Name:    {dev.name}")
             print(f"       Driver:  {dev.driver or C.DIM + 'unknown' + C.RESET}")
@@ -782,13 +1043,11 @@ def cmd_scan_usb(args):
 
         print()
 
-    # Check current kernel version against min_kernel requirements
-    kernel_ver = run_out("uname -r").split("-")[0]  # e.g. "6.8.0"
+    kernel_ver = run_out("uname -r").split("-")[0]
     _warn_kernel_if_needed(devices, kernel_ver)
 
 
 def _warn_kernel_if_needed(devices: List[UsbWifiDevice], kernel_ver: str):
-    """Warn if any detected adapter requires a newer kernel than what's running."""
     def parse_ver(v: str) -> Tuple[int, ...]:
         try:
             return tuple(int(x) for x in v.split(".")[:2])
@@ -806,20 +1065,15 @@ def _warn_kernel_if_needed(devices: List[UsbWifiDevice], kernel_ver: str):
 
 
 def cmd_recommend(args):
-    """
-    Suggest USB WiFi adapters to buy based on what the built-in card lacks.
-    Checks the built-in card first, then recommends the best-fit chipset.
-    """
     head("apsta — USB Adapter Recommendations")
     print()
 
-    # Check what the built-in card can do
     ifaces = get_wifi_interfaces()
     builtin_has_ap_sta = False
     if ifaces:
         target = next((i for i in ifaces if i.state == "UP"), ifaces[0])
         cap = get_hardware_capability(target.name)
-        builtin_has_ap_sta = cap.supports_ap_sta_concurrent
+        builtin_has_ap_sta = cap.supports_ap_sta_concurrent or cap.supports_ap_sta_split
 
     if builtin_has_ap_sta:
         ok("Your built-in card already supports AP+STA simultaneously.")
@@ -828,7 +1082,6 @@ def cmd_recommend(args):
         print()
         return
 
-    # Check if a compatible USB dongle is already plugged in
     usb_devices = scan_usb_wifi()
     capable_plugged = [d for d in usb_devices if d.chipset_db and d.chipset_db.ap_sta]
     if capable_plugged:
@@ -842,17 +1095,13 @@ def cmd_recommend(args):
         print()
         return
 
-    # Built-in card can't do AP+STA, no capable dongle plugged in.
-    # Recommend adapters from the DB, best-first.
     warn("Your built-in card does not support concurrent AP+STA.")
     warn("A USB WiFi dongle is needed to run a hotspot without dropping WiFi.")
     print()
     head("Recommended USB Adapters")
     print()
 
-    # Order: WiFi 6 first (mt7921au), then WiFi 5 stable options
     recommended = [cs for cs in USB_CHIPSET_DB if cs.ap_sta]
-
     for cs in recommended:
         wifi_color = C.CYAN if "6" in cs.wifi_gen or "7" in cs.wifi_gen else C.DIM
         print(f"  {C.BOLD}{cs.chipset}{C.RESET}  {wifi_color}{cs.wifi_gen}{C.RESET}  "
@@ -867,7 +1116,6 @@ def cmd_recommend(args):
     info("to verify it's detected, then:    sudo apsta config --set interface=<iface>")
     print()
 
-    # Also show kernel version for context
     kernel_ver = run_out("uname -r").split("-")[0]
     info(f"Your kernel: {kernel_ver}")
     print()
@@ -875,23 +1123,9 @@ def cmd_recommend(args):
 
 # ── Channel / band helpers ─────────────────────────────────────────────────────
 
-# DFS channels in the 5 GHz band (52–144). Acting as AP on these is blocked
-# by the kernel's regulatory domain in most countries.
-_DFS_CHANNELS = set(range(52, 145))   # channels 52–144 inclusive
+_DFS_CHANNELS = set(range(52, 145))
 
 def _get_sta_channel_band(iface: str) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Return (channel, band) derived from the STA's current operating frequency.
-
-    Band is 'bg' (2.4 GHz) or 'a' (5 GHz) — matching nmcli's expected values.
-    Returns (None, None) if the interface is not currently connected.
-
-    Why this matters:
-      - Single-radio cards require AP and STA on the exact same channel
-        (hardware constraint: #channels <= 1). Mismatching causes EBUSY.
-      - Channel 36 is 5 GHz; passing band=bg channel=36 to nmcli is invalid
-        and will always fail.
-    """
     link_info = run_out(f"iw dev {iface} link")
     freq_match = re.search(r"freq:\s*(\d+)", link_info)
     if not freq_match:
@@ -902,8 +1136,6 @@ def _get_sta_channel_band(iface: str) -> Tuple[Optional[str], Optional[str]]:
     return channel, band
 
 def _freq_to_channel(freq: int) -> Optional[str]:
-    """Convert MHz frequency to WiFi channel number string."""
-    # 2.4 GHz band
     mapping_24 = {
         2412: "1",  2417: "2",  2422: "3",  2427: "4",
         2432: "5",  2437: "6",  2442: "7",  2447: "8",
@@ -912,28 +1144,17 @@ def _freq_to_channel(freq: int) -> Optional[str]:
     }
     if freq in mapping_24:
         return mapping_24[freq]
-    # 5 GHz band: channel = (freq - 5000) / 5
     if 5170 <= freq <= 5825:
         return str((freq - 5000) // 5)
     return None
 
 def _is_dfs_channel(channel: str) -> bool:
-    """Return True if channel is in the DFS range (52–144) where AP mode is
-    regulatory-blocked in most countries."""
     try:
         return int(channel) in _DFS_CHANNELS
     except (ValueError, TypeError):
         return False
 
 def _get_active_hotspot_con_name(ap_iface: str) -> Optional[str]:
-    """
-    After nmcli creates the hotspot, find the actual NM connection profile name
-    so cmd_stop can bring it down by name regardless of SSID or NM naming.
-
-    NM registers the profile asynchronously. Slower systems (RPi, old hardware)
-    can take 2–3 seconds. We poll up to 3 times with 1s gaps instead of a
-    single fixed sleep to avoid both false negatives and unnecessary waiting.
-    """
     for attempt in range(3):
         active = run_out("nmcli -t -f NAME,TYPE,DEVICE con show --active")
         for line in active.splitlines():
@@ -945,44 +1166,22 @@ def _get_active_hotspot_con_name(ap_iface: str) -> Optional[str]:
     return None
 
 def _create_virtual_ap_iface(base_iface: str) -> Optional[str]:
-    """
-    Create a virtual AP interface on top of an existing WiFi interface.
-
-    The kernel assigns the virtual interface the same permanent MAC address as
-    the base interface. Some drivers (Intel iwlwifi, certain Realtek) and strict
-    NetworkManager configs refuse to activate two interfaces with identical MACs.
-    We randomize the locally-administered bit after creation to avoid this.
-    """
     ap_iface = f"{base_iface}_ap"
-    # remove stale instance if it exists
-    run(f"iw dev {ap_iface} del")
+    run(f"iw dev {ap_iface} del 2>/dev/null")
 
     result = run(f"iw dev {base_iface} interface add {ap_iface} type __ap")
     if result.returncode != 0:
         return None
 
-    # Force DOWN before MAC change — Linux forbids MAC changes on UP interfaces.
-    # The kernel sometimes inherits UP state from the base interface on creation.
-    run(f"ip link set {ap_iface} down")
+    run(f"ip link set {ap_iface} down 2>/dev/null")
 
-    # Assign a randomized locally-administered MAC to avoid duplicate MAC
-    # rejection. Format: keep first octet with LA bit set (02:xx:xx:xx:xx:xx).
     rand_mac = "02:%02x:%02x:%02x:%02x:%02x" % tuple(random.randint(0, 255) for _ in range(5))
     mac_result = run(f"ip link set {ap_iface} address {rand_mac}")
     if mac_result.returncode != 0:
-        # non-fatal: some drivers handle it fine without randomization
         warn(f"Could not randomize MAC for {ap_iface} — proceeding anyway.")
 
     run(f"ip link set {ap_iface} up")
-
-    # Edge case: privacy-focused distros configure NetworkManager to globally
-    # randomize MACs on all WiFi interfaces. NM might re-randomize ap_iface
-    # immediately after we bring it up, causing a brief collision race condition.
-    # Fix: tell NM to preserve our chosen MAC for this interface specifically.
-    run(
-        f"nmcli device set {ap_iface} "
-        f"managed yes wifi.cloned-mac-address {rand_mac}"
-    )
+    run(f"nmcli device set {ap_iface} managed yes wifi.cloned-mac-address {rand_mac}")
 
     return ap_iface
 
@@ -995,44 +1194,29 @@ def load_config() -> dict:
                 saved = json.load(f)
             return {**DEFAULT_CONFIG, **saved}
         except json.JSONDecodeError:
-            warn(f"Config file {CONFIG_PATH} is corrupted (possibly from power loss). Using defaults.")
+            warn(f"Config file {CONFIG_PATH} is corrupted. Using defaults.")
     return dict(DEFAULT_CONFIG)
 
 def save_config(config: dict):
-    # /etc/apsta/ needs to exist and be root-writable.
-    # Mode 755: root can write, others can read (so non-root `apsta status`
-    # can still read the config to display current state).
     CONFIG_PATH.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=2)
     CONFIG_PATH.chmod(0o644)
 
-# Path to the directory containing apsta.py — used to locate bundled system files
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# Paths where Phase 2 system files are installed (systemd only)
 SLEEP_HOOK_DEST  = Path("/usr/lib/systemd/system-sleep/apsta-sleep")
 SERVICE_DEST     = Path("/etc/systemd/system/apsta.service")
 
 # ── Init system detection ──────────────────────────────────────────────────────
 
 def _detect_init() -> str:
-    """
-    Return the running init system: 'systemd', 'openrc', 'runit', or 'unknown'.
-
-    Checks in order of reliability:
-      1. /run/systemd/private  — directory only present when systemd is PID 1
-      2. /run/openrc/softlevel — created by OpenRC on boot
-      3. /run/runit/stopit     — runit control directory
-      4. readlink /proc/1/exe  — last resort, parse the binary name
-    """
     if Path("/run/systemd/private").exists():
         return "systemd"
     if Path("/run/openrc/softlevel").exists():
         return "openrc"
     if Path("/run/runit").exists():
         return "runit"
-    # fallback: check what PID 1 actually is
     pid1 = run_out("readlink -f /proc/1/exe")
     if "systemd" in pid1:
         return "systemd"
@@ -1045,18 +1229,12 @@ def _detect_init() -> str:
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 def cmd_enable(args):
-    """Install auto-start and sleep/wake persistence for the detected init system."""
     require_root()
     head("apsta — Enabling auto-start and sleep/wake persistence")
     print()
 
     import shutil
 
-    # Self-install the binary unconditionally — before any init-specific logic.
-    # This must happen regardless of init system so that the manual instructions
-    # printed for OpenRC/runit users reference a path that actually exists.
-    # Without this, non-systemd users see "run /usr/local/bin/apsta start"
-    # but the binary was never copied there.
     binary_dest    = Path("/usr/local/bin/apsta")
     running_script = Path(sys.argv[0]).resolve()
     if running_script != binary_dest:
@@ -1070,10 +1248,6 @@ def cmd_enable(args):
     else:
         ok(f"Binary already at {binary_dest}")
 
-    # Locate bundled system files relative to the running script.
-    # Edge case: if someone copied only apsta.py to /usr/local/bin/ without
-    # the repo, SCRIPT_DIR = /usr/local/bin and system/ won't exist there.
-    # Detect this early and explain what's needed rather than crashing later.
     system_dir     = SCRIPT_DIR / "system"
     sleep_hook_src = system_dir / "apsta-sleep"
     service_src    = system_dir / "apsta.service"
@@ -1103,7 +1277,6 @@ def cmd_enable(args):
 
 
 def _enable_systemd(sleep_hook_src: Path, service_src: Path):
-    """Install the systemd service unit and sleep hook."""
     import shutil
 
     for src, label in [(sleep_hook_src, "sleep hook"), (service_src, "service unit")]:
@@ -1129,21 +1302,6 @@ def _enable_systemd(sleep_hook_src: Path, service_src: Path):
 
 
 def _enable_non_systemd(init: str, sleep_hook_src: Path):
-    """
-    Explain manual setup steps for non-systemd init systems.
-
-    We cannot safely automate OpenRC/runit service installation because:
-      - Service script locations vary by distro (Gentoo, Alpine, Artix, Devuan)
-      - OpenRC service scripts require specific syntax and cannot be auto-generated
-        without knowing the exact distro conventions
-      - runit service directories vary (/etc/sv, /service, /var/service)
-    The correct approach is to tell the user exactly what to do rather than
-    guess wrong and leave a broken service behind.
-
-    sleep_hook_src is passed in from cmd_enable, which already validated that
-    the system/ directory exists before reaching this function.
-    """
-    # The sleep hook is init-agnostic — install via pm-utils if available.
     import shutil
 
     if init == "openrc":
@@ -1155,9 +1313,6 @@ def _enable_non_systemd(init: str, sleep_hook_src: Path):
         print()
         info("Make it executable:")
         print(f"     {C.DIM}chmod +x /etc/local.d/apsta.start{C.RESET}")
-        print()
-        info("For sleep/wake persistence, install the hook manually:")
-        print(f"     {C.DIM}# Add to /etc/pm/sleep.d/apsta or use acpid{C.RESET}")
 
     elif init == "runit":
         warn("runit detected — automated service installation is not supported.")
@@ -1168,8 +1323,6 @@ def _enable_non_systemd(init: str, sleep_hook_src: Path):
         print(f"     echo 'exec /usr/local/bin/apsta start' >> /etc/sv/apsta/run")
         print(f"     chmod +x /etc/sv/apsta/run")
         print(f"     ln -s /etc/sv/apsta /var/service/{C.RESET}")
-        print()
-        info("Check your distro's runit service directory — it may be /service instead of /var/service.")
 
     else:
         warn(f"Unknown init system — cannot automate service installation.")
@@ -1177,11 +1330,9 @@ def _enable_non_systemd(init: str, sleep_hook_src: Path):
         info("Manual setup: run the following at startup (after NetworkManager):")
         print(f"     {C.DIM}nm-online -q && /usr/local/bin/apsta start{C.RESET}")
 
-    # Sleep hook is init-agnostic — install it regardless
     print()
     hook_installed = False
     if sleep_hook_src.exists():
-        # systemd-sleep directory won't exist on non-systemd — use pm-utils if present.
         pm_sleep_dir = Path("/etc/pm/sleep.d")
         if pm_sleep_dir.exists():
             dest = pm_sleep_dir / "10_apsta"
@@ -1192,10 +1343,8 @@ def _enable_non_systemd(init: str, sleep_hook_src: Path):
         else:
             warn("pm-utils not found (/etc/pm/sleep.d missing).")
             warn("Sleep/wake persistence requires manual setup.")
-            info("Options: acpid, elogind, or add to your suspend/resume scripts.")
             info(f"Hook script is at: {sleep_hook_src}")
     print()
-    # Clearly separate what's done vs what still needs the user's attention
     print(f"  {C.BOLD}Summary{C.RESET}")
     if hook_installed:
         ok("Sleep/wake persistence: installed (see above)")
@@ -1207,7 +1356,6 @@ def _enable_non_systemd(init: str, sleep_hook_src: Path):
 
 
 def cmd_disable(args):
-    """Uninstall auto-start and sleep/wake persistence."""
     require_root()
     head("apsta — Disabling auto-start and sleep/wake persistence")
     print()
@@ -1219,7 +1367,6 @@ def cmd_disable(args):
     if init != "systemd":
         warn(f"Automated disable is only supported on systemd.")
         warn(f"Remove the service/startup entry you created manually for {init}.")
-        # Still remove the sleep hook if we installed one via pm-utils
         pm_hook = Path("/etc/pm/sleep.d/10_apsta")
         if pm_hook.exists():
             pm_hook.unlink()
@@ -1227,9 +1374,6 @@ def cmd_disable(args):
         print()
         return
 
-    # Use run() directly — _run_sys() exits on failure, but systemctl stop
-    # and disable return non-zero if the service is already stopped or the unit
-    # never existed. We must not abort before the file deletion steps below.
     r = run("systemctl stop apsta.service")
     ok("Stopped apsta.service") if r.returncode == 0 else info("apsta.service was not running")
 
@@ -1252,7 +1396,6 @@ def cmd_disable(args):
 
 
 def _run_sys(cmd: str, label: str):
-    """Run a system command, printing status. Exit on failure."""
     result = run(cmd)
     if result.returncode == 0:
         ok(label)
@@ -1264,11 +1407,6 @@ def _run_sys(cmd: str, label: str):
 
 
 def _check_dependencies():
-    """
-    Verify required system binaries are present before any command runs.
-    Fails fast with a clear install hint rather than a cryptic FileNotFoundError
-    buried inside a subprocess call.
-    """
     deps = {
         "nmcli": "network-manager",
         "iw":    "iw",
@@ -1306,10 +1444,13 @@ commands:
   scan-usb      Detect plugged-in USB WiFi adapters + AP+STA capability
   recommend     Suggest USB adapters to buy if built-in card lacks AP+STA
 
+start methods (tried in order):
+  1. nmcli virtual interface   — true concurrent AP+STA
+  2. hostapd virtual interface — Intel AX200 and similar (needs hostapd + dnsmasq)
+  3. nmcli --force             — disconnects WiFi
+
 examples:
   apsta detect
-  apsta scan-usb
-  apsta recommend
   sudo apsta start
   sudo apsta start --force
   apsta config --set ssid=MyHotspot
@@ -1322,7 +1463,7 @@ examples:
 
     p_start = sub.add_parser("start", help="Start hotspot")
     p_start.add_argument("--force", action="store_true",
-                         help="Start even if concurrent AP+STA not supported")
+                         help="Skip AP+STA attempts and force single-interface mode (drops WiFi)")
 
     sub.add_parser("stop",      help="Stop hotspot")
     sub.add_parser("status",    help="Show status")
@@ -1341,7 +1482,6 @@ examples:
         parser.print_help()
         sys.exit(0)
 
-    # Run after arg parsing so `apsta --help` works even without deps installed
     _check_dependencies()
 
     dispatch = {

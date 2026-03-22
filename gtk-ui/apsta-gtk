@@ -86,13 +86,18 @@ def run_apsta_root_script(script: str, *positional: str) -> tuple[int, str, str]
         return 127, "", "pkexec not found — cannot escalate privileges"
 
 
-def pkexec_error_message(returncode: int, stderr: str) -> str:
-    """Translate pkexec exit codes into human-readable messages."""
+def pkexec_error_message(returncode: int, stderr: str, stdout: str = "") -> str:
+    """Translate pkexec exit codes and apsta output into human-readable messages.
+
+    apsta writes its error messages to stdout (coloured terminal output) not
+    stderr, so we check stdout first when stderr is empty.
+    """
     if returncode == 126:
         return "Authentication cancelled."
     if returncode == 127:
         return "pkexec or apsta not found. Is apsta installed?"
-    return stderr or "Unknown error"
+    raw = stderr or stdout or "Unknown error"
+    return strip_ansi(raw).strip()[:200]
 
 
 def strip_ansi(s: str) -> str:
@@ -111,12 +116,43 @@ def strip_ansi(s: str) -> str:
     return "".join(result)
 
 
+def first_error_line(text: str) -> str:
+    """Extract the first meaningful error line from apsta output.
+
+    apsta prefixes errors with ✘ and warnings with ⚠. We look for those
+    specifically so we skip headers like 'apsta — Configuration'.
+    Falls back to the first non-empty, non-header line if none found.
+    """
+    lines = text.splitlines()
+
+    # First pass: look for explicit error/warning markers
+    for line in lines:
+        stripped = line.strip()
+        if any(marker in stripped for marker in ("✘", "⚠", "Error", "error", "failed", "Failed")):
+            # Remove the marker prefix characters for cleaner display
+            clean = stripped.lstrip("✘⚠ ").strip()
+            if clean:
+                return clean
+
+    # Second pass: skip headers (contain —) and nav lines (start with →)
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("→"):
+            continue
+        if "—" in stripped:  # header lines like "apsta — Configuration"
+            continue
+        return stripped
+
+    return text[:120]  # fallback: return the first 120 chars of the raw output
+
 # ── Main Window ────────────────────────────────────────────────────────────────
 
 class ApstaWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application):
         super().__init__(application=app, title="apsta — Hotspot Manager")
-        self.set_default_size(480, 580)
+        self.set_default_size(480, 620)
         self.set_resizable(True)
 
         # Navigation view — three pages stacked via Adw.ViewStack
@@ -125,7 +161,7 @@ class ApstaWindow(Adw.ApplicationWindow):
 
         # Background poll: update status every POLL_INTERVAL seconds
         # GLib.timeout_add_seconds fires on the main loop — safe for UI updates
-        self._refreshing = False # guard against overlapping polls if a read takes too long
+        self._refreshing = False  # guard against overlapping polls
         GLib.timeout_add_seconds(POLL_INTERVAL, self._on_poll_tick)
 
     # ── UI construction ────────────────────────────────────────────────────────
@@ -201,6 +237,19 @@ class ApstaWindow(Adw.ApplicationWindow):
         self._pass_entry = Adw.PasswordEntryRow(title="Password")
         self._pass_entry.set_text("changeme123")
         control_group.add(self._pass_entry)
+
+        # Force mode toggle — needed when AP+STA concurrent is not supported.
+        # When enabled, apsta start --force is passed, which disconnects the
+        # existing WiFi connection and uses the single interface as AP.
+        force_row = Adw.ActionRow(
+            title="Force start",
+            subtitle="Disconnect WiFi to run hotspot (single-radio cards)",
+        )
+        self._force_switch = Gtk.Switch()
+        self._force_switch.set_valign(Gtk.Align.CENTER)
+        force_row.add_suffix(self._force_switch)
+        force_row.set_activatable_widget(self._force_switch)
+        control_group.add(force_row)
 
         # Start / Stop button row
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -467,8 +516,8 @@ class ApstaWindow(Adw.ApplicationWindow):
         """
         Background poll — called by GLib every POLL_INTERVAL seconds.
         Must return True to keep the timer alive.
-        Runs _refresh_status in a thread to avoid blocking the main loop
-        on the json file read.
+        Guard with _refreshing so overlapping polls can't stack up if a
+        config read takes longer than the poll interval.
         """
         if not self._refreshing:
             self._refreshing = True
@@ -476,6 +525,9 @@ class ApstaWindow(Adw.ApplicationWindow):
         return True  # keep polling
 
     def _poll_worker(self):
+        # Run refresh on the main loop thread via idle_add, but wait for it
+        # to complete before clearing the guard — prevents a second poll from
+        # starting before the first one finishes updating the UI.
         done = threading.Event()
         def _run():
             self._refresh_status()
@@ -499,33 +551,39 @@ class ApstaWindow(Adw.ApplicationWindow):
         if not ssid or not pwd:
             self._show_banner("SSID and password cannot be empty.", error=True)
             return
+        force = self._force_switch.get_active()
         self._set_busy(True)
         threading.Thread(
-            target=self._bg_start, args=(ssid, pwd), daemon=True
+            target=self._bg_start, args=(ssid, pwd, force), daemon=True
         ).start()
 
-    def _bg_start(self, ssid: str, pwd: str):
+    def _bg_start(self, ssid: str, pwd: str, force: bool):
+        force_flag = "--force" if force else ""
         script = (
             f"{APSTA} config --set ssid=\"$1\" && "
             f"{APSTA} config --set password=\"$2\" && "
-            f"{APSTA} start"
+            f"{APSTA} start {force_flag}".strip()
         )
-        rc, _, stderr = run_apsta_root_script(script, ssid, pwd)
+        rc, stdout, stderr = run_apsta_root_script(script, ssid, pwd)
         if rc == 0:
             GLib.idle_add(self._on_action_done, True, "Hotspot started.")
         else:
-            GLib.idle_add(self._on_action_done, False, pkexec_error_message(rc, stderr))
+            # apsta writes errors to stdout (coloured terminal output),
+            # stderr is often empty. Show the first meaningful error line.
+            raw = strip_ansi(stderr or stdout or "Unknown error").strip()
+            msg = first_error_line(raw)
+            GLib.idle_add(self._on_action_done, False, msg)
 
     def _on_stop_clicked(self, _btn):
         self._set_busy(True)
         threading.Thread(target=self._bg_stop, daemon=True).start()
 
     def _bg_stop(self):
-        rc, _, stderr = run_apsta_root_script(f"{APSTA} stop")
+        rc, stdout, stderr = run_apsta_root_script(f"{APSTA} stop")
         if rc == 0:
             GLib.idle_add(self._on_action_done, True, "Hotspot stopped.")
         else:
-            GLib.idle_add(self._on_action_done, False, pkexec_error_message(rc, stderr))
+            GLib.idle_add(self._on_action_done, False, pkexec_error_message(rc, stderr, stdout))
 
     def _on_action_done(self, success: bool, message: str):
         self._set_busy(False)
@@ -590,14 +648,14 @@ class ApstaWindow(Adw.ApplicationWindow):
         ).start()
 
     def _bg_save_config(self, script: str, args: list):
-        rc, _, stderr = run_apsta_root_script(script, *args)
+        rc, stdout, stderr = run_apsta_root_script(script, *args)
         if rc == 0:
             GLib.idle_add(self._show_banner, "Configuration saved.", False)
             GLib.idle_add(self._load_config_into_settings)
         else:
             GLib.idle_add(
                 self._show_banner,
-                pkexec_error_message(rc, stderr),
+                pkexec_error_message(rc, stderr, stdout),
                 True,
             )
 
@@ -605,16 +663,16 @@ class ApstaWindow(Adw.ApplicationWindow):
         threading.Thread(target=self._bg_enable, daemon=True).start()
 
     def _bg_enable(self):
-        rc, _, stderr = run_apsta_root_script(f"{APSTA} enable")
-        msg = "Auto-start enabled." if rc == 0 else pkexec_error_message(rc, stderr)
+        rc, stdout, stderr = run_apsta_root_script(f"{APSTA} enable")
+        msg = "Auto-start enabled." if rc == 0 else pkexec_error_message(rc, stderr, stdout)
         GLib.idle_add(self._show_banner, msg, rc != 0)
 
     def _on_disable_clicked(self, _btn):
         threading.Thread(target=self._bg_disable, daemon=True).start()
 
     def _bg_disable(self):
-        rc, _, stderr = run_apsta_root_script(f"{APSTA} disable")
-        msg = "Auto-start disabled." if rc == 0 else pkexec_error_message(rc, stderr)
+        rc, stdout, stderr = run_apsta_root_script(f"{APSTA} disable")
+        msg = "Auto-start disabled." if rc == 0 else pkexec_error_message(rc, stderr, stdout)
         GLib.idle_add(self._show_banner, msg, rc != 0)
 
     # ── UI utilities ───────────────────────────────────────────────────────────
