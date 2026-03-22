@@ -9,7 +9,9 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# Check deps
+# Check GTK4 + Libadwaita are available.
+# Use the exact import chain the app uses — not "import python3" which is
+# not valid Python and always fails regardless of what is installed.
 python3 -c "
 import gi
 gi.require_version('Gtk', '4.0')
@@ -18,18 +20,6 @@ from gi.repository import Gtk, Adw
 " 2>/dev/null || {
     echo "GTK4 or Libadwaita not found."
     echo "Run: sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1"
-    exit 1
-}
-
-
-python3 -c "
-import gi
-gi.require_version('Gtk', '4.0')
-gi.require_version('Adw', '1')
-from gi.repository import Gtk, Adw
-" 2>/dev/null || {
-    echo "GTK4 or Libadwaita not found."
-    echo "Run: sudo apt install gir1.2-gtk-4.0 gir1.2-adw-1"
     exit 1
 }
 

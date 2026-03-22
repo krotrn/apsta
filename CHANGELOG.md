@@ -4,82 +4,218 @@ All notable changes to `apsta` are documented here.
 
 ---
 
+## [0.5.0] — Phase 5 Complete
+
+### Summary
+GTK4 / Libadwaita GUI (`apsta-gtk`) for non-COSMIC desktops. Three-page interface:
+Status (start/stop with force toggle), Hardware (detect/scan-usb/recommend),
+Settings (config + service management). Proper error display, background polling,
+and hostapd-aware start behaviour.
+
+### Added
+- `apsta-gtk` — GTK4/Libadwaita GUI, works on GNOME, KDE, Xfce, and any GTK4 desktop
+- Three-tab layout: Status, Hardware, Settings via `Adw.ViewStack` + `Adw.ViewSwitcher`
+- Force start toggle (`Adw.ActionRow` + `Gtk.Switch`) — passes `--force` to apsta
+- `Adw.Banner` feedback with 4-second auto-hide and timer cancellation on rapid actions
+- Background poll every 5 seconds via `GLib.timeout_add_seconds` with overlap guard
+- `gtk-ui/install.sh` — GTK4/Adw dependency check, install to `/usr/local/bin/apsta-gtk`
+- `gtk-ui/com.github.apsta.Gtk.desktop` — app menu registration
+
+### Fixed (iteration history)
+
+#### `install.sh` dep check always failed
+`for pkg in python3 gi: python3 -c "import $pkg"` — `import python3` is not
+valid Python. Replaced with a single `python3 -c` block that does
+`gi.require_version` + `from gi.repository import Gtk, Adw` — the exact import
+chain the app uses.
+
+#### "Unknown error" on Start Hotspot
+`pkexec_error_message(rc, stderr)` returned "Unknown error" when stderr was
+empty. apsta writes all output to stdout (coloured terminal output), not stderr.
+Fixed by adding `stdout` as a fallback parameter throughout. `first_error_line()`
+helper added to extract the first `✘`/`⚠`/`Error` line from multi-line output,
+skipping header lines containing `—`.
+
+#### Start Hotspot always failed without Force toggle
+`_bg_start` called `apsta start` without `--force`. On single-radio cards
+without hostapd, this hits the AP+STA concurrent check and exits non-zero.
+Added `force` parameter and `--force` flag passthrough. After Phase 4, `apsta
+start` auto-selects hostapd mode so `--force` is no longer needed for Intel
+AX200 — but the toggle remains for cards that truly require it.
+
+#### Poll timer race: `_refreshing` cleared before refresh completed
+`_poll_worker` called `GLib.idle_add(self._refresh_status)` then immediately
+set `self._refreshing = False`. `GLib.idle_add` only schedules the call —
+it returns immediately. A second poll tick could fire before the first refresh
+finished. Fixed with `threading.Event`: `idle_add` sets the event after
+`_refresh_status` returns, `_poll_worker` waits on it before clearing the flag.
+
+#### Banner timer leak on rapid start→stop
+Calling `_show_banner` twice within 4 seconds left a stale `GLib.timeout_add`
+timer that prematurely hid the newer banner. Fixed by tracking
+`_banner_timeout_id` and calling `GLib.source_remove` before creating a new
+timer.
+
+---
+
+## [0.4.0] — Phase 4 Complete
+
+### Summary
+hostapd-based AP+STA fallback for cards where nmcli concurrent mode fails.
+Correctly detects Intel AX200 / iwlwifi split-block interface combinations.
+Three-strategy start sequence with method-aware stop. Connected client display
+in `apsta status`. COSMIC applet updated with `ssid_edited` guard and
+`Vec<String>` fix in `trim_to_verdict`.
+
+### Added
+- `supports_ap_sta_split` field in `HardwareCapability` — detects AP+managed
+  in separate `#{ }` blocks with `#channels <= 1` (Intel AX200 / iwlwifi case)
+- `_start_hostapd_ap_sta()` — creates virtual interface, runs hostapd + dnsmasq,
+  assigns `192.168.42.1/24`, sets up NAT via iptables MASQUERADE
+- `_stop_hostapd_ap_sta()` — kills hostapd/dnsmasq by PID, removes iptables
+  rules, deletes virtual interface
+- `_write_hostapd_conf()` / `_write_dnsmasq_conf()` — runtime config generation
+- `start_method` key in config — `"nmcli"`, `"hostapd"`, or `"nmcli-force"`;
+  `cmd_stop` is now method-aware
+- `apsta status` shows connected clients from dnsmasq leases file in hostapd mode
+- `_check_hostapd_deps()` — checks for hostapd and dnsmasq before attempting
+  hostapd mode, with clear install instruction on failure
+- COSMIC applet: `ssid_edited: bool` field — prevents pre-fill from overwriting
+  user-typed SSID on status refresh
+- COSMIC applet: `#[allow(dead_code)]` on `run_apsta_sudo` — suppresses compiler
+  warning for the utility function kept for future use
+
+### Fixed (iteration history)
+
+#### Split-block combinations never detected
+`iw list` outputs multi-line combination entries:
+```
+* #{ managed } <= 1, #{ AP, P2P-client, P2P-GO } <= 1, #{ P2P-device } <= 1,
+  total <= 3, #channels <= 1
+```
+The parser only processed lines starting with `* #{` and checked for `total <=`
+on the same line. The second line (with `total` and `#channels`) was always
+skipped. Fixed by joining continuation lines: lines not starting with `* #{`
+are appended to the previous entry before parsing.
+
+#### `trim_to_verdict` type mismatch (COSMIC applet)
+`lines: Vec<&str>` then `lines.push(clean)` where `clean: String` — type
+mismatch, would not compile. Changed to `Vec<String>`.
+
+#### `trim_to_verdict` pushed raw ANSI line instead of stripped version
+`let clean = strip_ansi(line); lines.push(line)` — `clean` was computed but
+the original `line` (with ANSI codes) was pushed. Fixed to `lines.push(clean)`.
+
+#### hostapd mode: `ip link set ap0 up` returned EBUSY
+The physical radio is in use by `wlo1`. Bringing up the virtual interface
+explicitly fails with EBUSY. hostapd brings the interface up itself during
+initialization — the explicit `ip link set up` call removed.
+
+#### `_get_active_hotspot_con_name` polled with sleep-before-check
+Loop always slept 1 second before the first check. On fast hardware the profile
+was already registered. Fixed to check first, then sleep: `if attempt < 2:
+time.sleep(1)`.
+
+#### False "Still connected" message after --force start
+`target.connected_ssid` was read before nmcli ran. After nmcli replaced the
+interface with an AP, the stored SSID was stale. Fixed: if `ap_iface ==
+target.name`, the interface was repurposed as AP — warn about disconnect
+instead of claiming still connected.
+
+---
+
+## [0.3.0] — Phase 3 Complete
+
+### Summary
+USB WiFi adapter detection and purchase recommendations. Sysfs-first scan
+solves duplicate-adapter problem. Chipset database covering mt7921au, mt7925u,
+mt7612u, mt7610u. Integration with `apsta detect` verdict.
+
+### Added
+- `apsta scan-usb` — walks `/sys/bus/usb/devices/` to find WiFi adapters,
+  matches against chipset DB, reports AP+STA capability, kernel version check
+- `apsta recommend` — checks built-in card first, then plugged dongles, then
+  shows purchase recommendations from DB
+- `USB_CHIPSET_DB` — MediaTek chipsets with confirmed in-kernel AP+STA support;
+  Realtek intentionally excluded
+- `scan_usb_wifi()` — sysfs-first iteration keyed by physical port path, not
+  VID:PID — correctly handles two identical adapters on different ports
+- `_find_usb_iface_by_path()` — finds kernel interface name and driver per
+  physical sysfs entry
+- `_warn_kernel_if_needed()` — compares running kernel against `min_kernel`
+  per detected adapter
+
+### Fixed (iteration history)
+
+#### Duplicate adapters assigned same interface
+lsusb-first scan: two identical mt7921au adapters produce two identical lsusb
+lines. VID:PID lookup always returned the first sysfs match for both. Fixed by
+iterating sysfs entries first (one entry per physical port) and using lsusb
+only for the human-readable name, keyed by Bus+Device number.
+
+#### `_find_usb_iface_by_path` iterated non-directory sysfs entries
+`for subdir in dev_path.iterdir()` included files. `subdir / "net"` succeeds
+on Path objects regardless of whether `subdir` is a directory. Added
+`if not subdir.is_dir(): continue` guard.
+
+---
+
 ## [0.2.0] — Phase 2 Complete
 
 ### Summary
 Persistent hotspot across reboots and sleep/wake cycles. Systemd service,
 unified sleep hook (systemd + pm-utils), init system detection, and
-self-installation. Zero known bugs. Tested logic paths across systemd,
-OpenRC, and runit environments.
+self-installation. Zero known bugs.
 
 ### Added
 - `apsta enable` — installs auto-start service and sleep/wake hook; self-copies
-  binary to `/usr/local/bin/apsta` so the service survives repo deletion
-- `apsta disable` — cleanly removes service unit, sleep hook, and reloads systemd
+  binary to `/usr/local/bin/apsta`
+- `apsta disable` — cleanly removes service unit, sleep hook, reloads systemd
 - `system/apsta.service` — systemd unit with `nm-online -q` pre-condition,
-  `TimeoutStopSec=5`, and `SuccessExitStatus=0 1`
-- `system/apsta-sleep` — unified sleep hook for both systemd and pm-utils
+  `TimeoutStopSec=5`, `SuccessExitStatus=0 1`
+- `system/apsta-sleep` — unified sleep hook for systemd and pm-utils
 - `_detect_init()` — detects systemd / OpenRC / runit via `/run/` dirs and
-  `/proc/1/exe` fallback; never relies on presence of `systemctl` binary
+  `/proc/1/exe` fallback
 - Config moved to `/etc/apsta/config.json` — eliminates `$HOME` split-brain
-  between user sessions and root-owned systemd/sleep processes
-- `save_config` creates `/etc/apsta/` as `755`, file as `644` — non-root
-  users can read config (for `apsta status`) but not write it
+- `save_config` creates `/etc/apsta/` as `755`, file as `644`
 
 ### Fixed (iteration history)
 
-#### Boot race: `sleep 3` replaced with `nm-online -q`
-`ExecStartPre=/bin/sleep 3` was a guess. If NetworkManager took longer than
-3 seconds to associate, `_get_sta_channel_band()` returned `None`, the hotspot
-started on fallback channel 11, then NM tried to join a 5 GHz router and
-crashed with EBUSY. Replaced with `ExecStartPre=/usr/bin/nm-online -q` which
-blocks until NM has an actual live connection.
+#### Boot race: `sleep 3` → `nm-online -q`
+`ExecStartPre=/bin/sleep 3` failed if NM took longer to associate.
+`_get_sta_channel_band()` returned `None`, hotspot started on ch11, NM joined
+5 GHz router, EBUSY. Replaced with `ExecStartPre=/usr/bin/nm-online -q`.
 
 #### Shutdown hang: `TimeoutStopSec=5` added
-Without it, if NM's daemon was already dead during system shutdown, `nmcli
-connection down` blocked until systemd's default 90-second kill timeout fired.
-`TimeoutStopSec=5` caps teardown at 5 seconds.
+Without it, if NM was dead during shutdown, `nmcli connection down` blocked
+for 90 seconds (systemd default kill timeout).
 
 #### Split-brain config: `Path.home()` → `/etc/apsta/`
-`Path.home()` and `$HOME` evaluate to `/root` under sudo and systemd, not
-`/home/user`. The service and sleep hook silently ignored user-written config
-and used defaults (including the default password). Moving to `/etc/apsta/`
-gives all processes one canonical path.
+`Path.home()` evaluates to `/root` under sudo and systemd. Service silently
+ignored user config.
 
 #### `apsta config --set` PermissionError without sudo
-After moving config to `/etc/apsta/`, writing required root. `require_root()`
-added inside the `if args.set:` branch only — reading config still works
-unprivileged.
+`require_root()` added inside `if args.set:` branch only.
 
 #### `cmd_disable` aborted before file cleanup
-`_run_sys("systemctl stop ...")` called `sys.exit(1)` if the service was
-already stopped or the unit was partially deleted, preventing the file deletion
-steps below from running. Changed to bare `run()` with per-result logging.
+`_run_sys("systemctl stop ...")` called `sys.exit(1)` on non-zero, preventing
+file deletion. Changed to bare `run()` with per-result logging.
 
-#### pm-utils argument mismatch on non-systemd
-`apsta-sleep` used `case "$1/$2"` matching only `pre/*` and `post/*` — the
-systemd convention. pm-utils passes a single argument (`suspend`, `resume`,
-`hibernate`, `thaw`), making `$1/$2` evaluate to `suspend/` which never
-matched. Fixed by adding a normalisation stage: first `case` maps both
-conventions to `ACTION=before_sleep` or `ACTION=after_sleep`; second `case`
-contains the shared logic. Unknown argument combinations exit cleanly with 0.
+#### pm-utils argument mismatch
+`case "$1/$2"` never matched pm-utils single-argument calling convention.
+Added normalisation stage mapping both conventions to `ACTION` variable.
 
-#### Non-systemd enable output didn't clearly show incomplete state
-On OpenRC/runit, `apsta enable` installed the pm-utils sleep hook but printed
-no clear indication that auto-start on boot still needed manual setup. Added
-an explicit summary block separating what was installed from what still needs
-user action.
+#### `apsta enable` broken if repo deleted post-install
+Service hardcodes `/usr/local/bin/apsta`. `cmd_enable` now copies `sys.argv[0]`
+to `/usr/local/bin/apsta` before installing the service.
 
-#### `apsta enable` broken if repo deleted after install
-The systemd service hardcodes `/usr/local/bin/apsta`. If a user ran
-`sudo python3 ~/Downloads/apsta.py enable` and then deleted `~/Downloads/`,
-the service would break on next boot. `cmd_enable` now copies `sys.argv[0]`
-to `/usr/local/bin/apsta` before installing the service unit.
+#### Config corrupted by power loss
+`json.load()` raised `JSONDecodeError` on truncated file, crashing the service.
+Added try/except with warning and fallback to defaults.
 
-#### Config corrupted by power loss during write
-`json.load()` would raise `json.JSONDecodeError` on a truncated file, crashing
-the service on next boot. Wrapped in `try/except json.JSONDecodeError` with a
-warning and graceful fallback to defaults.
+#### `NetworkManager-wait-online.service` dependency removed
+Ubuntu and some distros mask this unit by default, causing boot hangs.
+Replaced with `After=NetworkManager.service` + `ExecStartPre=nm-online -q`.
 
 ---
 
@@ -87,137 +223,58 @@ warning and graceful fallback to defaults.
 
 ### Summary
 First working release. Hardware detection, hotspot lifecycle management, and
-AP+STA concurrent mode — all fully functional with robust edge case handling.
+AP+STA concurrent mode.
 
 ### Added
-- `apsta detect` — parses `iw list` to report AP, STA, and AP+STA concurrent
-  support with driver and chipset identification
-- `apsta start` — starts hotspot using best available method; creates virtual
-  AP interface if hardware supports concurrent mode
+- `apsta detect` — parses `iw list` for AP, STA, AP+STA concurrent support
+- `apsta start` — starts hotspot using best available method
 - `apsta stop` — tears down hotspot and cleans up virtual interface
-- `apsta status` — shows all active WiFi connections and interface states
+- `apsta status` — shows active WiFi connections and interface states
 - `apsta config` — view and edit persistent JSON configuration
-- Pre-flight dependency check for `nmcli`, `iw`, `ip`
-- Python 3.8 compatibility (`List`, `Tuple` from `typing`)
 
 ### Fixed (iteration history)
 
 #### Combo parser always returned false
-`iw list` outputs combination lines starting with `* #{...}`. After `.strip()`,
-lines start with `* #{`, not `#{`. Filter changed to check for `"managed"` or
-`"AP"` in the line instead of `startswith("#")`.
+Lines after `.strip()` start with `* #{`, not `#{`. Filter changed to check
+for `"managed"` or `"AP"` in the line.
 
 #### Virtual interface state leak
-`cmd_start` created the virtual interface but never saved it to config.
-`cmd_stop` always got `None` from `config.get("ap_interface")` and skipped
-cleanup. Every `start` call orphaned a `wlo1_ap` interface. Fixed by
-persisting `ap_interface`, `base_interface`, and `active_con_name` at start
-and clearing at stop.
+`cmd_stop` always got `None` from `config.get("ap_interface")` — interface
+never saved to config at start. Added persistence of `ap_interface`,
+`base_interface`, `active_con_name`.
 
-#### Hardcoded `"Hotspot"` connection name broke teardown
-If the SSID was multi-word (e.g. "My Hotspot"), NM named the profile after
-the SSID — `nmcli connection down 'Hotspot'` silently failed. Fixed by saving
-the actual NM profile name via `_get_active_hotspot_con_name()` at start.
+#### Hardcoded `"Hotspot"` connection name
+Multi-word SSIDs caused `nmcli connection down 'Hotspot'` to silently fail.
+Fixed with `_get_active_hotspot_con_name()`.
 
 #### 5 GHz channel + `band=bg` mismatch
-Passing `band bg channel 36` to nmcli is always invalid. Refactored
-`_get_current_channel()` into `_get_sta_channel_band()` returning `(channel,
-band)` from the same frequency so they are always consistent.
+`band bg channel 36` always invalid. `_get_sta_channel_band()` returns
+channel and band from the same frequency.
 
 #### Single-radio EBUSY
-Cards with `#channels <= 1` require AP and STA on the exact same channel.
-Hardcoded `channel: "11"` crashed any STA on a different channel. Fixed by
-reading live frequency from `iw dev <iface> link` at start time.
+Hardcoded `channel: "11"` crashed STA on different channel. Now reads live
+frequency at start time.
 
 #### DFS channels kernel-blocked for AP
-Falling back to a non-DFS channel on a single-radio card causes EBUSY.
-Script now aborts with exact guidance: connect to 2.4 GHz or UNII-1 5 GHz.
+Aborts with guidance: connect to 2.4 GHz or UNII-1 5 GHz first.
 
 #### `config.get(key, default)` passed `None` to nmcli
-Keys stored as JSON `null` pass through `.get(key, default)` as `None`. Fixed
-with `config.get(key) or default` throughout `cmd_start`.
+Keys stored as JSON `null`. Fixed with `config.get(key) or default`.
 
 #### Duplicate MAC rejection on virtual interface
-Kernel assigns `wlo1_ap` the same MAC as `wlo1`. Fixed by forcing interface
-DOWN, applying a randomised locally-administered MAC (`02:xx:xx:xx:xx:xx`),
-then bringing it UP. NM MAC override added to prevent re-randomisation.
+Fixed: force DOWN, apply randomised LA MAC, bring UP, pin in NM.
 
 #### RTNETLINK EBUSY during MAC change
-Kernel sometimes inherits UP state on virtual interface creation. MAC changes
-on UP interfaces fail. Fixed by explicit DOWN before MAC assignment.
+Explicit DOWN added before MAC assignment.
 
 #### NM global MAC randomisation race
-NM could re-randomise `wlo1_ap` immediately after bring-up. Fixed by pinning
-the chosen MAC via `nmcli device set {ap_iface} wifi.cloned-mac-address`.
+Fixed by pinning chosen MAC via `nmcli device set wifi.cloned-mac-address`.
 
 #### Silent fallback to wrong interface
-If `interface=wlan1` was configured but the USB dongle was unplugged, the
-script silently hijacked `wlo1`. Now aborts with instructions to reset.
+If configured interface missing, now aborts with instructions.
 
 #### `time.sleep(1)` unreliable on slow hardware
 Replaced with 3-attempt polling loop in `_get_active_hotspot_con_name`.
 
-#### Python 3.9+ type hints crashed on Ubuntu 20.04
-`tuple[...]` and `list[...]` require Python 3.9+. Changed to `Tuple[...]`
-and `List[...]` from `typing`. Verified with AST scan.
-
----
-
-## Roadmap
-
-- [x] Phase 1 — Hardware detection + hotspot lifecycle CLI
-- [x] Phase 2 — systemd service, sleep/wake persistence, init detection
-- [ ] Phase 3 — Multi-distro testing matrix, USB dongle auto-detection
-- [ ] Phase 4 — COSMIC DE settings panel (libcosmic / Rust)
-- [ ] Phase 5 — GTK4 UI for GNOME / KDE users
-
----
-
-## [0.4.0] — Phase 4 Complete
-
-### Summary
-COSMIC DE panel applet in Rust. Shows hotspot status icon in the panel,
-popup with start/stop toggle, SSID/password fields, live status, and
-hardware detect output. Background polling keeps icon in sync with daemon.
-
-### Added
-- `cosmic-applet-apsta/` — standalone Rust crate, ships as a COSMIC panel applet
-- `cosmic::Application` trait implementation with panel icon + popup window
-- `subscription()` polling `async_get_status()` every 5 seconds — panel icon
-  stays accurate when hotspot is toggled via terminal while popup is closed
-- `pkexec` privilege escalation for start/stop — shows system auth dialog,
-  no terminal required
-- `pkexec_result()` helper maps exit code 126 to "Authentication cancelled."
-  instead of the raw multi-line pkexec stderr string
-- Status read from `/etc/apsta/config.json` directly via `serde_json` — no
-  ANSI parsing, no output format dependency
-- `justfile` with `build`, `build-release`, `install`, `uninstall`, `run`
-  targets matching COSMIC project conventions
-- `data/com.github.apsta.Applet.desktop` — registers with COSMIC panel
-
-### Fixed (iteration history)
-
-#### Triple Polkit prompt on hotspot start
-`async_start_hotspot` originally called `run_apsta_sudo` three times
-sequentially (set SSID, set password, start). GUI Polkit agents prompt on
-every `pkexec` invocation — the user would type their password three times.
-Fixed by batching all three into one `pkexec sh -c "...script..." -- "$1" "$2"`
-call. SSID and password passed as positional args, not interpolated into the
-script string, preventing shell injection.
-
-#### `justfile install` failed on fresh clone
-`install` target ran `install -Dm755 target/release/...` without first
-building. Added `build-release` as a prerequisite: `install: build-release`.
-
-#### `strip_ansi` consumed valid text after bare ESC
-Original parser consumed characters after any `\x1b` until hitting `m`,
-regardless of whether `[` followed the ESC. A bare escape character before
-text containing `m` would silently delete content. Fixed by requiring the
-exact `\x1b[` prefix before entering the skip loop.
-
-#### No background state sync
-Panel icon only updated when user clicked it or pressed a button. If the
-hotspot was stopped via terminal, the icon stayed green indefinitely. Fixed
-with `subscription()` returning `iced::time::every(5s)` mapped to
-`Message::RefreshStatus`, which dispatches a silent `async_get_status()` poll
-that doesn't interfere with in-progress user actions.
+#### Python 3.9+ type hints on Ubuntu 20.04
+`tuple[...]` → `Tuple[...]`, `list[...]` → `List[...]` from `typing`.

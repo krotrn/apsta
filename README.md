@@ -16,14 +16,15 @@ $ apsta detect
   → Driver:   iwlwifi
   → Chipset:  Intel Wi-Fi 6 AX200
 
-  ✔  AP mode (hotspot)             supported
-  ✔  STA mode (WiFi client)        supported
-  ✘  AP+STA simultaneous           not supported
+  ✔  AP mode (hotspot)                      supported
+  ✔  STA mode (WiFi client)                 supported
+  ✘  AP+STA simultaneous (nmcli)            not supported
+  ✔  AP+STA simultaneous (hostapd)          supported
 
   Verdict
-  ⚠  Hardware supports AP but NOT concurrent AP+STA.
-  →  Run:  apsta recommend   to see which USB dongle to buy
-  →  Run:  sudo apsta start --force   to proceed without a dongle
+  ✔  Your hardware supports AP+STA simultaneously (hostapd mode).
+  ✔  apsta will use hostapd + dnsmasq to share WiFi without disconnecting.
+  →  Run:  sudo apsta start
 ```
 
 ---
@@ -33,7 +34,8 @@ $ apsta detect
 On Linux, running a hotspot while staying connected to WiFi is harder than it should be:
 
 - `nmcli device wifi hotspot` **kills your existing WiFi connection** — it takes over the interface completely
-- Most WiFi cards don't support concurrent AP+STA mode (being a client and access point simultaneously)
+- Most WiFi cards don't support concurrent AP+STA mode in the way NetworkManager expects
+- Windows handles this transparently via a virtual WiFi layer — Linux doesn't have an equivalent
 - NetworkManager doesn't tell you *why* it failed or *what your options are*
 - COSMIC DE has no hotspot UI at all
 
@@ -48,18 +50,41 @@ apsta detect
     ↓
 Parse iw list → find "valid interface combinations"
     ↓
-Does driver expose { AP, managed } in same combination with total >= 2?
-    ↓
-YES → create virtual AP interface (wlo1_ap) → hotspot on it, WiFi stays on wlo1
-NO  → explain options clearly → suggest ethernet / USB dongle / --force
+Level 1: AP+managed in SAME #{ } block, total >= 2?
+  YES → nmcli virtual interface (Strategy 1)
+
+Level 2: AP and managed in SEPARATE #{ } blocks, #channels <= 1?
+  YES → hostapd virtual interface (Strategy 2) — Intel AX200, iwlwifi
+  
+Neither → explain options → suggest ethernet / USB dongle / --force
 ```
 
+**Strategy 1 — nmcli concurrent (true hardware AP+STA):**
+Creates a virtual `wlo1_ap` interface and runs `nmcli device wifi hotspot` on it.
+WiFi stays on `wlo1`. Requires the driver to expose AP+managed in the same
+interface combination block.
+
+**Strategy 2 — hostapd concurrent (split-block AP+STA):**
+Creates a virtual `wlo1_ap` interface, runs hostapd directly (bypassing nmcli),
+assigns IP `192.168.42.1/24`, starts dnsmasq for DHCP, and sets up NAT so
+hotspot clients get internet through `wlo1`'s connection. This is how Windows
+handles the Intel AX200 — apsta now does the same on Linux.
+
+**Strategy 3 — nmcli --force (drops WiFi):**
+Uses the single interface as AP. WiFi disconnects. Only triggered with `--force`.
+
 Key technical decisions:
-- **Channel sync**: reads live STA frequency via `iw dev link` and forces the AP to the same channel — prevents `Device or resource busy` on single-radio cards
-- **Band sync**: derives band (`a` or `bg`) from the same frequency — prevents the `band bg channel 36` invalid combination crash
-- **DFS channels**: detects regulatory-blocked channels (52–144) and aborts with clear instructions rather than failing silently
-- **Virtual interface MAC**: randomises the locally-administered MAC (`02:xx:xx:xx:xx:xx`) and pins it in NetworkManager to prevent re-randomisation races
-- **State persistence**: saves `ap_interface`, `base_interface`, and `active_con_name` to `/etc/apsta/config.json` at start so teardown is exact
+- **Split-block detection**: parses multi-line `iw list` combinations by joining
+  continuation lines before processing — correctly identifies Intel AX200/iwlwifi
+  which exposes AP and managed in separate `#{ }` blocks with `#channels <= 1`
+- **Channel sync**: reads live STA frequency via `iw dev link` and forces the AP
+  to the same channel — prevents `Device or resource busy` on single-radio cards
+- **Band sync**: derives band (`a` or `bg`) from frequency — prevents `band bg channel 36` crash
+- **DFS channels**: detects regulatory-blocked channels (52–144) and aborts with clear instructions
+- **Virtual interface MAC**: randomises the locally-administered MAC (`02:xx:xx:xx:xx:xx`)
+  on the AP interface only — base interface MAC stays unchanged so NM keeps its STA connection
+- **State persistence**: saves `ap_interface`, `base_interface`, `active_con_name`, and
+  `start_method` to `/etc/apsta/config.json` so teardown is exact and method-aware
 
 ---
 
@@ -71,8 +96,14 @@ cd apsta
 sudo ./install.sh
 ```
 
-**Dependencies** (all default on Ubuntu/Pop!_OS/Fedora/Arch):
+**Required dependencies** (all default on Ubuntu/Pop!_OS/Fedora/Arch):
 `nmcli` · `iw` · `ip` · `lsusb` · `lspci`
+
+**For hostapd mode** (Intel AX200 and similar split-block cards):
+```bash
+sudo apt install hostapd dnsmasq
+```
+apsta will prompt if these are missing when hostapd mode is needed.
 
 **Python 3.8+** required.
 
@@ -81,19 +112,19 @@ sudo ./install.sh
 ## CLI Usage
 
 ```bash
-# Detect hardware capability
+# Detect hardware capability (shows both nmcli and hostapd support levels)
 apsta detect
 
-# Start hotspot (auto-detects best method)
+# Start hotspot (auto-detects best method — tries nmcli, then hostapd, then --force)
 sudo apsta start
 
 # Start even if AP+STA not supported (drops WiFi)
 sudo apsta start --force
 
-# Stop hotspot
+# Stop hotspot (method-aware: cleans up hostapd/dnsmasq/iptables if needed)
 sudo apsta stop
 
-# Show current state
+# Show current state (shows connected clients in hostapd mode)
 apsta status
 
 # Configure SSID and password
@@ -129,7 +160,7 @@ Requires: Rust 1.75+, `just`, COSMIC session.
 
 ### GTK4 / Libadwaita (GNOME, KDE, Xfce, any desktop)
 
-Full three-page GUI: Status, Hardware, Settings. Works on any desktop running GTK4.
+Full three-page GUI: Status, Hardware, Settings. Force start toggle for single-radio cards.
 
 ```bash
 cd gtk-ui
@@ -152,7 +183,7 @@ sudo apsta enable
 
 This installs:
 - **`/etc/systemd/system/apsta.service`** — starts hotspot after NetworkManager connects on boot (`nm-online -q` pre-condition, not a fragile `sleep 3`)
-- **`/usr/lib/systemd/system-sleep/apsta-sleep`** — tears down hotspot before suspend, restores it after resume
+- **`/usr/lib/systemd/system-sleep/apsta-sleep`** — tears down hotspot before suspend, restores it after resume (works for both nmcli and hostapd modes)
 
 Works on **systemd**, **OpenRC**, and **runit**. Non-systemd users get exact manual instructions and pm-utils hook installation if available.
 
@@ -160,7 +191,7 @@ Works on **systemd**, **OpenRC**, and **runit**. Non-systemd users get exact man
 
 ## USB Dongle Support
 
-If your built-in card doesn't support AP+STA:
+If your built-in card doesn't support either AP+STA mode:
 
 ```bash
 # See what's plugged in
@@ -195,11 +226,17 @@ Realtek chipsets are intentionally excluded — out-of-kernel drivers, unreliabl
 | Alpine (OpenRC) | ✅ | ✅ | — |
 | Artix (runit) | ✅ | ✅ | — |
 
+**Tested hardware:**
+- Intel Wi-Fi 6 AX200 (iwlwifi) — hostapd mode ✅
+- MediaTek mt7921au USB — nmcli mode ✅
+
 ---
 
 ## Why This Exists
 
-Built out of frustration with Pop!\_OS COSMIC's missing hotspot UI and the silent WiFi-disconnection behaviour of `nmcli hotspot`. If you've ever typed:
+Built out of frustration with Pop!\_OS COSMIC's missing hotspot UI and the silent WiFi-disconnection behaviour of `nmcli hotspot`. The deeper problem: Windows implements a virtual WiFi multiplexing layer that makes AP+STA work on almost any card. Linux exposes raw hardware capability honestly — and for cards like the Intel AX200, that capability exists but nmcli can't use it. apsta bridges the gap using hostapd directly.
+
+If you've ever typed:
 
 ```bash
 nmcli device wifi hotspot ifname wlan0 ssid foo password bar
@@ -207,15 +244,15 @@ nmcli device wifi hotspot ifname wlan0 ssid foo password bar
 
 ...and watched your SSH session drop — this is for you.
 
-See [CHANGELOG.md](CHANGELOG.md) for the full development history: 5 phases, 28 bugs fixed, every architectural decision documented.
+See [CHANGELOG.md](CHANGELOG.md) for the full development history.
 
 ---
 
 ## Contributing
 
-PRs welcome. The Python CLI has no dependencies beyond stdlib. The GTK UI requires PyGObject. The COSMIC applet requires Rust + libcosmic.
+PRs welcome. The Python CLI has no dependencies beyond stdlib (plus optional hostapd/dnsmasq). The GTK UI requires PyGObject. The COSMIC applet requires Rust + libcosmic.
 
-If you've tested on a distro not in the table, open an issue with your `apsta detect` output.
+If you've tested on a distro or hardware not in the tables above, open an issue with your `apsta detect` output.
 
 ---
 
