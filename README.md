@@ -7,24 +7,24 @@ Stay connected to your WiFi network and broadcast a hotspot simultaneously — w
 ```
 $ apsta detect
 
-  apsta — Hardware Detection
+	apsta — Hardware Detection
 
-  → Found 1 WiFi interface(s):
-       wlo1  [e4:c7:67:e4:30:ae]  connected to HomeWiFi
+	→ Found 1 WiFi interface(s):
+			 wlo1  [e4:c7:67:e4:30:ae]  connected to HomeWiFi
 
-  Capability Report
-  → Driver:   iwlwifi
-  → Chipset:  Intel Wi-Fi 6 AX200
+	Capability Report
+	→ Driver:   iwlwifi
+	→ Chipset:  Intel Wi-Fi 6 AX200
 
-  ✔  AP mode (hotspot)                      supported
-  ✔  STA mode (WiFi client)                 supported
-  ✘  AP+STA simultaneous (nmcli)            not supported
-  ✔  AP+STA simultaneous (hostapd)          supported
+	✔  AP mode (hotspot)                      supported
+	✔  STA mode (WiFi client)                 supported
+	✘  AP+STA simultaneous (nmcli)            not supported
+	✔  AP+STA simultaneous (hostapd)          supported
 
-  Verdict
-  ✔  Your hardware supports AP+STA simultaneously (hostapd mode).
-  ✔  apsta will use hostapd + dnsmasq to share WiFi without disconnecting.
-  →  Run:  sudo apsta start
+	Verdict
+	✔  Your hardware supports AP+STA simultaneously (hostapd mode).
+	✔  apsta will use hostapd + dnsmasq to share WiFi without disconnecting.
+	→  Run:  sudo apsta start
 ```
 
 ---
@@ -36,7 +36,7 @@ On Linux, running a hotspot while staying connected to WiFi is harder than it sh
 - `nmcli device wifi hotspot` **kills your existing WiFi connection** — it takes over the interface completely
 - Most WiFi cards don't support concurrent AP+STA mode in the way NetworkManager expects
 - Windows handles this transparently via a virtual WiFi layer — Linux doesn't have an equivalent
-- NetworkManager doesn't tell you *why* it failed or *what your options are*
+- NetworkManager doesn't tell you _why_ it failed or _what your options are_
 - COSMIC DE has no hotspot UI at all
 
 `apsta` fixes all of this.
@@ -47,15 +47,15 @@ On Linux, running a hotspot while staying connected to WiFi is harder than it sh
 
 ```
 apsta detect
-    ↓
+		↓
 Parse iw list → find "valid interface combinations"
-    ↓
+		↓
 Level 1: AP+managed in SAME #{ } block, total >= 2?
-  YES → nmcli virtual interface (Strategy 1)
+	YES → nmcli virtual interface (Strategy 1)
 
 Level 2: AP and managed in SEPARATE #{ } blocks, #channels <= 1?
-  YES → hostapd virtual interface (Strategy 2) — Intel AX200, iwlwifi
-  
+	YES → hostapd virtual interface (Strategy 2) — Intel AX200, iwlwifi
+
 Neither → explain options → suggest ethernet / USB dongle / --force
 ```
 
@@ -70,10 +70,19 @@ assigns IP `192.168.42.1/24`, starts dnsmasq for DHCP, and sets up NAT so
 hotspot clients get internet through `wlo1`'s connection. This is how Windows
 handles the Intel AX200 — apsta now does the same on Linux.
 
+1. Create virtual `wlo1_ap` on top of `wlo1` (`iw dev wlo1 interface add wlo1_ap type __ap`)
+2. Assign randomized locally-administered MAC to `wlo1_ap` — keeps `wlo1` MAC unchanged so NM holds its STA connection
+3. Tell NM to ignore `wlo1_ap` only — `wlo1` stays fully managed and connected
+4. Run hostapd on `wlo1_ap` with channel matching `wlo1`'s current channel
+5. Assign IP `192.168.42.1/24` to `wlo1_ap`
+6. Start dnsmasq for DHCP — clients get `192.168.42.10–192.168.42.100`
+7. Enable NAT via iptables MASQUERADE so `wlo1_ap` clients get internet through `wlo1`
+
 **Strategy 3 — nmcli --force (drops WiFi):**
 Uses the single interface as AP. WiFi disconnects. Only triggered with `--force`.
 
 Key technical decisions:
+
 - **Split-block detection**: parses multi-line `iw list` combinations by joining
   continuation lines before processing — correctly identifies Intel AX200/iwlwifi
   which exposes AP and managed in separate `#{ }` blocks with `#channels <= 1`
@@ -96,13 +105,15 @@ cd apsta
 sudo ./install.sh
 ```
 
-**Required dependencies** (all default on Ubuntu/Pop!_OS/Fedora/Arch):
+**Required dependencies** (all default on Ubuntu/Pop!\_OS/Fedora/Arch):
 `nmcli` · `iw` · `ip` · `lsusb` · `lspci`
 
 **For hostapd mode** (Intel AX200 and similar split-block cards):
+
 ```bash
 sudo apt install hostapd dnsmasq
 ```
+
 apsta will prompt if these are missing when hostapd mode is needed.
 
 **Python 3.8+** required.
@@ -146,7 +157,7 @@ sudo apsta disable
 
 ## GUIs
 
-### COSMIC Panel Applet (Pop!_OS / COSMIC DE)
+### COSMIC Panel Applet (Pop!\_OS / COSMIC DE)
 
 Shows a WiFi icon in your panel. Click to toggle hotspot, change SSID/password, run detect.
 
@@ -169,6 +180,7 @@ sudo ./install.sh
 ```
 
 Requires: `python3-gi`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`
+
 ```bash
 sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1
 ```
@@ -182,6 +194,7 @@ sudo apsta enable
 ```
 
 This installs:
+
 - **`/etc/systemd/system/apsta.service`** — starts hotspot after NetworkManager connects on boot (`nm-online -q` pre-condition, not a fragile `sleep 3`)
 - **`/usr/lib/systemd/system-sleep/apsta-sleep`** — tears down hotspot before suspend, restores it after resume (works for both nmcli and hostapd modes)
 
@@ -203,12 +216,12 @@ apsta recommend
 
 Recommended chipsets (in-kernel drivers, plug and play):
 
-| Chipset | WiFi Gen | Driver | Notes |
-|---------|----------|--------|-------|
-| mt7921au | WiFi 6 | mt7921u | Best overall. Kernel 5.19+ |
-| mt7612u | WiFi 5 | mt76x2u | Rock-solid, works everywhere |
-| mt7610u | WiFi 5 | mt76x0u | AC600, great for hotspot-only |
-| mt7925u | WiFi 7 | mt7925u | Newest. Kernel 6.7+ |
+| Chipset  | WiFi Gen | Driver  | Notes                         |
+| -------- | -------- | ------- | ----------------------------- |
+| mt7921au | WiFi 6   | mt7921u | Best overall. Kernel 5.19+    |
+| mt7612u  | WiFi 5   | mt76x2u | Rock-solid, works everywhere  |
+| mt7610u  | WiFi 5   | mt76x0u | AC600, great for hotspot-only |
+| mt7925u  | WiFi 7   | mt7925u | Newest. Kernel 6.7+           |
 
 Realtek chipsets are intentionally excluded — out-of-kernel drivers, unreliable AP+STA.
 
@@ -216,17 +229,18 @@ Realtek chipsets are intentionally excluded — out-of-kernel drivers, unreliabl
 
 ## Compatibility
 
-| Distro | CLI | GTK UI | COSMIC Applet |
-|--------|-----|--------|---------------|
-| Pop!\_OS 22.04 | ✅ | ✅ | ✅ |
-| Pop!\_OS COSMIC | ✅ | ✅ | ✅ |
-| Ubuntu 22.04 / 24.04 | ✅ | ✅ | — |
-| Fedora 39+ | ✅ | ✅ | — |
-| Arch Linux | ✅ | ✅ | — |
-| Alpine (OpenRC) | ✅ | ✅ | — |
-| Artix (runit) | ✅ | ✅ | — |
+| Distro               | CLI | GTK UI | COSMIC Applet |
+| -------------------- | --- | ------ | ------------- |
+| Pop!\_OS 22.04       | ✅  | ✅     | ✅            |
+| Pop!\_OS COSMIC      | ✅  | ✅     | ✅            |
+| Ubuntu 22.04 / 24.04 | ✅  | ✅     | —             |
+| Fedora 39+           | ✅  | ✅     | —             |
+| Arch Linux           | ✅  | ✅     | —             |
+| Alpine (OpenRC)      | ✅  | ✅     | —             |
+| Artix (runit)        | ✅  | ✅     | —             |
 
 **Tested hardware:**
+
 - Intel Wi-Fi 6 AX200 (iwlwifi) — hostapd mode ✅
 - MediaTek mt7921au USB — nmcli mode ✅
 

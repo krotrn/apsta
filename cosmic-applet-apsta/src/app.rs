@@ -11,8 +11,7 @@
 //   view_window()       — popup content: toggle, SSID/password, status, detect
 
 use cosmic::{
-    app::{Command, Core},
-    applet::cosmic_panel_config::PanelAnchor,
+    app::{Core, Task},
     iced::{
         platform_specific::shell::commands::popup::{destroy_popup, get_popup},
         window,
@@ -22,7 +21,6 @@ use cosmic::{
     },
     widget,
     Element,
-    Theme,
 };
 use std::process::Stdio;
 use tokio::process::Command as TokioCommand;
@@ -105,7 +103,7 @@ impl cosmic::Application for ApstaApplet {
     fn core(&self) -> &Core { &self.core }
     fn core_mut(&mut self) -> &mut Core { &mut self.core }
 
-    fn init(core: Core, _flags: Self::Flags) -> (Self, Command<Self::Message>) {
+    fn init(core: Core, _flags: Self::Flags) -> (Self, Task<Self::Message>) {
         let applet = Self {
             core,
             popup:         None,
@@ -118,13 +116,13 @@ impl cosmic::Application for ApstaApplet {
             ssid_edited:   false,
         };
         // Refresh status on startup
-        let cmd = Command::perform(async_get_status(), Message::StatusRefreshed);
+        let cmd = Task::perform(async_get_status(), |result| Message::StatusRefreshed(result).into());
         (applet, cmd)
     }
 
     // ── Panel icon view ───────────────────────────────────────────────────────
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         // Choose icon based on hotspot state
         let icon_name = if self.status.active {
             "network-wireless-hotspot-symbolic"
@@ -141,7 +139,7 @@ impl cosmic::Application for ApstaApplet {
 
     // ── Popup view ────────────────────────────────────────────────────────────
 
-    fn view_window(&self, _id: window::Id) -> Element<Message> {
+    fn view_window(&self, _id: window::Id) -> Element<'_, Message> {
         // Header
         let title = widget::text("apsta — Hotspot Manager")
             .size(16);
@@ -150,9 +148,10 @@ impl cosmic::Application for ApstaApplet {
         let status_icon = if self.status.active { "✔" } else { "✘" };
         let status_label = if self.status.active {
             format!(
-                "{} Active — {} ch{} ({})",
+                "{} Active — {} on {} ch{} ({})",
                 status_icon,
                 self.status.ssid,
+                self.status.interface,
                 self.status.channel,
                 self.status.band,
             )
@@ -169,7 +168,7 @@ impl cosmic::Application for ApstaApplet {
                 .into(),
         ])
         .spacing(8)
-        .align_items(Alignment::Center);
+        .align_y(Alignment::Center);
 
         // Password input
         let pass_row = widget::row::with_children(vec![
@@ -180,7 +179,7 @@ impl cosmic::Application for ApstaApplet {
                 .into(),
         ])
         .spacing(8)
-        .align_items(Alignment::Center);
+        .align_y(Alignment::Center);
 
         // Toggle button
         let toggle_btn: Element<Message> = if self.loading {
@@ -203,9 +202,6 @@ impl cosmic::Application for ApstaApplet {
         let info_text: Element<Message> = if let Some(ref e) = self.error {
             widget::text(format!("Error: {}", e))
                 .size(11)
-                .style(cosmic::style::Text::Color(
-                    cosmic::iced::Color::from_rgb(0.9, 0.3, 0.3)
-                ))
                 .into()
         } else if !self.detect_output.is_empty() {
             widget::text(&self.detect_output).size(11).into()
@@ -234,7 +230,7 @@ impl cosmic::Application for ApstaApplet {
 
     // ── Update ────────────────────────────────────────────────────────────────
 
-    fn update(&mut self, message: Message) -> Command<Self::Message> {
+    fn update(&mut self, message: Message) -> Task<Self::Message> {
         match message {
             Message::TogglePopup => {
                 if let Some(popup_id) = self.popup.take() {
@@ -260,11 +256,10 @@ impl cosmic::Application for ApstaApplet {
                     .max_height(480.0);
 
                 // Refresh status every time the popup opens
-                let refresh = Command::perform(
-                    async_get_status(),
-                    Message::StatusRefreshed,
-                );
-                return Command::batch(vec![
+                let refresh = Task::perform(async_get_status(), |result| {
+                    Message::StatusRefreshed(result).into()
+                });
+                return Task::batch(vec![
                     get_popup(popup_settings),
                     refresh,
                 ]);
@@ -284,37 +279,33 @@ impl cosmic::Application for ApstaApplet {
                 self.error   = None;
                 let ssid = self.ssid_input.clone();
                 let pass = self.pass_input.clone();
-                return Command::perform(
-                    async_start_hotspot(ssid, pass),
-                    Message::HotspotStarted,
-                );
+                return Task::perform(async_start_hotspot(ssid, pass), |result| {
+                    Message::HotspotStarted(result).into()
+                });
             }
 
             Message::StopHotspot => {
                 self.loading = true;
                 self.error   = None;
-                return Command::perform(
-                    async_stop_hotspot(),
-                    Message::HotspotStopped,
-                );
+                return Task::perform(async_stop_hotspot(), |result| {
+                    Message::HotspotStopped(result).into()
+                });
             }
 
             Message::RunDetect => {
                 self.detect_output = String::from("Running detect…");
                 self.error         = None;
-                return Command::perform(
-                    async_run_detect(),
-                    Message::DetectFinished,
-                );
+                return Task::perform(async_run_detect(), |result| {
+                    Message::DetectFinished(result).into()
+                });
             }
 
             // Silent background poll — does not set loading or clear errors
             // so it doesn't interfere with in-progress user actions.
             Message::RefreshStatus => {
-                return Command::perform(
-                    async_get_status(),
-                    Message::StatusRefreshed,
-                );
+                return Task::perform(async_get_status(), |result| {
+                    Message::StatusRefreshed(result).into()
+                });
             }
 
             // ── Async results ─────────────────────────────────────────────
@@ -324,10 +315,9 @@ impl cosmic::Application for ApstaApplet {
                 match result {
                     Ok(()) => {
                         // Refresh status to get updated interface/channel info
-                        return Command::perform(
-                            async_get_status(),
-                            Message::StatusRefreshed,
-                        );
+                        return Task::perform(async_get_status(), |result| {
+                            Message::StatusRefreshed(result).into()
+                        });
                     }
                     Err(e) => self.error = Some(e),
                 }
@@ -366,10 +356,10 @@ impl cosmic::Application for ApstaApplet {
             }
         }
 
-        Command::none()
+        Task::none()
     }
 
-    fn style(&self) -> Option<cosmic::iced_runtime::Appearance> {
+    fn style(&self) -> Option<cosmic::iced::theme::Style> {
         Some(cosmic::applet::style())
     }
 
