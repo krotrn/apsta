@@ -93,6 +93,10 @@ def run(cmd: str, capture=True, check=False) -> subprocess.CompletedProcess:
         text=True, check=check
     )
 
+def run_cmd(args: List[str], capture=True, check=False) -> subprocess.CompletedProcess:
+    """Run a command without shell interpolation."""
+    return subprocess.run(args, capture_output=capture, text=True, check=check)
+
 def run_out(cmd: str) -> str:
     result = run(cmd)
     return result.stdout.strip() if result.returncode == 0 else ""
@@ -504,17 +508,22 @@ def _check_hostapd_deps() -> bool:
 def _write_hostapd_conf(ap_iface: str, ssid: str, password: str, channel: str) -> None:
     """Write hostapd configuration file for AP+STA mode."""
     # hw_mode: g = 2.4 GHz, a = 5 GHz
-    # We always use 2.4 GHz for hostapd mode since the virtual interface
-    # must share the physical channel with the STA connection.
+    # hostapd hw_mode must match the selected channel range.
+    try:
+        hw_mode = "a" if int(channel) > 14 else "g"
+    except (TypeError, ValueError):
+        hw_mode = "g"
+
     conf = textwrap.dedent(f"""\
         interface={ap_iface}
         driver=nl80211
         ssid={ssid}
-        hw_mode=g
+        hw_mode={hw_mode}
         channel={channel}
         wpa=2
         wpa_passphrase={password}
         wpa_key_mgmt=WPA-PSK
+        wpa_pairwise=CCMP
         rsn_pairwise=CCMP
         # Allow hostapd to manage the interface directly without
         # requiring it to be brought UP first — needed because
@@ -602,8 +611,9 @@ def _start_hostapd_ap_sta(
 
     # Verify hostapd actually came up
     iw_info = run_out(f"iw dev {ap_iface} info")
-    if "AP" not in iw_info and not HOSTAPD_PID.exists():
+    if "type AP" not in iw_info:
         warn("hostapd started but AP interface did not come up.")
+        run("pkill -f 'hostapd.*apsta' 2>/dev/null")
         run(f"iw dev {ap_iface} del 2>/dev/null")
         return None
 
@@ -712,6 +722,7 @@ def cmd_start(args):
     ssid     = config.get("ssid")     or DEFAULT_CONFIG["ssid"]
     password = config.get("password") or DEFAULT_CONFIG["password"]
 
+    current_connected_ssid = target.connected_ssid
     detected_channel, detected_band = _get_sta_channel_band(target.name)
 
     if detected_channel and detected_band:
@@ -759,18 +770,19 @@ def cmd_start(args):
             ap_iface = None
 
         if ap_iface:
-            result = run(
-                f"nmcli device wifi hotspot ifname {ap_iface} "
-                f"ssid '{ssid}' password '{password}' band {band} channel {channel}"
-            )
+            result = _run_nmcli_hotspot(ap_iface, ssid, password, band, channel)
             if result.returncode == 0:
-                _finalize_nmcli_start(config, target, ap_iface, ssid)
-                config["start_method"] = "nmcli"
-                save_config(config)
-                return
+                if _finalize_nmcli_start(config, target, ap_iface, ssid, current_connected_ssid):
+                    config["start_method"] = "nmcli"
+                    save_config(config)
+                    return
+                warn("nmcli returned success but AP did not come up, trying hostapd.")
+                run(f"iw dev {ap_iface} del 2>/dev/null")
             else:
                 warn("nmcli hotspot failed on virtual interface, trying hostapd.")
                 run(f"iw dev {ap_iface} del 2>/dev/null")
+
+            current_connected_ssid = _get_connected_ssid(target.name)
 
     if cap.supports_ap_sta_split and not args.force:
         # Strategy 2: hostapd on virtual interface
@@ -779,7 +791,8 @@ def cmd_start(args):
         if not _check_hostapd_deps():
             warn("Install hostapd and dnsmasq to enable this mode.")
             warn("Falling back to --force mode which will disconnect WiFi.")
-            if not target.connected_ssid:
+            current_connected_ssid = _get_connected_ssid(target.name)
+            if not current_connected_ssid:
                 # Not connected anyway, just proceed
                 pass
             else:
@@ -798,32 +811,36 @@ def cmd_start(args):
                 save_config(config)
 
                 ok(f"Hotspot '{ssid}' is live on {ap_iface}  (hostapd mode)")
-                ok(f"Still connected to '{target.connected_ssid}'")
+                connected_now = _get_connected_ssid(target.name)
+                if connected_now:
+                    ok(f"Still connected to '{connected_now}'")
                 ok(f"Hotspot gateway: {AP_IP}  —  clients get {DHCP_RANGE[0]}–{DHCP_RANGE[1]}")
                 info("Stop with:  sudo apsta stop")
                 print()
                 return
             else:
                 warn("hostapd mode failed. Falling back to --force mode.")
+            current_connected_ssid = _get_connected_ssid(target.name)
 
     # Strategy 3: nmcli --force (drops WiFi)
-    if not args.force and target.connected_ssid:
-        warn(f"Currently connected to '{target.connected_ssid}'.")
+    current_connected_ssid = _get_connected_ssid(target.name)
+    if not args.force and current_connected_ssid:
+        warn(f"Currently connected to '{current_connected_ssid}'.")
         warn("Concurrent AP+STA not supported — starting hotspot will disconnect WiFi.")
         warn("Use --force to proceed, or install hostapd/dnsmasq for AP+STA mode.")
         sys.exit(1)
 
     info("Strategy: nmcli hotspot (single interface — WiFi will disconnect)")
     ap_iface = target.name
-    result = run(
-        f"nmcli device wifi hotspot ifname {ap_iface} "
-        f"ssid '{ssid}' password '{password}' band {band} channel {channel}"
-    )
+    result = _run_nmcli_hotspot(ap_iface, ssid, password, band, channel)
 
     if result.returncode == 0:
-        _finalize_nmcli_start(config, target, ap_iface, ssid)
-        config["start_method"] = "nmcli-force"
-        save_config(config)
+        if _finalize_nmcli_start(config, target, ap_iface, ssid, current_connected_ssid):
+            config["start_method"] = "nmcli-force"
+            save_config(config)
+        else:
+            err("nmcli reported success but hotspot did not become active.")
+            sys.exit(1)
     else:
         err("Failed to start hotspot.")
         print(f"\n{C.DIM}{result.stderr}{C.RESET}")
@@ -832,24 +849,36 @@ def cmd_start(args):
     print()
 
 
-def _finalize_nmcli_start(config: dict, target: WifiInterface, ap_iface: str, ssid: str):
+def _finalize_nmcli_start(
+    config: dict,
+    target: WifiInterface,
+    ap_iface: str,
+    ssid: str,
+    connected_ssid_before: Optional[str] = None,
+) -> bool:
     """Save state and print status after a successful nmcli hotspot start."""
+    if not _ap_interface_is_up(ap_iface):
+        return False
+
     active_con_name = _get_active_hotspot_con_name(ap_iface)
     config["ap_interface"]    = ap_iface
     config["base_interface"]  = target.name
     config["active_con_name"] = active_con_name or ssid
     save_config(config)
 
+    was_connected = connected_ssid_before if connected_ssid_before is not None else target.connected_ssid
+
     ok(f"Hotspot '{ssid}' is live on {ap_iface}")
     if ap_iface == target.name:
-        if target.connected_ssid:
-            warn(f"WiFi disconnected from '{target.connected_ssid}' (single interface in use).")
+        if was_connected:
+            warn(f"WiFi disconnected from '{was_connected}' (single interface in use).")
             info("Stop hotspot to reconnect:  sudo apsta stop")
     else:
-        if target.connected_ssid:
-            ok(f"Still connected to '{target.connected_ssid}'")
+        if was_connected:
+            ok(f"Still connected to '{was_connected}'")
     info("Stop with:  sudo apsta stop")
     print()
+    return True
 
 
 # ── cmd_stop ──────────────────────────────────────────────────────────────────
@@ -1164,6 +1193,33 @@ def _get_active_hotspot_con_name(ap_iface: str) -> Optional[str]:
         if attempt < 2:
             time.sleep(1)
     return None
+
+def _get_connected_ssid(iface: str) -> Optional[str]:
+    """Read current SSID from `iw dev <iface> link`, if connected."""
+    ssid_result = run_out(f"iw dev {iface} link")
+    ssid_match = re.search(r"SSID: (.+)", ssid_result)
+    return ssid_match.group(1).strip() if ssid_match else None
+
+def _ap_interface_is_up(ap_iface: str) -> bool:
+    """Verify that a given interface is in AP mode."""
+    for attempt in range(3):
+        iw_info = run_out(f"iw dev {ap_iface} info")
+        if "type AP" in iw_info:
+            return True
+        if attempt < 2:
+            time.sleep(1)
+    return False
+
+def _run_nmcli_hotspot(ap_iface: str, ssid: str, password: str, band: str, channel: str) -> subprocess.CompletedProcess:
+    """Start hotspot with nmcli using argv mode to avoid shell quoting pitfalls."""
+    return run_cmd([
+        "nmcli", "device", "wifi", "hotspot",
+        "ifname", ap_iface,
+        "ssid", ssid,
+        "password", password,
+        "band", band,
+        "channel", str(channel),
+    ])
 
 def _create_virtual_ap_iface(base_iface: str) -> Optional[str]:
     ap_iface = f"{base_iface}_ap"

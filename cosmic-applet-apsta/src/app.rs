@@ -272,7 +272,7 @@ impl cosmic::Application for ApstaApplet {
 
             Message::SsidChanged(s) => {
                 self.ssid_input = s;
-                self.ssid_edited = true;
+                self.ssid_edited = !self.ssid_input.trim().is_empty();
             }
 
             Message::PassChanged(s) => {
@@ -373,12 +373,11 @@ impl cosmic::Application for ApstaApplet {
         Some(cosmic::applet::style())
     }
 
-    /// Poll hotspot status every 5 seconds so the panel icon stays in sync
-    /// with the background daemon. Without this, if the user runs `apsta stop`
-    /// from a terminal while the popup is closed, the icon stays green until
-    /// they next click it.
+    /// Poll hotspot status in adaptive intervals so the panel icon stays in
+    /// sync without constant wakeups while inactive.
     fn subscription(&self) -> cosmic::iced::Subscription<Message> {
-        cosmic::iced::time::every(std::time::Duration::from_secs(5))
+        let poll_secs = if self.status.active || self.popup.is_some() { 5 } else { 30 };
+        cosmic::iced::time::every(std::time::Duration::from_secs(poll_secs))
             .map(|_| Message::RefreshStatus)
     }
 }

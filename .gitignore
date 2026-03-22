@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+
+cosmic-applet-apsta/target/
+cosmic-applet-apsta/Cargo.lock
