@@ -22,6 +22,7 @@ use cosmic::{
     widget,
     Element,
 };
+use std::path::Path;
 use std::process::Stdio;
 use tokio::process::Command as TokioCommand;
 
@@ -377,7 +378,15 @@ impl cosmic::Application for ApstaApplet {
 // All shell operations are async so the UI thread never blocks.
 // Each function spawns `apsta` as a subprocess and parses its output.
 
-const APSTA: &str = "/usr/local/bin/apsta";
+fn apsta_bin() -> String {
+    for candidate in ["/usr/bin/apsta", "/usr/local/bin/apsta"] {
+        if Path::new(candidate).exists() {
+            return candidate.to_string();
+        }
+    }
+    // Fallback for unusual setups where apsta is only discoverable via PATH.
+    "apsta".to_string()
+}
 
 /// Read /etc/apsta/config.json to get current hotspot state.
 /// We parse JSON directly rather than parsing apsta's coloured terminal output.
@@ -459,11 +468,12 @@ fn regex_channel(text: &str) -> Option<(String, String)> {
 /// rather than interpolated into the script string. This prevents shell
 /// injection if the user types a SSID like: foo"; rm -rf /
 async fn async_start_hotspot(ssid: String, pass: String) -> Result<(), String> {
+    let apsta = apsta_bin();
     let script = format!(
         "{apsta} config --set ssid=\"$1\" && \
          {apsta} config --set password=\"$2\" && \
          {apsta} start",
-        apsta = APSTA
+        apsta = apsta
     );
     let out = TokioCommand::new("pkexec")
         .args(["sh", "-c", &script, "--", &ssid, &pass])
@@ -477,8 +487,10 @@ async fn async_start_hotspot(ssid: String, pass: String) -> Result<(), String> {
 }
 
 async fn async_stop_hotspot() -> Result<(), String> {
+    let apsta = apsta_bin();
     let out = TokioCommand::new("pkexec")
-        .args([APSTA, "stop"])
+        .arg(apsta)
+        .arg("stop")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -488,8 +500,9 @@ async fn async_stop_hotspot() -> Result<(), String> {
 }
 
 async fn async_run_detect() -> Result<String, String> {
+    let apsta = apsta_bin();
     // Run without sudo — detect is read-only
-    let out = TokioCommand::new(APSTA)
+    let out = TokioCommand::new(apsta)
         .arg("detect")
         // Strip ANSI colour codes by setting NO_COLOR
         .env("NO_COLOR", "1")
@@ -561,11 +574,11 @@ fn strip_ansi(s: &str) -> String {
 /// pkexec shows the system authentication dialog — no terminal sudo needed.
 #[allow(dead_code)]
 async fn run_apsta_sudo(args: &[&str]) -> Result<(), String> {
-    let mut cmd_args = vec![APSTA];
-    cmd_args.extend_from_slice(args);
+    let apsta = apsta_bin();
 
     let out = TokioCommand::new("pkexec")
-        .args(&cmd_args)
+        .arg(apsta)
+        .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
