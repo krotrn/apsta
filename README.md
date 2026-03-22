@@ -103,49 +103,32 @@ Key technical decisions:
 
 #### One command (recommended)
 
+### 1. Official PPA (Ubuntu / Pop!_OS) — Recommended
+The easiest way to install `apsta` on Ubuntu-based distributions (22.04, 24.04, and Noble) is via the official Launchpad PPA. This ensures you get automatic updates and all system dependencies (like `hostapd` and `dnsmasq`) are handled for you.
+
+```bash
+sudo add-apt-repository ppa:krotrn/apsta
+sudo apt update
+sudo apt install apsta
+```
+
+### 2. Manual One-Liner (Python pipx)
+If you are on a different distribution (Fedora, Arch, etc.) or prefer using `pipx`, use this one-liner to install the dependencies and the app:
+
 ```bash
 sudo apt update && sudo apt install -y pipx network-manager iw iproute2 usbutils pciutils hostapd dnsmasq python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 && pipx ensurepath && pipx install git+https://github.com/krotrn/apsta.git
 ```
 
-This one-liner is for Ubuntu/Pop!\_OS and installs all required system packages plus `apsta`.
-
-Then use it immediately:
-
-```bash
-apsta detect
-apsta-gtk
-sudo apsta start
-```
-
-This single package installs both commands:
-
-- `apsta` (CLI)
-- `apsta-gtk` (GTK4 GUI)
-
-#### Other user install options
-
-Script install:
+### 3. Development / Source Install
+If you want to contribute or build from source:
 
 ```bash
 git clone https://github.com/krotrn/apsta
 cd apsta
+# Install the CLI and GTK UI locally
+pipx install . 
+# Or run the manual install script
 sudo ./install.sh
-```
-
-Install from local clone with pipx:
-
-```bash
-git clone https://github.com/krotrn/apsta
-cd apsta
-pipx install .
-```
-
-Editable install (development workflow):
-
-```bash
-git clone https://github.com/krotrn/apsta
-cd apsta
-python3 -m pip install -e .
 ```
 
 ### For Maintainers
