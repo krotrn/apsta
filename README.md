@@ -122,6 +122,25 @@ This single package installs both commands:
 
 ### Alternatives
 
+### APT package (for `sudo apt install apsta`)
+
+`sudo apt install apsta` works after you publish this package in an APT repository (PPA/Cloudsmith/etc).
+
+Build a local Debian package:
+
+```bash
+sudo apt update && sudo apt install -y build-essential debhelper dh-python pybuild-plugin-pyproject python3-all python3-setuptools dpkg-dev
+dpkg-buildpackage -us -uc -b
+```
+
+Install the built package locally:
+
+```bash
+sudo apt install ../apsta_0.5.1_all.deb
+```
+
+To enable `sudo apt install apsta` for other users, publish the generated `.deb` to your APT repo and add that repo to user systems.
+
 Script install:
 
 ```bash

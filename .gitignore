@@ -8,3 +8,10 @@ dist/
 *.egg-info/
 .packaging-venv/
 .venv/
+.pybuild/
+debian/.debhelper/
+debian/apsta/
+debian/*.debhelper
+debian/*.substvars
+debian/debhelper-build-stamp
+debian/files
