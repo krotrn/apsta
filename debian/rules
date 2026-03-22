@@ -5,6 +5,10 @@ export PYBUILD_NAME=apsta
 %:
 	dh $@ --with python3
 
+override_dh_auto_build:
+	# Build COSMIC panel applet in release mode.
+	cargo build --release --manifest-path cosmic-applet-apsta/Cargo.toml
+
 override_dh_install:
 	# Install apsta CLI
 	install -Dm755 apsta.py debian/apsta/usr/bin/apsta
@@ -14,3 +18,7 @@ override_dh_install:
 	# Install apsta-gtk GUI
 	install -Dm755 gtk-ui/apsta-gtk debian/apsta/usr/bin/apsta-gtk
 	install -Dm644 gtk-ui/com.github.apsta.Gtk.desktop debian/apsta/usr/share/applications/com.github.apsta.Gtk.desktop
+
+	# Install COSMIC applet binary + desktop entry
+	install -Dm755 cosmic-applet-apsta/target/release/cosmic-applet-apsta debian/apsta/usr/bin/cosmic-applet-apsta
+	install -Dm644 cosmic-applet-apsta/data/com.github.apsta.Applet.desktop debian/apsta/usr/share/applications/com.github.apsta.Applet.desktop

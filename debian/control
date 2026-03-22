@@ -3,36 +3,42 @@ Section: net
 Priority: optional
 Maintainer: krotrn <krotrn.ks@gmail.com>
 Build-Depends:
- debhelper-compat (= 13),
- dh-python,
- pybuild-plugin-pyproject,
- python3-all,
- python3-setuptools
+debhelper-compat (= 13),
+cargo,
+cmake,
+dh-python,
+libexpat1-dev,
+libfontconfig-dev,
+libfreetype-dev,
+libxkbcommon-dev,
+pkg-config,
+pybuild-plugin-pyproject,
+python3-all,
+python3-setuptools,
+rustc
 Standards-Version: 4.7.0
 Rules-Requires-Root: no
 Homepage: https://github.com/krotrn/apsta
 
 Package: apsta
-Architecture: all
+Architecture: any
 Depends:
- ${misc:Depends},
- ${python3:Depends},
- network-manager,
- iw,
- iproute2,
- usbutils,
- pciutils,
- hostapd,
- dnsmasq,
- policykit-1,
- python3-gi,
- gir1.2-gtk-4.0,
- gir1.2-adw-1
+${misc:Depends},
+${python3:Depends},
+${shlibs:Depends},
+network-manager,
+iw,
+iproute2,
+usbutils,
+pciutils,
+hostapd,
+dnsmasq,
+policykit-1,
+python3-gi,
+gir1.2-gtk-4.0,
+gir1.2-adw-1
 Description: Smart AP+STA WiFi hotspot manager for Linux
- apsta helps run a WiFi hotspot while maintaining an upstream WiFi
- client connection where hardware supports AP+STA operation.
- .
- It includes:
-	- apsta CLI for detect/start/stop/status/config
-	- apsta-gtk GUI for GTK4/Libadwaita desktops
-	- systemd service and sleep hook files for persistence flows
+apsta helps run a WiFi hotspot while maintaining an upstream WiFi
+client connection where hardware supports AP+STA operation.
+.
+It includes: - apsta CLI for detect/start/stop/status/config - apsta-gtk GUI for GTK4/Libadwaita desktops - cosmic-applet-apsta for COSMIC panel integration - systemd service and sleep hook files for persistence flows

@@ -1,3 +1,9 @@
+apsta (0.5.3-1ppa1) noble; urgency=medium
+
+  * Release 0.5.3
+
+ -- Karan Kumar Sah <krotrn@krotrn-pc>  Mon, 23 Mar 2026 00:14:05 +0530
+
 apsta (0.5.2-1ppa1) noble; urgency=medium
 
   * Initial Debian packaging.

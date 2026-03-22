@@ -103,7 +103,8 @@ Key technical decisions:
 
 #### One command (recommended)
 
-### 1. Official PPA (Ubuntu / Pop!_OS) — Recommended
+### 1. Official PPA (Ubuntu / Pop!\_OS) — Recommended
+
 The easiest way to install `apsta` on Ubuntu-based distributions (22.04, 24.04, and Noble) is via the official Launchpad PPA. This ensures you get automatic updates and all system dependencies (like `hostapd` and `dnsmasq`) are handled for you.
 
 ```bash
@@ -113,6 +114,7 @@ sudo apt install apsta
 ```
 
 ### 2. Manual One-Liner (Python pipx)
+
 If you are on a different distribution (Fedora, Arch, etc.) or prefer using `pipx`, use this one-liner to install the dependencies and the app:
 
 ```bash
@@ -120,13 +122,14 @@ sudo apt update && sudo apt install -y pipx network-manager iw iproute2 usbutils
 ```
 
 ### 3. Development / Source Install
+
 If you want to contribute or build from source:
 
 ```bash
 git clone https://github.com/krotrn/apsta
 cd apsta
 # Install the CLI and GTK UI locally
-pipx install . 
+pipx install .
 # Or run the manual install script
 sudo ./install.sh
 ```

@@ -34,7 +34,7 @@ from pathlib import Path
 APP_ID   = "com.github.apsta.Gtk"
 APSTA    = shutil.which("apsta") or "/usr/local/bin/apsta"
 CONFIG   = Path("/etc/apsta/config.json")
-VERSION  = "0.5.2"
+VERSION  = "0.5.3"
 
 # Background poll interval in seconds — keeps status in sync with daemon
 POLL_INTERVAL = 5
