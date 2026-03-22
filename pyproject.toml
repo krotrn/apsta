@@ -37,6 +37,7 @@ Issues = "https://github.com/krotrn/apsta/issues"
 
 [project.scripts]
 apsta = "apsta:main"
+apsta-gtk = "apsta_gtk:main"
 
 [tool.setuptools]
-py-modules = ["apsta"]
+py-modules = ["apsta", "apsta_gtk"]

@@ -109,8 +109,14 @@ Then use it immediately:
 
 ```bash
 apsta detect
+apsta-gtk
 sudo apsta start
 ```
+
+This single package installs both commands:
+
+- `apsta` (CLI)
+- `apsta-gtk` (GTK4 GUI)
 
 ### Alternatives
 
@@ -237,10 +243,10 @@ Requires: Rust 1.75+, `just`, COSMIC session.
 Full three-page GUI: Status, Hardware, Settings. Force start toggle for single-radio cards.
 
 ```bash
-cd gtk-ui
-sudo ./install.sh
-# Launch: apsta-gtk  or  "apsta Hotspot Manager" in your app menu
+apsta-gtk
 ```
+
+`apsta-gtk` is installed by the same one-command package install.
 
 Requires: `python3-gi`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`
 
