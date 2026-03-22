@@ -24,6 +24,7 @@ from gi.repository import Gtk, Adw, GLib, Gio, Pango
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import threading
 from pathlib import Path
@@ -31,9 +32,9 @@ from pathlib import Path
 # ── Constants ──────────────────────────────────────────────────────────────────
 
 APP_ID   = "com.github.apsta.Gtk"
-APSTA    = "/usr/local/bin/apsta"
+APSTA    = shutil.which("apsta") or "/usr/bin/apsta"
 CONFIG   = Path("/etc/apsta/config.json")
-VERSION  = "0.5.0"
+VERSION  = "0.5.2"
 
 # Background poll interval in seconds — keeps status in sync with daemon
 POLL_INTERVAL = 5

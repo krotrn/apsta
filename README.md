@@ -99,7 +99,9 @@ Key technical decisions:
 
 ## Install
 
-### One command (recommended)
+### For Users
+
+#### One command (recommended)
 
 ```bash
 sudo apt update && sudo apt install -y pipx network-manager iw iproute2 usbutils pciutils hostapd dnsmasq python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 && pipx ensurepath && pipx install git+https://github.com/krotrn/apsta.git
@@ -120,26 +122,7 @@ This single package installs both commands:
 - `apsta` (CLI)
 - `apsta-gtk` (GTK4 GUI)
 
-### Alternatives
-
-### APT package (for `sudo apt install apsta`)
-
-`sudo apt install apsta` works after you publish this package in an APT repository (PPA/Cloudsmith/etc).
-
-Build a local Debian package:
-
-```bash
-sudo apt update && sudo apt install -y build-essential debhelper dh-python pybuild-plugin-pyproject python3-all python3-setuptools dpkg-dev
-dpkg-buildpackage -us -uc -b
-```
-
-Install the built package locally:
-
-```bash
-sudo apt install ../apsta_0.5.1_all.deb
-```
-
-To enable `sudo apt install apsta` for other users, publish the generated `.deb` to your APT repo and add that repo to user systems.
+#### Other user install options
 
 Script install:
 
@@ -163,6 +146,57 @@ Editable install (development workflow):
 git clone https://github.com/krotrn/apsta
 cd apsta
 python3 -m pip install -e .
+```
+
+### For Maintainers
+
+#### Publish APT package (enables `sudo apt install apsta`)
+
+`sudo apt install apsta` works after you publish this package in an APT repository (PPA).
+
+Build a local Debian package:
+
+```bash
+sudo apt update && sudo apt install -y build-essential debhelper dh-python pybuild-plugin-pyproject python3-all python3-setuptools dpkg-dev
+dpkg-buildpackage -us -uc -b
+```
+
+Install the built package locally:
+
+```bash
+sudo apt install ../apsta_*_all.deb
+```
+
+To enable `sudo apt install apsta` for other users, publish the generated `.deb` to your APT repo and add that repo to user systems.
+
+#### Publish: Launchpad PPA
+
+1. Create a PPA in Launchpad.
+2. Create the upstream orig tarball (required for `3.0 (quilt)`):
+
+```bash
+UPVER="$(dpkg-parsechangelog -SVersion | sed 's/-[^-]*$//')"
+git ls-files -z | grep -zv '^debian/' | tar --null -T - -czf "../apsta_${UPVER}.orig.tar.gz" --transform "s,^,apsta-${UPVER}/,"
+```
+
+3. Build source package from the repo root:
+
+```bash
+debuild -S -sa -k<your-gpg-key-id>
+```
+
+4. Upload to PPA:
+
+```bash
+dput ppa:<launchpad-user>/<ppa-name> ../apsta_*_source.changes
+```
+
+5. Users install:
+
+```bash
+sudo add-apt-repository ppa:<launchpad-user>/<ppa-name>
+sudo apt update
+sudo apt install apsta
 ```
 
 **Required dependencies** (all default on Ubuntu/Pop!\_OS/Fedora/Arch):

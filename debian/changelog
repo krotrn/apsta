@@ -1,7 +1,7 @@
-apsta (0.5.1) unstable; urgency=medium
+apsta (0.5.2-1ppa1) noble; urgency=medium
 
   * Initial Debian packaging.
   * Install CLI and GTK UI entry points from Python package.
   * Ship systemd unit and sleep hook helper.
 
- -- krotrn <krotrn.ks@gmail.com>  Sun, 22 Mar 2026 14:15:00 +0000
+ -- krotrn <krotrn.ks@gmail.com>  Sun, 22 Mar 2026 14:15:00 +0530

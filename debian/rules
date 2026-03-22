@@ -3,4 +3,14 @@
 export PYBUILD_NAME=apsta
 
 %:
-	dh $@ --with python3 --buildsystem=pybuild
+	dh $@ --with python3
+
+override_dh_install:
+	# Install apsta CLI
+	install -Dm755 apsta.py debian/apsta/usr/bin/apsta
+	install -Dm644 system/apsta.service debian/apsta/lib/systemd/system/apsta.service
+	install -Dm755 system/apsta-sleep debian/apsta/usr/lib/systemd/system-sleep/apsta-sleep
+
+	# Install apsta-gtk GUI
+	install -Dm755 gtk-ui/apsta-gtk debian/apsta/usr/bin/apsta-gtk
+	install -Dm644 gtk-ui/com.github.apsta.Gtk.desktop debian/apsta/usr/share/applications/com.github.apsta.Gtk.desktop

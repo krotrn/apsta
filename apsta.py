@@ -35,7 +35,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
-__version__ = "0.5.1"
+__version__ = "0.5.2"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 #
