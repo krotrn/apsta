@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# /usr/lib/systemd/system-sleep/apsta-sleep  (systemd)
+# /etc/pm/sleep.d/10_apsta                   (pm-utils / OpenRC)
+#
+# Unified sleep hook for apsta — handles both init systems.
+#
+# systemd passes:   $1=pre|post   $2=suspend|hibernate|...
+# pm-utils passes:  $1=suspend|resume|hibernate|thaw   $2=(empty)
+#
+# Why a sleep hook instead of a NM dispatcher script:
+#   - NM dispatcher fires per-connection-event (too noisy, wrong timing)
+#   - sleep hooks fire exactly once, synchronously, with guaranteed ordering
+#   - Virtual interfaces (wlo1_ap) are destroyed by the kernel on suspend;
+#     this hook cleanly saves state before they vanish and restores after
+
+APSTA="/usr/local/bin/apsta"
+STATE_FILE="/run/apsta-was-active"
+
+# Config is at /etc/apsta/ — NOT $HOME/.config/apsta/.
+# apsta always runs as root (sudo or systemd service). Path.home() and $HOME
+# both evaluate to /root in that context. A per-user path would create a
+# split-brain where user-written config is invisible to the service.
+CONFIG="/etc/apsta/config.json"
+
+# Normalise both calling conventions into a single ACTION variable.
+#
+# systemd:  $1/$2 = "pre/suspend", "post/suspend", "pre/hibernate", etc.
+# pm-utils: $1    = "suspend", "resume", "hibernate", "thaw"
+#
+# We map everything to either "before_sleep" or "after_sleep".
+case "$1/$2" in
+    pre/* | suspend/* | hibernate/*)
+        ACTION="before_sleep"
+        ;;
+    post/* | resume/* | thaw/*)
+        ACTION="after_sleep"
+        ;;
+    *)
+        # Unknown arguments — exit cleanly, don't break the sleep sequence.
+        exit 0
+        ;;
+esac
+
+case "$ACTION" in
+    before_sleep)
+        # Check if hotspot is active, save the fact, then stop cleanly.
+        # We check via config.json — if ap_interface is non-null, hotspot is live.
+        if [ -f "$CONFIG" ]; then
+            AP_IFACE=$(python3 -c "
+import json, sys
+try:
+    c = json.load(open(sys.argv[1]))
+    print(c.get('ap_interface') or '')
+except: print('')
+" "$CONFIG" 2>/dev/null)
+            if [ -n "$AP_IFACE" ]; then
+                touch "$STATE_FILE"
+                "$APSTA" stop
+            fi
+        fi
+        ;;
+
+    after_sleep)
+        # If hotspot was active before sleep, restart it after NM is ready.
+        if [ -f "$STATE_FILE" ]; then
+            rm -f "$STATE_FILE"
+
+            # Use nm-online -x: wait for NM daemon startup only, not a full
+            # connection. Without -x, nm-online waits until all interfaces are
+            # "fully online" — which never completes if the user wakes somewhere
+            # with no saved WiFi, stalling the resume sequence for the full timeout.
+            nm-online --timeout 15 -x --quiet 2>/dev/null
+
+            "$APSTA" start
+        fi
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,28 @@
+[package]
+name = "cosmic-applet-apsta"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "COSMIC panel applet for apsta — AP+STA WiFi hotspot manager"
+license = "MIT"
+repository = "https://github.com/yourusername/apsta"
+
+[[bin]]
+name = "cosmic-applet-apsta"
+path = "src/main.rs"
+
+[dependencies.libcosmic]
+git = "https://github.com/pop-os/libcosmic"
+default-features = false
+features = ["applet", "tokio", "wayland"]
+
+[dependencies]
+tokio = { version = "1", features = ["process", "rt-multi-thread", "macros", "io-util"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Profile: strip debug symbols in release for a smaller binary
+[profile.release]
+strip = "symbols"
+lto = true
+codegen-units = 1

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=apsta Hotspot Manager
+Name[en]=apsta Hotspot Manager
+Comment=Manage your AP+STA WiFi hotspot
+Comment[en]=Manage your AP+STA WiFi hotspot
+Type=Application
+Exec=apsta-gtk
+Icon=network-wireless-hotspot-symbolic
+Terminal=false
+Categories=GNOME;GTK;Network;Settings;
+Keywords=wifi;hotspot;wireless;network;apsta;
+StartupNotify=true
+StartupWMClass=apsta-gtk

@@ -1,0 +1,39 @@
+[Unit]
+Description=apsta — AP+STA WiFi hotspot manager
+# Start after NM is fully up and has a connection — not just "network hardware
+# available" (network.target), which fires before NM has associated.
+After=NetworkManager.service network.target
+Wants=NetworkManager.service
+
+# If NM crashes and restarts, restart apsta too so the hotspot comes back.
+PartOf=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# Wait until NM has an active connection before starting the hotspot.
+# This replaces the previous "sleep 3" magic number and is semantically
+# correct: _get_sta_channel_band() reads the live STA frequency to determine
+# the hotspot channel. If the STA hasn't associated yet, it returns None and
+# the hotspot starts on the fallback channel — then NM tries to connect the
+# STA to a 5GHz router, hits EBUSY because the card is locked to ch11, and fails.
+# nm-online -q blocks until NM reports a full connection, preventing this race.
+ExecStartPre=/usr/bin/nm-online -q --timeout 30
+
+ExecStart=/usr/local/bin/apsta start
+ExecStop=/usr/local/bin/apsta stop
+
+# If NM is already shutting down when systemd sends stop to this unit,
+# nmcli connection down can hang waiting for a dead daemon.
+# Cap teardown at 5s — well under systemd's 90s default — so shutdown
+# isn't blocked by an unresponsive NM.
+TimeoutStopSec=5
+
+# Don't fail the boot if apsta can't start (e.g. hardware not present,
+# DFS channel, missing USB dongle). Log the failure and continue.
+SuccessExitStatus=0 1
+
+[Install]
+# multi-user.target = normal system operation (equivalent to runlevel 3/5)
+WantedBy=multi-user.target
