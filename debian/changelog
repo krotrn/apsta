@@ -1,3 +1,32 @@
+apsta (0.5.4-1ppa1) noble; urgency=medium
+
+  * New upstream release 0.5.4.
+  * Include vendored Rust dependencies and Cargo config so Launchpad can
+    build cosmic-applet-apsta fully offline.
+  * Keep COSMIC applet included in the PPA package.
+
+ -- Karan Kumar Sah <krotrn@krotrn-pc>  Mon, 23 Mar 2026 00:52:00 +0530
+
+apsta (0.5.3-1ppa3) noble; urgency=medium
+
+  * Re-enable COSMIC applet in Debian/PPA package.
+  * Build COSMIC applet in offline mode using vendored Rust sources.
+  * Include Rust/system build dependencies required for applet build.
+
+  * Keep prior packaging fixes for Launchpad compatibility.
+
+ -- Karan Kumar Sah <krotrn@krotrn-pc>  Mon, 23 Mar 2026 00:43:00 +0530
+
+apsta (0.5.3-1ppa2) noble; urgency=medium
+
+  * Make COSMIC applet build optional in Debian packaging.
+  * Default PPA build now skips Rust/git dependency fetches in Launchpad
+    chroots.
+  * Keep COSMIC binary install conditional when built locally with
+    BUILD_COSMIC=1.
+
+ -- Karan Kumar Sah <krotrn@krotrn-pc>  Mon, 23 Mar 2026 00:27:00 +0530
+
 apsta (0.5.3-1ppa1) noble; urgency=medium
 
   * Release 0.5.3

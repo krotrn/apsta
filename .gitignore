@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 
 cosmic-applet-apsta/target/
+cosmic-applet-apsta/vendor/
 cosmic-applet-apsta/Cargo.lock
 build/
 dist/
