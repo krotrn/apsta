@@ -2,49 +2,55 @@ Source: apsta
 Section: net
 Priority: optional
 Maintainer: krotrn <krotrn.ks@gmail.com>
-Build-Depends: debhelper-compat (= 13),
- cargo,
- cmake,
+Build-Depends:
+ debhelper-compat (= 13),
  dh-python,
- libdbus-1-dev,
- libegl1-mesa-dev,
- libexpat1-dev,
- libfontconfig-dev,
- libfreetype-dev,
- libgles2-mesa-dev,
- libwayland-dev,
- libxkbcommon-dev,
- pkgconf,
  pybuild-plugin-pyproject,
  python3-all,
  python3-setuptools,
- rustc
-Standards-Version: 4.7.0
-Rules-Requires-Root: no
+ python3-wheel,
+ cargo,
+ rustc (>= 1.75),
+ libssl-dev,
+ pkg-config,
+ cmake,
+ libexpat1-dev,
+ libfontconfig-dev,
+ libfreetype-dev,
+ libxkbcommon-dev,
+Standards-Version: 4.6.2
 Homepage: https://github.com/krotrn/apsta
+Rules-Requires-Root: no
 
 Package: apsta
 Architecture: any
-Depends: ${misc:Depends},
+Depends:
  ${python3:Depends},
+ ${misc:Depends},
  ${shlibs:Depends},
+ python3,
+ python3-gi,
+ gir1.2-gtk-4.0,
+ gir1.2-adw-1,
  network-manager,
  iw,
  iproute2,
  usbutils,
  pciutils,
+Recommends:
  hostapd,
  dnsmasq,
- policykit-1,
- python3-gi,
- gir1.2-gtk-4.0,
- gir1.2-adw-1
+ pkexec,
 Description: Smart AP+STA WiFi hotspot manager for Linux
- apsta helps run a WiFi hotspot while maintaining an upstream WiFi
- client connection where hardware supports AP+STA operation.
+ apsta lets you broadcast a WiFi hotspot while staying connected to your
+ existing WiFi network simultaneously, without dropping your connection.
  .
- It includes:
-  - apsta CLI for detect/start/stop/status/config
-  - apsta-gtk GUI for GTK4/Libadwaita desktops
-  - cosmic-applet-apsta for COSMIC panel integration
-  - systemd service and sleep hook files for persistence flows
+ It detects your hardware capabilities and automatically chooses the best
+ strategy: nmcli virtual interface (true concurrent AP+STA), hostapd on a
+ virtual interface (Intel AX200 / iwlwifi split-block cards), or forced
+ single-interface mode.
+ .
+ Includes:
+  - apsta        — CLI hotspot manager
+  - apsta-gtk    — GTK4/Libadwaita GUI (GNOME, KDE, Xfce, any GTK4 desktop)
+  - cosmic-applet-apsta — COSMIC DE panel applet (Pop!_OS / COSMIC session)

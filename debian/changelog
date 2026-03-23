@@ -1,3 +1,11 @@
+apsta (0.5.4-1) noble; urgency=medium
+
+  * Bundle cosmic-applet-apsta Rust binary in the .deb package.
+  * Add debian/rules Rust build stage using vendored crates for offline builds.
+  * Add cosmic-applet-apsta binary and desktop entry to debian/apsta.install.
+  * Add Rust/COSMIC build-deps to debian/control.
+
+ -- krotrn <krotrn@example.com>  Tue, 24 Mar 2026 00:00:00 +0000
 apsta (0.5.4-1ppa1) noble; urgency=medium
 
   * New upstream release 0.5.4.

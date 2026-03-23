@@ -1,18 +1,31 @@
 __pycache__/
 *.py[cod]
 
+# Rust build output — do NOT ignore vendor/ (it's committed)
 cosmic-applet-apsta/target/
 cosmic-applet-apsta/vendor/
-cosmic-applet-apsta/Cargo.lock
+.cargo-home/
+
+
+# Python packaging
 build/
 dist/
 *.egg-info/
 .packaging-venv/
 .venv/
 .pybuild/
+
+# Debian build output
 debian/.debhelper/
 debian/apsta/
 debian/*.debhelper
 debian/*.substvars
 debian/debhelper-build-stamp
 debian/files
+
+# dpkg-buildpackage output (generated in parent dir, but just in case)
+../*.deb
+../*.changes
+../*.dsc
+../*.buildinfo
+../*.orig.tar.gz

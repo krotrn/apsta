@@ -1,27 +1,40 @@
 #!/usr/bin/make -f
+# debian/rules — build both the Python package and the Rust COSMIC applet
 
-export PYBUILD_NAME=apsta
-export HOME := $(CURDIR)/debian/.home
-export CARGO_HOME := $(CURDIR)/debian/.cargo
+export DH_VERBOSE = 1
+
+# Rust target directory — keep it inside the source tree so dh_auto_clean
+# can wipe it. Override CARGO_HOME to avoid writing to $HOME during build.
+export CARGO_HOME = $(CURDIR)/.cargo-home
+
+# .cargo/config.toml at the repo root already maps all git sources to
+# cosmic-applet-apsta/vendor/ — no extra --config flags needed here.
+export CARGO_NET_OFFLINE = true
 
 %:
-	dh $@ --with python3
+	dh $@ --with python3 --buildsystem=pybuild
+
+# ── Python build (handled by pybuild / dh-python) ─────────────────────────────
+# Nothing extra needed — pyproject.toml covers apsta + apsta_gtk entry points.
+
+# ── Rust build ────────────────────────────────────────────────────────────────
 
 override_dh_auto_build:
+	# Build the Python package first (pybuild default)
 	dh_auto_build
-	# Build COSMIC applet from vendored dependencies only (no network).
-	cargo build --release --locked --frozen --offline --manifest-path cosmic-applet-apsta/Cargo.toml
+	# Build the COSMIC applet. .cargo/config.toml handles vendored-sources.
+	cd cosmic-applet-apsta && cargo build --release
 
-override_dh_install:
-	# Install apsta CLI
-	install -Dm755 apsta.py debian/apsta/usr/bin/apsta
-	install -Dm644 system/apsta.service debian/apsta/lib/systemd/system/apsta.service
-	install -Dm755 system/apsta-sleep debian/apsta/usr/lib/systemd/system-sleep/apsta-sleep
+override_dh_auto_install:
+	# Install the Python package (pybuild default)
+	dh_auto_install
 
-	# Install apsta-gtk GUI
-	install -Dm755 gtk-ui/apsta-gtk debian/apsta/usr/bin/apsta-gtk
-	install -Dm644 gtk-ui/com.github.apsta.Gtk.desktop debian/apsta/usr/share/applications/com.github.apsta.Gtk.desktop
+	# Install the COSMIC applet binary into the package staging area
+	install -Dm755 \
+		cosmic-applet-apsta/target/release/cosmic-applet-apsta \
+		$(CURDIR)/debian/apsta/usr/bin/cosmic-applet-apsta
 
-	# Install COSMIC applet binary + desktop entry.
-	install -Dm755 cosmic-applet-apsta/target/release/cosmic-applet-apsta debian/apsta/usr/bin/cosmic-applet-apsta
-	install -Dm644 cosmic-applet-apsta/data/com.github.apsta.Applet.desktop debian/apsta/usr/share/applications/com.github.apsta.Applet.desktop
+override_dh_auto_clean:
+	dh_auto_clean
+	# Wipe Rust build artefacts
+	rm -rf $(CURDIR)/cosmic-applet-apsta/target $(CURDIR)/.cargo-home
