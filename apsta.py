@@ -685,9 +685,8 @@ def _start_hostapd_ap_sta(
     # Wait briefly for hostapd to initialize
     time.sleep(1)
 
-    # Verify hostapd actually came up
     iw_info = run_out(f"iw dev {ap_iface} info")
-    if "type AP" not in iw_info:
+    if not any(t in iw_info for t in ("type AP", "type AP/VLAN")):
         warn("hostapd started but AP interface did not come up.")
         run("pkill -f 'hostapd.*apsta' 2>/dev/null")
         run(f"iw dev {ap_iface} del 2>/dev/null")
@@ -979,11 +978,13 @@ def cmd_stop(args):
             ok(f"Hotspot connection '{con_name}' stopped.")
         else:
             warn(f"Could not bring down '{con_name}', scanning for active hotspot connections...")
-            active = run_out("nmcli -t -f NAME,TYPE,MODE con show --active")
+            active = run_out("nmcli -t -f NAME,TYPE,DEVICE,STATE con show --active")
             hotspot_cons = [
                 l.split(":")[0] for l in active.splitlines()
-                if l.split(":")[-1].strip().lower() in ("ap", "hotspot")
-                or "hotspot" in l.lower()
+                if "802-11-wireless" in l and (
+                    l.split(":")[1].strip().lower() in ("ap", "hotspot")
+                    or "hotspot" in l.split(":")[0].lower()
+                )
             ]
             if hotspot_cons:
                 for con in hotspot_cons:

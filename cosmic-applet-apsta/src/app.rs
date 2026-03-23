@@ -467,12 +467,13 @@ fn regex_channel(text: &str) -> Option<(String, String)> {
 /// Arguments are passed as positional parameters ($1, $2) to the sh -c script
 /// rather than interpolated into the script string. This prevents shell
 /// injection if the user types a SSID like: foo"; rm -rf /
+///
 async fn async_start_hotspot(ssid: String, pass: String) -> Result<(), String> {
     let apsta = apsta_bin();
     let script = format!(
-        "{apsta} config --set ssid=\"$1\" && \
-         {apsta} config --set password=\"$2\" && \
-         {apsta} start",
+        "\"{apsta}\" config --set ssid=\"$1\" && \
+         \"{apsta}\" config --set password=\"$2\" && \
+         \"{apsta}\" start",
         apsta = apsta
     );
     let out = TokioCommand::new("pkexec")
@@ -501,7 +502,8 @@ async fn async_stop_hotspot() -> Result<(), String> {
 
 async fn async_run_detect() -> Result<String, String> {
     let apsta = apsta_bin();
-    // Run without sudo — detect is read-only
+    // Run without sudo — detect is read-only.
+    // argv-based exec, no shell script, no quoting needed.
     let out = TokioCommand::new(apsta)
         .arg("detect")
         // Strip ANSI colour codes by setting NO_COLOR

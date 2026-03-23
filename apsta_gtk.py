@@ -526,16 +526,15 @@ class ApstaWindow(Adw.ApplicationWindow):
         return True  # keep polling
 
     def _poll_worker(self):
-        # Run refresh on the main loop thread via idle_add, but wait for it
-        # to complete before clearing the guard — prevents a second poll from
-        # starting before the first one finishes updating the UI.
         done = threading.Event()
         def _run():
-            self._refresh_status()
-            done.set()
+            try:
+                self._refresh_status()
+            finally:
+                done.set()
             return False
         GLib.idle_add(_run)
-        done.wait()
+        done.wait(timeout=30)
         self._refreshing = False
 
     def _load_config_into_settings(self):
@@ -561,9 +560,9 @@ class ApstaWindow(Adw.ApplicationWindow):
     def _bg_start(self, ssid: str, pwd: str, force: bool):
         force_flag = "--force" if force else ""
         script = (
-            f"{APSTA} config --set ssid=\"$1\" && "
-            f"{APSTA} config --set password=\"$2\" && "
-            f"{APSTA} start {force_flag}".strip()
+            f'"{APSTA}" config --set ssid="$1" && '
+            f'"{APSTA}" config --set password="$2" && '
+            f'"{APSTA}" start {force_flag}'.strip()
         )
         rc, stdout, stderr = run_apsta_root_script(script, ssid, pwd)
         if rc == 0:
@@ -580,7 +579,7 @@ class ApstaWindow(Adw.ApplicationWindow):
         threading.Thread(target=self._bg_stop, daemon=True).start()
 
     def _bg_stop(self):
-        rc, stdout, stderr = run_apsta_root_script(f"{APSTA} stop")
+        rc, stdout, stderr = run_apsta_root_script(f'"{APSTA}" stop')
         if rc == 0:
             GLib.idle_add(self._on_action_done, True, "Hotspot stopped.")
         else:
@@ -627,19 +626,18 @@ class ApstaWindow(Adw.ApplicationWindow):
             self._show_banner("SSID and password cannot be empty.", error=True)
             return
 
-        # Build a single pkexec call for all config changes
-        cmds = [f"{APSTA} config --set ssid=\"$1\""]
+        # FIX 1: Quote APSTA path throughout all shell scripts
+        cmds = [f'"{APSTA}" config --set ssid="$1"']
         args = [ssid]
 
-        cmds.append(f"{APSTA} config --set password=\"$2\"")
+        cmds.append(f'"{APSTA}" config --set password="$2"')
         args.append(pwd)
 
         if iface:
-            # Interface uses $3
-            cmds.append(f"{APSTA} config --set interface=\"$3\"")
+            cmds.append(f'"{APSTA}" config --set interface="$3"')
             args.append(iface)
         else:
-            cmds.append(f"{APSTA} config --set interface=none")
+            cmds.append(f'"{APSTA}" config --set interface=none')
 
         script = " && ".join(cmds)
         threading.Thread(
@@ -664,7 +662,7 @@ class ApstaWindow(Adw.ApplicationWindow):
         threading.Thread(target=self._bg_enable, daemon=True).start()
 
     def _bg_enable(self):
-        rc, stdout, stderr = run_apsta_root_script(f"{APSTA} enable")
+        rc, stdout, stderr = run_apsta_root_script(f'"{APSTA}" enable')
         msg = "Auto-start enabled." if rc == 0 else pkexec_error_message(rc, stderr, stdout)
         GLib.idle_add(self._show_banner, msg, rc != 0)
 
@@ -672,7 +670,8 @@ class ApstaWindow(Adw.ApplicationWindow):
         threading.Thread(target=self._bg_disable, daemon=True).start()
 
     def _bg_disable(self):
-        rc, stdout, stderr = run_apsta_root_script(f"{APSTA} disable")
+        # FIX 1: Quote APSTA path
+        rc, stdout, stderr = run_apsta_root_script(f'"{APSTA}" disable')
         msg = "Auto-start disabled." if rc == 0 else pkexec_error_message(rc, stderr, stdout)
         GLib.idle_add(self._show_banner, msg, rc != 0)
 
