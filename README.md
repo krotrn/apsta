@@ -265,19 +265,6 @@ apsta completion fish | sudo tee /etc/fish/completions/apsta.fish >/dev/null
 
 ---
 
-## GUIs
-
-### COSMIC Panel Applet (Pop!\_OS / COSMIC DE)
-
-Shows a WiFi icon in your panel. Click to toggle hotspot, change SSID/password, run detect.
-
-```bash
-cd cosmic-applet-apsta
-just install
-# COSMIC Settings → Desktop → Panel → Configure Panel Applets → Add → "apsta Hotspot"
-```
-
-Requires: Rust 1.75+, `just`, COSMIC session.
 
 ### GTK4 / Libadwaita (GNOME, KDE, Xfce, any desktop)
 
@@ -339,15 +326,15 @@ Realtek chipsets are intentionally excluded — out-of-kernel drivers, unreliabl
 
 ## Compatibility
 
-| Distro               | CLI | GTK UI | COSMIC Applet |
-| -------------------- | --- | ------ | ------------- |
-| Pop!\_OS 22.04       | ✅  | ✅     | ✅            |
-| Pop!\_OS COSMIC      | ✅  | ✅     | ✅            |
-| Ubuntu 22.04 / 24.04 | ✅  | ✅     | —             |
-| Fedora 39+           | ✅  | ✅     | —             |
-| Arch Linux           | ✅  | ✅     | —             |
-| Alpine (OpenRC)      | ✅  | ✅     | —             |
-| Artix (runit)        | ✅  | ✅     | —             |
+| Distro               | CLI | GTK UI | 
+| -------------------- | --- | ------ | 
+| Pop!\_OS 22.04       | ✅  | ✅     |
+| Pop!\_OS COSMIC      | ✅  | ✅     |
+| Ubuntu 22.04 / 24.04 | ✅  | ✅     |
+| Fedora 39+           | ✅  | ✅     |
+| Arch Linux           | ✅  | ✅     |
+| Alpine (OpenRC)      | ✅  | ✅     |
+| Artix (runit)        | ✅  | ✅     |
 
 **Tested hardware:**
 
@@ -358,7 +345,7 @@ Realtek chipsets are intentionally excluded — out-of-kernel drivers, unreliabl
 
 ## Why This Exists
 
-Built out of frustration with Pop!\_OS COSMIC's missing hotspot UI and the silent WiFi-disconnection behaviour of `nmcli hotspot`. The deeper problem: Windows implements a virtual WiFi multiplexing layer that makes AP+STA work on almost any card. Linux exposes raw hardware capability honestly — and for cards like the Intel AX200, that capability exists but nmcli can't use it. apsta bridges the gap using hostapd directly.
+Built out of fration with Pop!\_OS COSMIC's missing hotspot UI and the silent WiFi-disconnection behaviour of `nmcli hotspot`. The deeper problem: Windows implements a virtual WiFi multiplexing layer that makes AP+STA work on almost any card. Linux exposes raw hardware capability honestly — and for cards like the Intel AX200, that capability exists but nmcli can't use it. apsta bridges the gap using hostapd directly.
 
 If you've ever typed:
 
@@ -368,13 +355,11 @@ nmcli device wifi hotspot ifname wlan0 ssid foo password bar
 
 ...and watched your SSH session drop — this is for you.
 
-See [CHANGELOG.md](CHANGELOG.md) for the full development history.
-
 ---
 
 ## Contributing
 
-PRs welcome. The Python CLI has no dependencies beyond stdlib (plus optional hostapd/dnsmasq). The GTK UI requires PyGObject. The COSMIC applet requires Rust + libcosmic.
+PRs welcome. The Python CLI has no dependencies beyond stdlib (plus optional hostapd/dnsmasq). The GTK UI requires PyGObject.
 
 If you've tested on a distro or hardware not in the tables above, open an issue with your `apsta detect` output.
 
