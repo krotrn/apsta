@@ -1,4 +1,4 @@
-apsta (0.5.6-1) UNRELEASED; urgency=medium
+apsta (0.5.6-1) noble; urgency=medium
 
   * Release 0.5.6: Fix ghost state bug and add prerm cleanup hook
 
