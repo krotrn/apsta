@@ -45,6 +45,8 @@ On Linux, running a hotspot while staying connected to WiFi is harder than it sh
 
 ## How It Works
 
+<img src="./public/apsta_start_strategy_flow.svg" alt="apsta flowchart" width="600">
+
 ```
 apsta detect
 		↓
