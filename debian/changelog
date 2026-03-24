@@ -1,3 +1,15 @@
+apsta (0.5.4-3) noble; urgency=medium
+
+  * Fix missing vendor directory and add wayland/x11 build dependencies.
+
+ -- Karan Kumar Sah <krotrn@krotrn-pc>  Tue, 24 Mar 2026 11:14:46 +0530
+
+apsta (0.5.4-2) noble; urgency=medium
+
+  * Add cosmic-applet-apsta Rust binary to package.
+  * Fix debian/rules: remove --offline flag for Launchpad builds.
+
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Mon, 24 Mar 2026 00:30:00 +0530
 apsta (0.5.4-1) noble; urgency=medium
 
   * Bundle cosmic-applet-apsta Rust binary in the .deb package.

@@ -1,4 +1,3 @@
 system/apsta-sleep usr/lib/systemd/system-sleep/
 system/apsta.service usr/lib/systemd/system/
 gtk-ui/com.github.apsta.Gtk.desktop usr/share/applications/
-cosmic-applet-apsta/data/com.github.apsta.Applet.desktop usr/share/applications/

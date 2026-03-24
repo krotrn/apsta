@@ -1,40 +1,5 @@
 #!/usr/bin/make -f
-# debian/rules — build both the Python package and the Rust COSMIC applet
-
 export DH_VERBOSE = 1
-
-# Rust target directory — keep it inside the source tree so dh_auto_clean
-# can wipe it. Override CARGO_HOME to avoid writing to $HOME during build.
-export CARGO_HOME = $(CURDIR)/.cargo-home
-
-# .cargo/config.toml at the repo root already maps all git sources to
-# cosmic-applet-apsta/vendor/ — no extra --config flags needed here.
-export CARGO_NET_OFFLINE = true
 
 %:
 	dh $@ --with python3 --buildsystem=pybuild
-
-# ── Python build (handled by pybuild / dh-python) ─────────────────────────────
-# Nothing extra needed — pyproject.toml covers apsta + apsta_gtk entry points.
-
-# ── Rust build ────────────────────────────────────────────────────────────────
-
-override_dh_auto_build:
-	# Build the Python package first (pybuild default)
-	dh_auto_build
-	# Build the COSMIC applet. .cargo/config.toml handles vendored-sources.
-	cd cosmic-applet-apsta && cargo build --release
-
-override_dh_auto_install:
-	# Install the Python package (pybuild default)
-	dh_auto_install
-
-	# Install the COSMIC applet binary into the package staging area
-	install -Dm755 \
-		cosmic-applet-apsta/target/release/cosmic-applet-apsta \
-		$(CURDIR)/debian/apsta/usr/bin/cosmic-applet-apsta
-
-override_dh_auto_clean:
-	dh_auto_clean
-	# Wipe Rust build artefacts
-	rm -rf $(CURDIR)/cosmic-applet-apsta/target $(CURDIR)/.cargo-home
