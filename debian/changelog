@@ -1,3 +1,9 @@
+apsta (0.5.6-1) UNRELEASED; urgency=medium
+
+  * Release 0.5.6: Fix ghost state bug and add prerm cleanup hook
+
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Tue, 24 Mar 2026 21:14:54 +0530
+
 apsta (0.5.5-1) noble; urgency=medium
 
   * Release 0.5.5: Drop COSMIC applet for streamlined, architecture-

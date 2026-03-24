@@ -1,6 +1,13 @@
 #!/bin/sh
 set -e
 
+# Cleanly stop the hotspot before the binary is deleted during uninstall/upgrade
+if [ "$1" = "remove" ] || [ "$1" = "upgrade" ]; then
+    if command -v apsta >/dev/null 2>&1; then
+        apsta stop >/dev/null 2>&1 || true
+    fi
+fi
+
 if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload >/dev/null 2>&1 || true
 fi

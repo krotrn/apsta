@@ -34,7 +34,7 @@ from pathlib import Path
 APP_ID   = "com.github.apsta.Gtk"
 APSTA    = shutil.which("apsta") or "/usr/local/bin/apsta"
 CONFIG   = Path("/etc/apsta/config.json")
-VERSION  = "0.5.5"
+VERSION  = "0.5.6"
 
 # Background poll interval in seconds — keeps status in sync with daemon
 POLL_INTERVAL = 5
@@ -456,6 +456,10 @@ class ApstaWindow(Adw.ApplicationWindow):
         """Read config.json directly (0o644 — no root needed) and update UI."""
         cfg = read_config()
         ap_iface = cfg.get("ap_interface") or ""
+        
+        if ap_iface and not os.path.exists(f"/sys/class/net/{ap_iface}"):
+            ap_iface = ""
+
         active   = bool(ap_iface)
         ssid     = cfg.get("ssid") or "—"
 
