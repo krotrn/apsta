@@ -1,8 +1,22 @@
+apsta (0.5.5-1) noble; urgency=medium
+
+  * Release 0.5.5: Drop COSMIC applet for streamlined, architecture-
+    independent packaging
+
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Tue, 24 Mar 2026 11:34:14 +0530
+
+apsta (0.5.4-4) noble; urgency=medium
+
+  * Drop COSMIC applet to simplify packaging; switch to Architecture:
+    all
+
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Tue, 24 Mar 2026 11:28:09 +0530
+
 apsta (0.5.4-3) noble; urgency=medium
 
   * Fix missing vendor directory and add wayland/x11 build dependencies.
 
- -- Karan Kumar Sah <krotrn@krotrn-pc>  Tue, 24 Mar 2026 11:14:46 +0530
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Tue, 24 Mar 2026 11:14:46 +0530
 
 apsta (0.5.4-2) noble; urgency=medium
 
@@ -25,7 +39,7 @@ apsta (0.5.4-1ppa1) noble; urgency=medium
     build cosmic-applet-apsta fully offline.
   * Keep COSMIC applet included in the PPA package.
 
- -- Karan Kumar Sah <krotrn@krotrn-pc>  Mon, 23 Mar 2026 00:52:00 +0530
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Mon, 23 Mar 2026 00:52:00 +0530
 
 apsta (0.5.3-1ppa3) noble; urgency=medium
 
@@ -35,7 +49,7 @@ apsta (0.5.3-1ppa3) noble; urgency=medium
 
   * Keep prior packaging fixes for Launchpad compatibility.
 
- -- Karan Kumar Sah <krotrn@krotrn-pc>  Mon, 23 Mar 2026 00:43:00 +0530
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Mon, 23 Mar 2026 00:43:00 +0530
 
 apsta (0.5.3-1ppa2) noble; urgency=medium
 
@@ -45,13 +59,13 @@ apsta (0.5.3-1ppa2) noble; urgency=medium
   * Keep COSMIC binary install conditional when built locally with
     BUILD_COSMIC=1.
 
- -- Karan Kumar Sah <krotrn@krotrn-pc>  Mon, 23 Mar 2026 00:27:00 +0530
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Mon, 23 Mar 2026 00:27:00 +0530
 
 apsta (0.5.3-1ppa1) noble; urgency=medium
 
   * Release 0.5.3
 
- -- Karan Kumar Sah <krotrn@krotrn-pc>  Mon, 23 Mar 2026 00:14:05 +0530
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Mon, 23 Mar 2026 00:14:05 +0530
 
 apsta (0.5.2-1ppa1) noble; urgency=medium
 
