@@ -8,32 +8,22 @@ version = "0.5.5"
 description = "Smart AP+STA WiFi hotspot manager for Linux"
 readme = "README.md"
 requires-python = ">=3.8"
-license = { text = "MIT" }
-authors = [
-  { name = "apsta contributors" }
-]
-maintainers = [
-  { name = "krotrn" }
-]
+license = {text = "MIT"}
+authors = [{ name = "apsta contributors" }]
+maintainers = [{ name = "krotrn" }]
 keywords = ["wifi", "hotspot", "ap", "sta", "networkmanager", "linux"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: System Administrators",
-  "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3 :: Only",
   "Topic :: System :: Networking",
-  "Topic :: Utilities"
 ]
 dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/krotrn/apsta"
-Repository = "https://github.com/krotrn/apsta"
-Issues = "https://github.com/krotrn/apsta/issues"
 
 [project.scripts]
 apsta = "apsta:main"
@@ -41,3 +31,4 @@ apsta-gtk = "apsta_gtk:main"
 
 [tool.setuptools]
 py-modules = ["apsta", "apsta_gtk"]
+include-package-data = true
