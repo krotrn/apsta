@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 
-from apsta_cli.cmd.status_config import _find_client
+from apsta_cli.cmd.status_config import _find_client, _set_client_bandwidth_limit
 
 
 class ClientManagementTests(unittest.TestCase):
@@ -29,6 +30,13 @@ class ClientManagementTests(unittest.TestCase):
     def test_find_missing_identifier(self):
         self.assertIsNone(_find_client(self.clients, "tablet"))
         self.assertIsNone(_find_client(self.clients, ""))
+
+    @patch("apsta_cli.cmd.status_config.run_cmd")
+    def test_set_client_bandwidth_limit_rejects_invalid_rate(self, mock_run_cmd):
+        ok, message = _set_client_bandwidth_limit("wlan0_ap", "aa:bb:cc:dd:ee:ff", 0)
+        self.assertFalse(ok)
+        self.assertIn("greater than 0", message)
+        mock_run_cmd.assert_not_called()
 
 
 if __name__ == "__main__":

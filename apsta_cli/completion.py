@@ -39,7 +39,7 @@ def _completion_bash() -> str:
         COMPREPLY=( $(compgen -W "--json" -- "${cur}") )
         ;;
     status)
-        COMPREPLY=( $(compgen -W "--json --clients --disconnect" -- "${cur}") )
+        COMPREPLY=( $(compgen -W "--json --clients --disconnect --limit-client --limit-kbps --use-profile" -- "${cur}") )
         ;;
     config)
         COMPREPLY=( $(compgen -W "--set" -- "${cur}") )
@@ -91,7 +91,7 @@ _apsta() {
                     _values 'options' --force --json
                     ;;
                 detect|status)
-                    _values 'options' --json --clients --disconnect
+                    _values 'options' --json --clients --disconnect --limit-client --limit-kbps --use-profile
                     ;;
                 config)
                     _values 'options' --set
@@ -128,6 +128,9 @@ complete -c apsta -n "__fish_seen_subcommand_from start" -l force -d "Force sing
 complete -c apsta -n "__fish_seen_subcommand_from start detect status" -l json -d "Output JSON"
 complete -c apsta -n "__fish_seen_subcommand_from status" -l clients -d "Show connected clients"
 complete -c apsta -n "__fish_seen_subcommand_from status" -l disconnect -d "Disconnect client by MAC/IP/hostname"
+complete -c apsta -n "__fish_seen_subcommand_from status" -l limit-client -d "Client to bandwidth limit"
+complete -c apsta -n "__fish_seen_subcommand_from status" -l limit-kbps -d "Bandwidth limit in Kbps"
+complete -c apsta -n "__fish_seen_subcommand_from status" -l use-profile -d "Switch active profile"
 complete -c apsta -n "__fish_seen_subcommand_from profile" -a "list show use create delete"
 complete -c apsta -n "__fish_seen_subcommand_from config" -l set -d "Set config key"
 complete -c apsta -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"'''

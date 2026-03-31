@@ -3,7 +3,7 @@
 
 import json
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ..common import (
     C,
@@ -27,6 +27,7 @@ from ..common import (
     save_config,
     set_active_profile,
     set_profile_field,
+    warn,
 )
 from ..hardware import get_wifi_interfaces
 
@@ -89,9 +90,94 @@ def _disconnect_client(ap_iface: str, mac: str) -> bool:
     return run_cmd(["iw", "dev", ap_iface, "station", "del", mac]).returncode == 0
 
 
+def _set_client_bandwidth_limit(ap_iface: str, mac: str, kbps: int) -> Tuple[bool, str]:
+    if kbps <= 0:
+        return False, "limit-kbps must be greater than 0"
+
+    pref = 50000 + (sum(int(part, 16) for part in mac.split(":")) % 10000)
+
+    # Ensure clsact exists; ignore if already configured.
+    run_cmd(["tc", "qdisc", "add", "dev", ap_iface, "clsact"])
+
+    # Replace existing filters for this client rule id.
+    run_cmd(["tc", "filter", "del", "dev", ap_iface, "ingress", "pref", str(pref)])
+    run_cmd(["tc", "filter", "del", "dev", ap_iface, "egress", "pref", str(pref)])
+
+    ingress = run_cmd(
+        [
+            "tc", "filter", "add", "dev", ap_iface, "ingress", "pref", str(pref), "protocol", "all",
+            "flower", "src_mac", mac,
+            "action", "police", "rate", f"{kbps}kbit", "burst", "64k", "conform-exceed", "drop",
+        ]
+    )
+    if ingress.returncode != 0:
+        msg = (ingress.stderr or ingress.stdout or "tc ingress filter failed").strip()
+        return False, msg
+
+    egress = run_cmd(
+        [
+            "tc", "filter", "add", "dev", ap_iface, "egress", "pref", str(pref), "protocol", "all",
+            "flower", "dst_mac", mac,
+            "action", "police", "rate", f"{kbps}kbit", "burst", "64k", "conform-exceed", "drop",
+        ]
+    )
+    if egress.returncode != 0:
+        msg = (egress.stderr or egress.stdout or "tc egress filter failed").strip()
+        return False, msg
+
+    return True, ""
+
+
 def cmd_status(args):
     config = load_config()
     method = config.get("start_method")
+
+    if getattr(args, "use_profile", None):
+        require_root()
+        name = args.use_profile.strip()
+        if not name:
+            err("Profile name cannot be empty.")
+            sys.exit(1)
+        if not set_active_profile(config, name):
+            err(f"Profile not found: {name}")
+            info("See profiles with:  apsta profile list")
+            sys.exit(1)
+        save_config(config)
+        ok(f"Switched active profile to: {name}")
+        print()
+        return
+
+    if getattr(args, "limit_client", None) or getattr(args, "limit_kbps", None):
+        require_root()
+        if not args.limit_client or args.limit_kbps is None:
+            err("Both --limit-client and --limit-kbps are required together.")
+            sys.exit(1)
+        if method != "hostapd":
+            err("Client bandwidth limits are available only in hostapd mode.")
+            sys.exit(1)
+
+        ap_iface = config.get("ap_interface")
+        if not ap_iface:
+            err("No active AP interface found.")
+            sys.exit(1)
+
+        clients = _read_hostapd_clients()
+        target = _find_client(clients, args.limit_client)
+        if not target:
+            err(f"Client not found: {args.limit_client}")
+            sys.exit(1)
+
+        mac = target["mac"]
+        success, message = _set_client_bandwidth_limit(ap_iface, mac, int(args.limit_kbps))
+        if success:
+            ok(f"Applied {args.limit_kbps} Kbps limit for {mac}")
+            print()
+            return
+
+        err(f"Failed to apply client limit: {message}")
+        info("This operation requires tc flower support in your kernel and driver.")
+        sys.exit(1)
+
     if getattr(args, "disconnect", None):
         require_root()
         if method != "hostapd":

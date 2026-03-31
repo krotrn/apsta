@@ -26,6 +26,7 @@ from .support import (
     _create_virtual_ap_iface,
     _get_active_hotspot_con_name,
     _get_connected_ssid,
+    _pick_least_congested_channel,
     _get_sta_channel_band,
     _is_dfs_channel,
     _run_nmcli_hotspot,
@@ -98,7 +99,13 @@ def _cmd_start_impl(args):
     else:
         channel = config.get("channel") or DEFAULT_CONFIG["channel"]
         band    = config.get("band")    or DEFAULT_CONFIG["band"]
-        info(f"Not connected to STA — using configured channel {channel}, band {band}")
+
+        auto_channel = _pick_least_congested_channel(target.name, band)
+        if auto_channel:
+            channel = auto_channel
+            info(f"Not connected to STA — auto-selected least congested channel {channel}, band {band}")
+        else:
+            info(f"Not connected to STA — using configured channel {channel}, band {band}")
 
     info(f"SSID:     {ssid}")
     info(f"Password: {password}")

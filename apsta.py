@@ -50,6 +50,8 @@ examples:
   apsta status --json
   apsta status --clients
   sudo apsta status --disconnect 7e:2f:aa:11:22:33
+  sudo apsta status --limit-client 7e:2f:aa:11:22:33 --limit-kbps 8000
+  sudo apsta status --use-profile travel
   apsta profile list
   apsta profile use home
   apsta config --set ssid=MyHotspot
@@ -77,6 +79,9 @@ examples:
     p_status.add_argument("--json", action="store_true", help="Output machine-readable JSON")
     p_status.add_argument("--clients", action="store_true", help="Show connected hotspot clients only")
     p_status.add_argument("--disconnect", metavar="CLIENT", help="Disconnect client by MAC, IP, or hostname")
+    p_status.add_argument("--limit-client", metavar="CLIENT", help="Client to bandwidth-limit by MAC, IP, or hostname")
+    p_status.add_argument("--limit-kbps", metavar="KBPS", type=int, help="Bandwidth limit in Kbps for --limit-client")
+    p_status.add_argument("--use-profile", metavar="NAME", help="Quickly switch active profile")
 
     p_profile = sub.add_parser("profile", help="Manage named hotspot profiles")
     p_profile_sub = p_profile.add_subparsers(dest="action")

@@ -112,6 +112,7 @@ class ApstaWindowActionsMixin:
 
         active   = bool(ap_iface)
         ssid     = cfg.get("ssid") or "—"
+        active_profile = cfg.get("active_profile") or "default"
 
         if active:
             self._status_row.set_subtitle("Active")
@@ -137,6 +138,7 @@ class ApstaWindowActionsMixin:
         pwd = cfg.get("password") or ""
         if pwd:
             self._pass_entry.set_text(pwd)
+        self._profile_entry.set_text(active_profile)
 
         self._start_btn.set_sensitive(not active)
         self._stop_btn.set_sensitive(active)
@@ -200,6 +202,58 @@ class ApstaWindowActionsMixin:
         if success:
             self._disconnect_entry.set_text("")
         threading.Thread(target=self._bg_refresh_clients, daemon=True).start()
+
+    def _on_limit_client_clicked(self, _btn):
+        identifier = self._disconnect_entry.get_text().strip()
+        kbps = self._limit_kbps_entry.get_text().strip()
+        if not identifier:
+            self._show_banner("Enter client MAC, IP, or hostname first.", error=True)
+            return
+        if not kbps.isdigit() or int(kbps) <= 0:
+            self._show_banner("Limit must be a positive Kbps number.", error=True)
+            return
+
+        self._limit_btn.set_sensitive(False)
+        threading.Thread(target=self._bg_limit_client, args=(identifier, kbps), daemon=True).start()
+
+    def _bg_limit_client(self, identifier: str, kbps: str):
+        script = f'"{APSTA}" status --limit-client "$1" --limit-kbps "$2"'
+        rc, stdout, stderr = run_apsta_root_script(script, identifier, kbps)
+        if rc == 0:
+            GLib.idle_add(self._on_limit_done, True, f"Applied {kbps} Kbps limit.")
+            return
+
+        raw = strip_ansi(stderr or stdout or "Unknown error").strip()
+        msg = first_error_line(raw)
+        GLib.idle_add(self._on_limit_done, False, msg)
+
+    def _on_limit_done(self, success: bool, message: str):
+        self._limit_btn.set_sensitive(True)
+        self._show_banner(message, error=not success)
+
+    def _on_apply_profile_clicked(self, _btn):
+        profile = self._profile_entry.get_text().strip()
+        if not profile:
+            self._show_banner("Profile name cannot be empty.", error=True)
+            return
+        self._profile_apply_btn.set_sensitive(False)
+        threading.Thread(target=self._bg_apply_profile, args=(profile,), daemon=True).start()
+
+    def _bg_apply_profile(self, profile: str):
+        rc, stdout, stderr = run_apsta_root_script(f'"{APSTA}" status --use-profile "$1"', profile)
+        if rc == 0:
+            GLib.idle_add(self._on_apply_profile_done, True, f"Switched profile to '{profile}'.")
+            return
+
+        raw = strip_ansi(stderr or stdout or "Unknown error").strip()
+        msg = first_error_line(raw)
+        GLib.idle_add(self._on_apply_profile_done, False, msg)
+
+    def _on_apply_profile_done(self, success: bool, message: str):
+        self._profile_apply_btn.set_sensitive(True)
+        self._show_banner(message, error=not success)
+        if success:
+            self._refresh_status()
 
     def _fetch_channel_info(self, iface: str):
         """Run `iw dev <iface> info` in a thread; update UI via GLib.idle_add."""
