@@ -99,6 +99,24 @@ Key technical decisions:
 
 ---
 
+## Project Layout
+
+The codebase is organized into small folder-based packages for readability and
+scalability:
+
+- `apsta.py` — CLI launcher and argparse wiring
+- `apsta_cli/` — CLI implementation package
+- `apsta_cli/cmd/` — user-facing command handlers (detect, status/config, USB)
+- `apsta_cli/net/` — hotspot lifecycle internals (start, stop, support helpers)
+- `apsta_gui/` — GTK app package
+- `apsta_gui/mixins/` — UI page builders and action/polling logic
+- `apsta_gtk.py` — GTK launcher
+- `gtk-ui/apsta-gtk` — desktop launcher script used by installer/package
+
+This keeps entrypoints tiny and isolates domains so changes stay local.
+
+---
+
 ## Install
 
 ### For Users

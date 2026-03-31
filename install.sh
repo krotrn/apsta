@@ -4,6 +4,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="/usr/local/bin/apsta"
+CLI_PACKAGE_DIR="/usr/local/bin/apsta_cli"
 
 install_completion() {
     local shell_name="$1"
@@ -44,6 +45,11 @@ echo "Installing apsta..."
 cp "$SCRIPT_DIR/apsta.py" "$TARGET"
 chmod +x "$TARGET"
 echo "  ✔  apsta installed → $TARGET"
+
+rm -rf "$CLI_PACKAGE_DIR"
+cp -r "$SCRIPT_DIR/apsta_cli" "$CLI_PACKAGE_DIR"
+find "$CLI_PACKAGE_DIR" -type f -name "*.py" -exec chmod 0644 {} \;
+echo "  ✔  CLI package installed → $CLI_PACKAGE_DIR"
 
 echo ""
 read -r -p "Install shell completion? [y/N] " completion_answer
