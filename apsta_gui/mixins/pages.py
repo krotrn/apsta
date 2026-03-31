@@ -113,6 +113,48 @@ class ApstaWindowPagesMixin:
         btn_row.set_child(btn_box)
         control_group.add(btn_row)
 
+        share_row = Adw.ActionRow(
+            title="Share hotspot",
+            subtitle="Render QR or copy Wi-Fi share string",
+        )
+
+        share_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
+        show_qr_btn = Gtk.Button(label="Show QR")
+        show_qr_btn.add_css_class("pill")
+        show_qr_btn.set_valign(Gtk.Align.CENTER)
+        show_qr_btn.connect("clicked", self._on_show_wifi_qr_clicked)
+
+        share_btn = Gtk.Button(label="Copy Share String")
+        share_btn.add_css_class("pill")
+        share_btn.set_valign(Gtk.Align.CENTER)
+        share_btn.connect("clicked", self._on_copy_wifi_uri_clicked)
+
+        share_box.append(show_qr_btn)
+        share_box.append(share_btn)
+        share_row.add_suffix(share_box)
+        control_group.add(share_row)
+
+        qr_row = Adw.ActionRow(title="QR Code", subtitle="Scan to join hotspot")
+        qr_row.set_activatable(False)
+
+        qr_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        qr_box.set_margin_top(6)
+        qr_box.set_margin_bottom(6)
+
+        self._qr_picture = Gtk.Picture()
+        self._qr_picture.set_size_request(220, 220)
+        self._qr_picture.set_halign(Gtk.Align.CENTER)
+
+        self._qr_hint = Gtk.Label(label="Press 'Show QR' to generate a scannable code.")
+        self._qr_hint.set_halign(Gtk.Align.CENTER)
+        self._qr_hint.add_css_class("dim-label")
+
+        qr_box.append(self._qr_picture)
+        qr_box.append(self._qr_hint)
+        qr_row.set_child(qr_box)
+        control_group.add(qr_row)
+
         page.add(control_group)
 
         # ── Feedback banner ──

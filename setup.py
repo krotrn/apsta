@@ -5,7 +5,7 @@ setup(
     version="0.5.6",
     py_modules=["apsta", "apsta_gtk"],
     packages=find_packages(include=["apsta_cli*", "apsta_gui*"]),
-    install_requires=[],
+    install_requires=["qrcode[pil]>=7.4"],
     entry_points={
         "console_scripts": [
             "apsta=apsta:main",

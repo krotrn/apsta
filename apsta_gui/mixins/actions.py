@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Status, actions, and background worker mixin for the GTK window."""
 
+import io
 import os
 import subprocess
 import threading
 
-from gi.repository import GLib
+from gi.repository import Gdk, GdkPixbuf, GLib
 
 from ..helpers import (
     APSTA,
@@ -19,6 +20,87 @@ from ..helpers import (
 
 
 class ApstaWindowActionsMixin:
+    @staticmethod
+    def _escape_wifi_field(value: str) -> str:
+        escaped = value.replace("\\", "\\\\")
+        escaped = escaped.replace(";", "\\;")
+        escaped = escaped.replace(",", "\\,")
+        escaped = escaped.replace(":", "\\:")
+        return escaped
+
+    def _build_wifi_share_string(self) -> str:
+        ssid = self._ssid_entry.get_text().strip() or self._ssid_status_row.get_subtitle().strip()
+        password = self._pass_entry.get_text().strip()
+        if not ssid or ssid == "—":
+            return ""
+
+        ssid = self._escape_wifi_field(ssid)
+        password = self._escape_wifi_field(password)
+        return f"WIFI:T:WPA;S:{ssid};P:{password};;"
+
+    def _render_wifi_qr(self, payload: str) -> bool:
+        try:
+            import qrcode
+        except ImportError:
+            self._show_banner("QR renderer missing. Install python3-qrcode and python3-pil.", error=True)
+            self._qr_hint.set_label("QR library missing: install python3-qrcode and python3-pil.")
+            return False
+
+        try:
+            qr = qrcode.QRCode(
+                error_correction=qrcode.constants.ERROR_CORRECT_M,
+                box_size=8,
+                border=2,
+            )
+            qr.add_data(payload)
+            qr.make(fit=True)
+            image = qr.make_image(fill_color="black", back_color="white")
+
+            png_buf = io.BytesIO()
+            image.save(png_buf, format="PNG")
+
+            loader = GdkPixbuf.PixbufLoader.new_with_type("png")
+            loader.write(png_buf.getvalue())
+            loader.close()
+            pixbuf = loader.get_pixbuf()
+            if pixbuf is None:
+                raise RuntimeError("Failed to decode generated QR image")
+
+            # Keep a reference so the paintable is not GC'd while shown.
+            self._qr_texture = Gdk.Texture.new_for_pixbuf(pixbuf)
+            self._qr_picture.set_paintable(self._qr_texture)
+            self._qr_hint.set_label("Scan with your phone camera to join the hotspot.")
+            return True
+        except Exception as exc:
+            self._show_banner(f"Could not generate QR: {str(exc)[:120]}", error=True)
+            self._qr_hint.set_label("Failed to render QR code.")
+            return False
+
+    def _on_show_wifi_qr_clicked(self, _btn):
+        payload = self._build_wifi_share_string()
+        if not payload:
+            self._show_banner("No SSID available to share.", error=True)
+            self._qr_hint.set_label("No SSID found. Start hotspot or enter values first.")
+            return
+
+        if self._render_wifi_qr(payload):
+            self._show_banner("QR code generated.")
+
+    def _on_copy_wifi_uri_clicked(self, _btn):
+        payload = self._build_wifi_share_string()
+        if not payload:
+            self._show_banner("No SSID available to share.", error=True)
+            return
+
+        display = Gdk.Display.get_default()
+        if display is None:
+            self._show_banner("Could not access display clipboard.", error=True)
+            return
+
+        clipboard = display.get_clipboard()
+        clipboard.set(payload)
+        self._show_banner("Share string copied. Paste into any Wi-Fi QR generator.")
+
     def _refresh_status(self):
         """Read config.json directly (0o644 — no root needed) and update UI."""
         cfg = read_config()

@@ -14,12 +14,14 @@ fi
 # not valid Python and always fails regardless of what is installed.
 python3 -c "
 import gi
+import qrcode
+from PIL import Image
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw
 " 2>/dev/null || {
-    echo "GTK4 or Libadwaita not found."
-    echo "Run: sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1"
+    echo "Required GTK or QR dependencies not found."
+    echo "Run: sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil"
     exit 1
 }
 
