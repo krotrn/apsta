@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from fcntl import LOCK_EX, LOCK_NB, LOCK_UN, flock
 from pathlib import Path
 from typing import List, Optional
-__version__ = "0.5.6"
+__version__ = "0.6.0"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 #
