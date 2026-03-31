@@ -1,3 +1,10 @@
+apsta (0.6.0-1) noble; urgency=medium
+
+  * Release 0.6.0: profiles, QR sharing, client controls, locking/logging,
+    congestion-aware channel selection, tests, and CI/release workflows
+
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Wed, 01 Apr 2026 12:00:00 +0000
+
 apsta (0.5.6-1) noble; urgency=medium
 
   * Release 0.5.6: Fix ghost state bug and add prerm cleanup hook
