@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    outputs:
+      pkg_version: ${{ steps.versions.outputs.pkg_version }}
+      tag_version: ${{ steps.versions.outputs.tag_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify version sync and tag
+        id: versions
+        run: |
+          python - <<'PY'
+          import pathlib
+          import re
+
+          root = pathlib.Path('.')
+          pyproject = root.joinpath('pyproject.toml').read_text(encoding='utf-8')
+          setup_py = root.joinpath('setup.py').read_text(encoding='utf-8')
+
+          m1 = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
+          m2 = re.search(r'version\s*=\s*"([^"]+)"', setup_py)
+          if not m1 or not m2:
+              raise SystemExit('Could not extract version from pyproject.toml or setup.py')
+
+          pyproject_version = m1.group(1)
+          setup_version = m2.group(1)
+          if pyproject_version != setup_version:
+              raise SystemExit(f'Version mismatch: pyproject={pyproject_version} setup.py={setup_version}')
+
+          tag_ref = '${{ github.ref_name }}'
+          tag_version = tag_ref[1:] if tag_ref.startswith('v') else tag_ref
+          if tag_ref and tag_ref != 'main' and tag_ref.startswith('v') and tag_version != pyproject_version:
+              raise SystemExit(f'Tag/version mismatch: tag={tag_ref} package={pyproject_version}')
+
+          with open('${{ github.output }}', 'a', encoding='utf-8') as out:
+              out.write(f'pkg_version={pyproject_version}\n')
+              out.write(f'tag_version={tag_version}\n')
+          PY
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+
+      - name: Build package
+        run: python -m build
+
+      - name: Validate package metadata
+        run: twine check dist/*
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist-${{ steps.versions.outputs.pkg_version }}
+          path: dist/*
+
+  publish-pypi:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-and-verify
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist-${{ needs.build-and-verify.outputs.pkg_version }}
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

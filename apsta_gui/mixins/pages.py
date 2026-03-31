@@ -77,6 +77,21 @@ class ApstaWindowPagesMixin:
         self._pass_entry.set_text("changeme123")
         control_group.add(self._pass_entry)
 
+        self._profile_entry = Adw.EntryRow(title="Active profile")
+        self._profile_entry.set_text("default")
+        control_group.add(self._profile_entry)
+
+        profile_row = Adw.ActionRow(
+            title="Quick profile switch",
+            subtitle="Apply a named profile without leaving Status",
+        )
+        self._profile_apply_btn = Gtk.Button(label="Use Profile")
+        self._profile_apply_btn.add_css_class("pill")
+        self._profile_apply_btn.set_valign(Gtk.Align.CENTER)
+        self._profile_apply_btn.connect("clicked", self._on_apply_profile_clicked)
+        profile_row.add_suffix(self._profile_apply_btn)
+        control_group.add(profile_row)
+
         # Force mode toggle — needed when AP+STA concurrent is not supported.
         # When enabled, apsta start --force is passed, which disconnects the
         # existing WiFi connection and uses the single interface as AP.
@@ -184,6 +199,10 @@ class ApstaWindowPagesMixin:
         self._disconnect_entry = Adw.EntryRow(title="Client (MAC/IP/hostname)")
         clients_group.add(self._disconnect_entry)
 
+        self._limit_kbps_entry = Adw.EntryRow(title="Limit (Kbps)")
+        self._limit_kbps_entry.set_text("8000")
+        clients_group.add(self._limit_kbps_entry)
+
         disconnect_row = Adw.ActionRow(
             title="Disconnect client",
             subtitle="Removes one active station from the hotspot",
@@ -195,6 +214,17 @@ class ApstaWindowPagesMixin:
         self._disconnect_btn.connect("clicked", self._on_disconnect_client_clicked)
         disconnect_row.add_suffix(self._disconnect_btn)
         clients_group.add(disconnect_row)
+
+        limit_row = Adw.ActionRow(
+            title="Apply bandwidth limit",
+            subtitle="Per-client ingress/egress policing in hostapd mode",
+        )
+        self._limit_btn = Gtk.Button(label="Set Limit")
+        self._limit_btn.add_css_class("pill")
+        self._limit_btn.set_valign(Gtk.Align.CENTER)
+        self._limit_btn.connect("clicked", self._on_limit_client_clicked)
+        limit_row.add_suffix(self._limit_btn)
+        clients_group.add(limit_row)
 
         page.add(clients_group)
 

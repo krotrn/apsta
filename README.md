@@ -91,6 +91,8 @@ Key technical decisions:
 - **Channel sync**: reads live STA frequency via `iw dev link` and forces the AP
   to the same channel — prevents `Device or resource busy` on single-radio cards
 - **Band sync**: derives band (`a` or `bg`) from frequency — prevents `band bg channel 36` crash
+- **Auto channel (no STA link)**: scores nearby AP congestion and auto-picks
+  a safe channel (2.4 GHz: 1/6/11, 5 GHz: 36/40/44/48)
 - **DFS channels**: detects regulatory-blocked channels (52–144) and aborts with clear instructions
 - **Virtual interface MAC**: randomises the locally-administered MAC (`02:xx:xx:xx:xx:xx`)
   on the AP interface only — base interface MAC stays unchanged so NM keeps its STA connection
@@ -175,6 +177,16 @@ sudo apt install ../apsta_*_all.deb
 
 To enable `sudo apt install apsta` for other users, publish the generated `.deb` to your APT repo and add that repo to user systems.
 
+#### CI and release automation
+
+This repo includes GitHub Actions for quality gates and release operations:
+
+- `.github/workflows/ci.yml` — lint (`ruff`), compile checks, and unit tests
+- `.github/workflows/version-bump.yml` — bumps version in `pyproject.toml`,
+  `setup.py`, `apsta_cli/common.py`, and `apsta_gui/helpers.py`, then tags `vX.Y.Z`
+- `.github/workflows/release.yml` — verifies version sync/tag match, builds
+  distributions, validates metadata, and publishes to PyPI on version tags
+
 #### Publish: Launchpad PPA
 
 1. Create a PPA in Launchpad.
@@ -251,6 +263,12 @@ apsta status --clients
 # Disconnect one client by MAC, IP, or hostname (hostapd mode)
 sudo apsta status --disconnect aa:bb:cc:dd:ee:ff
 
+# Apply per-client bandwidth limit in Kbps (hostapd mode)
+sudo apsta status --limit-client aa:bb:cc:dd:ee:ff --limit-kbps 8000
+
+# Quick profile switch from status command
+sudo apsta status --use-profile travel
+
 # Configure SSID and password
 apsta config --set ssid=MyHotspot
 sudo apsta config --set password=secret123
@@ -299,7 +317,8 @@ apsta completion fish | sudo tee /etc/fish/completions/apsta.fish >/dev/null
 
 ### GTK4 / Libadwaita (GNOME, KDE, Xfce, any desktop)
 
-Full three-page GUI: Status, Hardware, Settings. Force start toggle for single-radio cards.
+Full three-page GUI: Status, Hardware, Settings. Includes force-start toggle,
+quick profile switch, QR sharing, and live client management (disconnect + bandwidth limit).
 
 ```bash
 apsta-gtk

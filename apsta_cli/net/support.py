@@ -29,6 +29,9 @@ from ..common import (
 
 _DFS_CHANNELS = set(range(52, 145))
 
+_SAFE_24G_CHANNELS = ("1", "6", "11")
+_SAFE_5G_CHANNELS = ("36", "40", "44", "48")
+
 
 def _check_hostapd_deps() -> bool:
     """Return True if hostapd and dnsmasq are both installed."""
@@ -238,6 +241,40 @@ def _get_sta_channel_band(iface: str) -> Tuple[Optional[str], Optional[str]]:
     channel = _freq_to_channel(freq_mhz)
     band    = "a" if freq_mhz >= 5000 else "bg"
     return channel, band
+
+
+def _pick_least_congested_channel(iface: str, band: str) -> Optional[str]:
+    """Pick a safe channel with the lowest observed scan congestion score."""
+    candidates = _SAFE_5G_CHANNELS if band == "a" else _SAFE_24G_CHANNELS
+    scores = {ch: 0.0 for ch in candidates}
+
+    # CHAN,SIGNAL is enough for lightweight congestion scoring.
+    scan = run_out(f"nmcli -t -f CHAN,SIGNAL device wifi list ifname {iface}")
+    if not scan:
+        return None
+
+    seen = False
+    for line in scan.splitlines():
+        parts = line.split(":")
+        if len(parts) < 2:
+            continue
+        channel = parts[0].strip()
+        if channel not in scores:
+            continue
+
+        seen = True
+        try:
+            signal = int(parts[1].strip())
+        except ValueError:
+            signal = 40
+
+        # Stronger neighboring APs count more toward channel congestion.
+        scores[channel] += max(1.0, signal / 25.0)
+
+    if not seen:
+        return None
+
+    return min(scores, key=lambda ch: (scores[ch], int(ch)))
 
 def _freq_to_channel(freq: int) -> Optional[str]:
     mapping_24 = {
