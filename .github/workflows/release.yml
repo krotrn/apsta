@@ -77,6 +77,8 @@ jobs:
     needs: build-and-verify
     runs-on: ubuntu-latest
     environment: pypi
+    env:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
     permissions:
       id-token: write
     steps:
@@ -87,12 +89,12 @@ jobs:
           path: dist
 
       - name: Publish to PyPI (Trusted Publisher)
-        if: ${{ secrets.PYPI_API_TOKEN == '' }}
+        if: ${{ env.PYPI_API_TOKEN == '' }}
         uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Publish to PyPI (API token fallback)
-        if: ${{ secrets.PYPI_API_TOKEN != '' }}
+        if: ${{ env.PYPI_API_TOKEN != '' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
+          password: ${{ env.PYPI_API_TOKEN }}
