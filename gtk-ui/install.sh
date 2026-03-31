@@ -24,6 +24,9 @@ from gi.repository import Gtk, Adw
 }
 
 install -Dm755 "$SCRIPT_DIR/apsta-gtk" /usr/local/bin/apsta-gtk
+rm -rf /usr/local/bin/apsta_gui
+cp -r "$SCRIPT_DIR/../apsta_gui" /usr/local/bin/apsta_gui
+find /usr/local/bin/apsta_gui -type f -name "*.py" -exec chmod 0644 {} \;
 install -Dm644 "$SCRIPT_DIR/com.github.apsta.Gtk.desktop" \
     /usr/share/applications/com.github.apsta.Gtk.desktop
 

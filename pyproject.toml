@@ -32,3 +32,6 @@ apsta-gtk = "apsta_gtk:main"
 [tool.setuptools]
 py-modules = ["apsta", "apsta_gtk"]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["apsta_cli*", "apsta_gui*"]
