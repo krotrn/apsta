@@ -5,7 +5,11 @@ import json
 import os
 import subprocess
 import sys
+import time
+from contextlib import contextmanager
 from copy import deepcopy
+from datetime import datetime, timezone
+from fcntl import LOCK_EX, LOCK_NB, LOCK_UN, flock
 from pathlib import Path
 from typing import List, Optional
 __version__ = "0.5.6"
@@ -55,6 +59,10 @@ AP_IP           = "192.168.42.1"
 AP_SUBNET       = "192.168.42.0/24"
 DHCP_RANGE      = ("192.168.42.10", "192.168.42.100")
 
+# Runtime paths
+LOG_PATH        = Path(os.environ.get("APSTA_LOG_PATH", "/var/log/apsta.log"))
+LOCK_PATH       = Path(os.environ.get("APSTA_LOCK_PATH", "/run/apsta.lock"))
+
 # ── Colors ────────────────────────────────────────────────────────────────────
 
 class C:
@@ -67,11 +75,130 @@ class C:
     DIM    = "\033[2m"
     RESET  = "\033[0m"
 
-def ok(msg):   print(f"  {C.GREEN}✔{C.RESET}  {msg}")
-def err(msg):  print(f"  {C.RED}✘{C.RESET}  {msg}")
-def warn(msg): print(f"  {C.YELLOW}⚠{C.RESET}  {msg}")
-def info(msg): print(f"  {C.CYAN}→{C.RESET}  {msg}")
-def head(msg): print(f"\n{C.BOLD}{msg}{C.RESET}")
+def _debug_enabled() -> bool:
+    raw = os.environ.get("APSTA_DEBUG", "")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _json_safe(value):
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(v) for v in value]
+    return str(value)
+
+
+def _resolve_log_path() -> Path:
+    preferred = LOG_PATH
+    parent = preferred.parent
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+        with open(preferred, "a", encoding="utf-8"):
+            pass
+        return preferred
+    except OSError:
+        fallback = Path("/tmp/apsta.log")
+        try:
+            with open(fallback, "a", encoding="utf-8"):
+                pass
+            return fallback
+        except OSError:
+            return preferred
+
+
+def log_event(level: str, event: str, **fields):
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "level": level,
+        "event": event,
+        "pid": os.getpid(),
+        "uid": os.geteuid(),
+        "command": " ".join(sys.argv),
+    }
+    if fields:
+        record["fields"] = _json_safe(fields)
+
+    path = _resolve_log_path()
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, sort_keys=True) + "\n")
+    except OSError:
+        # Logging should never break command execution.
+        return
+
+
+def ok(msg):
+    print(f"  {C.GREEN}✔{C.RESET}  {msg}")
+    log_event("INFO", "ok", message=msg)
+
+
+def err(msg):
+    print(f"  {C.RED}✘{C.RESET}  {msg}")
+    log_event("ERROR", "err", message=msg)
+
+
+def warn(msg):
+    print(f"  {C.YELLOW}⚠{C.RESET}  {msg}")
+    log_event("WARN", "warn", message=msg)
+
+
+def info(msg):
+    print(f"  {C.CYAN}→{C.RESET}  {msg}")
+    log_event("INFO", "info", message=msg)
+
+
+def head(msg):
+    print(f"\n{C.BOLD}{msg}{C.RESET}")
+    log_event("INFO", "header", message=msg)
+
+
+def dbg(msg, **fields):
+    log_event("DEBUG", "debug", message=msg, **fields)
+    if _debug_enabled():
+        print(f"  {C.DIM}· {msg}{C.RESET}")
+
+
+def _resolve_lock_path() -> Path:
+    preferred = LOCK_PATH
+    try:
+        preferred.parent.mkdir(parents=True, exist_ok=True)
+        return preferred
+    except OSError:
+        return Path("/tmp/apsta.lock")
+
+
+@contextmanager
+def command_lock(action: str, wait_seconds: float = 0.0):
+    lock_file = _resolve_lock_path()
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(lock_file, "a+", encoding="utf-8") as f:
+        start = time.monotonic()
+        while True:
+            try:
+                flock(f.fileno(), LOCK_EX | LOCK_NB)
+                break
+            except BlockingIOError:
+                if wait_seconds <= 0 or (time.monotonic() - start) >= wait_seconds:
+                    raise RuntimeError(
+                        "Another apsta hotspot action is already running. "
+                        "Please wait and retry."
+                    )
+                time.sleep(0.05)
+
+        f.seek(0)
+        f.truncate(0)
+        f.write(f"pid={os.getpid()} action={action} ts={datetime.now(timezone.utc).isoformat()}\n")
+        f.flush()
+        dbg("Acquired command lock", action=action, lock_path=str(lock_file))
+
+        try:
+            yield
+        finally:
+            dbg("Released command lock", action=action, lock_path=str(lock_file))
+            flock(f.fileno(), LOCK_UN)
 
 # ── Shell helpers ──────────────────────────────────────────────────────────────
 

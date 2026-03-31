@@ -1,15 +1,27 @@
 #!/usr/bin/env python3
 """Hotspot stop command implementation."""
 
-from ..common import head, load_config, ok, require_root, run, run_out, save_config, warn
+import sys
+
+from ..common import command_lock, dbg, err, head, load_config, ok, require_root, run, run_out, save_config, warn
 from .support import _stop_hostapd_ap_sta
 def cmd_stop(args):
+    try:
+        with command_lock("stop"):
+            _cmd_stop_impl(args)
+    except RuntimeError as exc:
+        err(str(exc))
+        sys.exit(1)
+
+
+def _cmd_stop_impl(args):
     require_root()
     head("apsta — Stopping Hotspot")
     print()
 
     config = load_config()
     method = config.get("start_method")
+    dbg("Stopping hotspot", method=method, ap_interface=config.get("ap_interface"))
 
     if method == "hostapd":
         ap_iface   = config.get("ap_interface")
