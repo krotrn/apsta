@@ -4,7 +4,21 @@
 import sys
 from typing import Optional
 
-from ..common import AP_IP, C, DEFAULT_CONFIG, DHCP_RANGE, err, info, load_config, ok, run, save_config, warn
+from ..common import (
+    AP_IP,
+    C,
+    DEFAULT_CONFIG,
+    DHCP_RANGE,
+    command_lock,
+    dbg,
+    err,
+    info,
+    load_config,
+    ok,
+    run,
+    save_config,
+    warn,
+)
 from ..hardware import WifiInterface, get_hardware_capability, get_wifi_interfaces
 from .support import (
     _ap_interface_is_up,
@@ -18,7 +32,17 @@ from .support import (
     _start_hostapd_ap_sta,
 )
 def cmd_start(args):
+    try:
+        with command_lock("start"):
+            _cmd_start_impl(args)
+    except RuntimeError as exc:
+        err(str(exc))
+        sys.exit(1)
+
+
+def _cmd_start_impl(args):
     config = load_config()
+    dbg("Loaded start config", active_profile=config.get("active_profile"), interface=config.get("interface"))
     ifaces = get_wifi_interfaces()
     if not ifaces:
         err("No WiFi interfaces found. Run: apsta detect")
@@ -33,6 +57,13 @@ def cmd_start(args):
         sys.exit(1)
 
     cap = get_hardware_capability(target.name)
+    dbg(
+        "Hardware capability resolved",
+        interface=target.name,
+        supports_ap=cap.supports_ap,
+        supports_ap_sta_concurrent=cap.supports_ap_sta_concurrent,
+        supports_ap_sta_split=cap.supports_ap_sta_split,
+    )
     print()
 
     if not cap.supports_ap:
@@ -84,6 +115,7 @@ def cmd_start(args):
     if cap.supports_ap_sta_concurrent:
         # Strategy 1: nmcli on virtual interface
         info("Strategy: nmcli concurrent AP+STA (virtual interface)")
+        dbg("Trying strategy", strategy="nmcli-concurrent", interface=target.name)
         ap_iface = _create_virtual_ap_iface(target.name)
         if not ap_iface:
             warn("Virtual interface creation failed, falling back to hostapd.")
@@ -107,6 +139,7 @@ def cmd_start(args):
     if cap.supports_ap_sta_split and not args.force:
         # Strategy 2: hostapd on virtual interface
         info("Strategy: hostapd concurrent AP+STA (virtual interface)")
+        dbg("Trying strategy", strategy="hostapd-split", interface=target.name)
 
         if not _check_hostapd_deps():
             warn("Install hostapd and dnsmasq to enable this mode.")
@@ -151,6 +184,7 @@ def cmd_start(args):
         sys.exit(1)
 
     info("Strategy: nmcli hotspot (single interface — WiFi will disconnect)")
+    dbg("Trying strategy", strategy="nmcli-force", interface=target.name)
     ap_iface = target.name
     result = _run_nmcli_hotspot(ap_iface, ssid, password, band, channel)
 
