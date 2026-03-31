@@ -157,6 +157,47 @@ class ApstaWindowPagesMixin:
 
         page.add(control_group)
 
+        clients_group = Adw.PreferencesGroup(title="Connected Clients")
+
+        self._clients_buf = Gtk.TextBuffer()
+        self._clients_buf.set_text("Client management is available in hostapd mode.")
+
+        clients_tv = Gtk.TextView(buffer=self._clients_buf)
+        clients_tv.set_editable(False)
+        clients_tv.set_cursor_visible(False)
+        clients_tv.set_monospace(True)
+        clients_tv.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        clients_tv.set_margin_start(8)
+        clients_tv.set_margin_end(8)
+        clients_tv.set_margin_top(8)
+        clients_tv.set_margin_bottom(8)
+
+        clients_scroll = Gtk.ScrolledWindow()
+        clients_scroll.set_child(clients_tv)
+        clients_scroll.set_min_content_height(120)
+
+        clients_row = Adw.ActionRow()
+        clients_row.set_activatable(False)
+        clients_row.set_child(clients_scroll)
+        clients_group.add(clients_row)
+
+        self._disconnect_entry = Adw.EntryRow(title="Client (MAC/IP/hostname)")
+        clients_group.add(self._disconnect_entry)
+
+        disconnect_row = Adw.ActionRow(
+            title="Disconnect client",
+            subtitle="Removes one active station from the hotspot",
+        )
+        self._disconnect_btn = Gtk.Button(label="Disconnect")
+        self._disconnect_btn.add_css_class("pill")
+        self._disconnect_btn.add_css_class("destructive-action")
+        self._disconnect_btn.set_valign(Gtk.Align.CENTER)
+        self._disconnect_btn.connect("clicked", self._on_disconnect_client_clicked)
+        disconnect_row.add_suffix(self._disconnect_btn)
+        clients_group.add(disconnect_row)
+
+        page.add(clients_group)
+
         # ── Feedback banner ──
         self._banner = Adw.Banner(title="")
         self._banner.set_revealed(False)

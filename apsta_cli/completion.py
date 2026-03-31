@@ -35,8 +35,11 @@ def _completion_bash() -> str:
     start)
         COMPREPLY=( $(compgen -W "--force --json" -- "${cur}") )
         ;;
-    detect|status)
+    detect)
         COMPREPLY=( $(compgen -W "--json" -- "${cur}") )
+        ;;
+    status)
+        COMPREPLY=( $(compgen -W "--json --clients --disconnect" -- "${cur}") )
         ;;
     config)
         COMPREPLY=( $(compgen -W "--set" -- "${cur}") )
@@ -88,7 +91,7 @@ _apsta() {
                     _values 'options' --force --json
                     ;;
                 detect|status)
-                    _values 'options' --json
+                    _values 'options' --json --clients --disconnect
                     ;;
                 config)
                     _values 'options' --set
@@ -123,6 +126,8 @@ complete -c apsta -n "__fish_use_subcommand" -a "completion" -d "Print shell com
 
 complete -c apsta -n "__fish_seen_subcommand_from start" -l force -d "Force single-interface mode"
 complete -c apsta -n "__fish_seen_subcommand_from start detect status" -l json -d "Output JSON"
+complete -c apsta -n "__fish_seen_subcommand_from status" -l clients -d "Show connected clients"
+complete -c apsta -n "__fish_seen_subcommand_from status" -l disconnect -d "Disconnect client by MAC/IP/hostname"
 complete -c apsta -n "__fish_seen_subcommand_from profile" -a "list show use create delete"
 complete -c apsta -n "__fish_seen_subcommand_from config" -l set -d "Set config key"
 complete -c apsta -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"'''

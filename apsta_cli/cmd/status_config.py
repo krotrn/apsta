@@ -3,6 +3,7 @@
 
 import json
 import sys
+from typing import Dict, List, Optional
 
 from ..common import (
     C,
@@ -21,6 +22,7 @@ from ..common import (
     load_config,
     ok,
     require_root,
+    run_cmd,
     run_out,
     save_config,
     set_active_profile,
@@ -29,9 +31,97 @@ from ..common import (
 from ..hardware import get_wifi_interfaces
 
 
+def _read_hostapd_clients() -> List[Dict[str, str]]:
+    clients: List[Dict[str, str]] = []
+    if not DNSMASQ_LEASES.exists():
+        return clients
+
+    try:
+        leases = DNSMASQ_LEASES.read_text().strip()
+    except OSError:
+        return clients
+
+    for line in leases.splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        hostname = "" if parts[3] == "*" else parts[3]
+        clients.append(
+            {
+                "hostname": hostname,
+                "mac": parts[1],
+                "ip": parts[2],
+            }
+        )
+    return clients
+
+
+def _find_client(clients: List[Dict[str, str]], identifier: str) -> Optional[Dict[str, str]]:
+    needle = identifier.strip().lower()
+    if not needle:
+        return None
+
+    for client in clients:
+        mac = (client.get("mac") or "").strip().lower()
+        ip = (client.get("ip") or "").strip().lower()
+        hostname = (client.get("hostname") or "").strip().lower()
+        if needle in {mac, ip, hostname}:
+            return client
+    return None
+
+
+def _hostapd_ok(result) -> bool:
+    output = f"{result.stdout or ''}\n{result.stderr or ''}".upper()
+    return result.returncode == 0 and "FAIL" not in output
+
+
+def _disconnect_client(ap_iface: str, mac: str) -> bool:
+    # Prefer hostapd_cli in hostapd mode; fallback to iw station delete.
+    cmd_sets = [
+        ["hostapd_cli", "-i", ap_iface, "disassociate", mac],
+        ["hostapd_cli", "-i", ap_iface, "deauthenticate", mac],
+    ]
+    for cmd in cmd_sets:
+        result = run_cmd(cmd)
+        if _hostapd_ok(result):
+            return True
+
+    return run_cmd(["iw", "dev", ap_iface, "station", "del", mac]).returncode == 0
+
+
 def cmd_status(args):
     config = load_config()
     method = config.get("start_method")
+    if getattr(args, "disconnect", None):
+        require_root()
+        if method != "hostapd":
+            err("Client disconnect is available only in hostapd mode.")
+            sys.exit(1)
+
+        ap_iface = config.get("ap_interface")
+        if not ap_iface:
+            err("No active AP interface found.")
+            sys.exit(1)
+
+        clients = _read_hostapd_clients()
+        target = _find_client(clients, args.disconnect)
+        if not target:
+            err(f"Client not found: {args.disconnect}")
+            if clients:
+                info("Connected clients:")
+                for client in clients:
+                    host = client.get("hostname") or "(no hostname)"
+                    print(f"     {host:<20} {client['mac']}  {client['ip']}")
+            sys.exit(1)
+
+        mac = target["mac"]
+        if _disconnect_client(ap_iface, mac):
+            ok(f"Disconnected client {mac}")
+            print()
+            return
+
+        err(f"Failed to disconnect client {mac}")
+        sys.exit(1)
 
     ifaces = get_wifi_interfaces()
 
@@ -48,20 +138,7 @@ def cmd_status(args):
                     "state": parts[3],
                 })
 
-        clients = []
-        if method == "hostapd" and DNSMASQ_LEASES.exists():
-            try:
-                leases = DNSMASQ_LEASES.read_text().strip()
-                for line in leases.splitlines():
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        clients.append({
-                            "hostname": parts[3],
-                            "mac": parts[1],
-                            "ip": parts[2],
-                        })
-            except OSError:
-                pass
+        clients = _read_hostapd_clients() if method == "hostapd" else []
 
         payload = {
             "method": method,
@@ -89,6 +166,25 @@ def cmd_status(args):
         print(json.dumps(payload, indent=2))
         return
 
+    if getattr(args, "clients", False):
+        head("apsta — Connected Clients")
+        print()
+        if method != "hostapd":
+            warn("Client listing is available only in hostapd mode.")
+            print()
+            return
+        clients = _read_hostapd_clients()
+        if not clients:
+            info("No clients connected.")
+            print()
+            return
+        info("Connected clients:")
+        for client in clients:
+            host = client.get("hostname") or "(no hostname)"
+            print(f"     {host:<20} [{client['mac']}]  {client['ip']}")
+        print()
+        return
+
     head("apsta — Status")
     print()
 
@@ -113,20 +209,16 @@ def cmd_status(args):
         print(f"     {C.BOLD}{iface.name}{C.RESET}  {connected}")
 
     # Show hostapd clients if active
-    if method == "hostapd" and DNSMASQ_LEASES.exists():
+    if method == "hostapd":
         print()
         info("Connected clients:")
-        try:
-            leases = DNSMASQ_LEASES.read_text().strip()
-            if leases:
-                for line in leases.splitlines():
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        print(f"     {parts[3]}  [{parts[1]}]  {parts[2]}")
-            else:
-                print(f"     {C.DIM}No clients connected{C.RESET}")
-        except OSError:
-            pass
+        clients = _read_hostapd_clients()
+        if clients:
+            for client in clients:
+                host = client.get("hostname") or "(no hostname)"
+                print(f"     {host}  [{client['mac']}]  {client['ip']}")
+        else:
+            print(f"     {C.DIM}No clients connected{C.RESET}")
 
     print()
 

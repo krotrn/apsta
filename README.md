@@ -245,6 +245,12 @@ sudo apsta stop
 # Show current state (shows connected clients in hostapd mode)
 apsta status
 
+# Show only connected hotspot clients (hostapd mode)
+apsta status --clients
+
+# Disconnect one client by MAC, IP, or hostname (hostapd mode)
+sudo apsta status --disconnect aa:bb:cc:dd:ee:ff
+
 # Configure SSID and password
 apsta config --set ssid=MyHotspot
 sudo apsta config --set password=secret123
