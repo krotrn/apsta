@@ -48,6 +48,8 @@ examples:
   sudo apsta start
   sudo apsta start --force
   apsta status --json
+  apsta status --clients
+  sudo apsta status --disconnect 7e:2f:aa:11:22:33
   apsta profile list
   apsta profile use home
   apsta config --set ssid=MyHotspot
@@ -73,6 +75,8 @@ examples:
 
     p_status = sub.add_parser("status", help="Show status")
     p_status.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+    p_status.add_argument("--clients", action="store_true", help="Show connected hotspot clients only")
+    p_status.add_argument("--disconnect", metavar="CLIENT", help="Disconnect client by MAC, IP, or hostname")
 
     p_profile = sub.add_parser("profile", help="Manage named hotspot profiles")
     p_profile_sub = p_profile.add_subparsers(dest="action")

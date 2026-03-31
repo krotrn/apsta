@@ -2,6 +2,7 @@
 """Status, actions, and background worker mixin for the GTK window."""
 
 import io
+import json
 import os
 import subprocess
 import threading
@@ -139,6 +140,66 @@ class ApstaWindowActionsMixin:
 
         self._start_btn.set_sensitive(not active)
         self._stop_btn.set_sensitive(active)
+
+        # Refresh client list asynchronously so status polling doesn't block UI.
+        threading.Thread(target=self._bg_refresh_clients, daemon=True).start()
+
+    def _bg_refresh_clients(self):
+        rc, stdout, stderr = run_apsta("status", "--json")
+        if rc != 0:
+            message = first_error_line(strip_ansi(stderr or stdout or "Failed to load clients."))
+            GLib.idle_add(self._clients_buf.set_text, f"Could not refresh clients:\n{message}")
+            return
+
+        try:
+            payload = json.loads(stdout or "{}")
+        except json.JSONDecodeError:
+            GLib.idle_add(self._clients_buf.set_text, "Could not parse client status output.")
+            return
+
+        method = payload.get("method")
+        clients = payload.get("clients") or []
+        if method != "hostapd":
+            GLib.idle_add(self._clients_buf.set_text, "Client management is available in hostapd mode.")
+            return
+
+        if not clients:
+            GLib.idle_add(self._clients_buf.set_text, "No clients connected.")
+            return
+
+        lines = ["HOSTNAME             MAC                 IP"]
+        lines.append("------------------------------------------------")
+        for client in clients:
+            host = client.get("hostname") or "(no hostname)"
+            mac = client.get("mac") or "-"
+            ip = client.get("ip") or "-"
+            lines.append(f"{host[:20]:<20} {mac:<18} {ip}")
+        GLib.idle_add(self._clients_buf.set_text, "\n".join(lines))
+
+    def _on_disconnect_client_clicked(self, _btn):
+        identifier = self._disconnect_entry.get_text().strip()
+        if not identifier:
+            self._show_banner("Enter a client MAC, IP, or hostname.", error=True)
+            return
+        self._disconnect_btn.set_sensitive(False)
+        threading.Thread(target=self._bg_disconnect_client, args=(identifier,), daemon=True).start()
+
+    def _bg_disconnect_client(self, identifier: str):
+        rc, stdout, stderr = run_apsta_root_script(f'"{APSTA}" status --disconnect "$1"', identifier)
+        if rc == 0:
+            GLib.idle_add(self._on_disconnect_done, True, "Client disconnected.")
+            return
+
+        raw = strip_ansi(stderr or stdout or "Unknown error").strip()
+        msg = first_error_line(raw)
+        GLib.idle_add(self._on_disconnect_done, False, msg)
+
+    def _on_disconnect_done(self, success: bool, message: str):
+        self._disconnect_btn.set_sensitive(True)
+        self._show_banner(message, error=not success)
+        if success:
+            self._disconnect_entry.set_text("")
+        threading.Thread(target=self._bg_refresh_clients, daemon=True).start()
 
     def _fetch_channel_info(self, iface: str):
         """Run `iw dev <iface> info` in a thread; update UI via GLib.idle_add."""
