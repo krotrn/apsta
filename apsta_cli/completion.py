@@ -24,7 +24,7 @@ def _completion_bash() -> str:
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    local commands="detect start stop status config enable disable scan-usb recommend completion"
+    local commands="detect start stop status profile config enable disable scan-usb recommend completion"
 
     if [[ ${COMP_CWORD} -eq 1 ]]; then
     COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
@@ -40,6 +40,11 @@ def _completion_bash() -> str:
         ;;
     config)
         COMPREPLY=( $(compgen -W "--set" -- "${cur}") )
+        ;;
+    profile)
+        if [[ ${COMP_CWORD} -eq 2 ]]; then
+            COMPREPLY=( $(compgen -W "list show use create delete" -- "${cur}") )
+        fi
         ;;
     completion)
         COMPREPLY=( $(compgen -W "bash zsh fish" -- "${cur}") )
@@ -60,6 +65,7 @@ _apsta() {
         'start:Start hotspot'
         'stop:Stop hotspot'
         'status:Show status'
+        'profile:Manage named hotspot profiles'
         'config:View/edit config'
         'enable:Install auto-start hooks'
         'disable:Disable auto-start hooks'
@@ -87,6 +93,9 @@ _apsta() {
                 config)
                     _values 'options' --set
                     ;;
+                profile)
+                    _values 'action' list show use create delete
+                    ;;
                 completion)
                     _values 'shell' bash zsh fish
                     ;;
@@ -104,6 +113,7 @@ complete -c apsta -n "__fish_use_subcommand" -a "detect" -d "Detect hardware AP+
 complete -c apsta -n "__fish_use_subcommand" -a "start" -d "Start hotspot"
 complete -c apsta -n "__fish_use_subcommand" -a "stop" -d "Stop hotspot"
 complete -c apsta -n "__fish_use_subcommand" -a "status" -d "Show status"
+complete -c apsta -n "__fish_use_subcommand" -a "profile" -d "Manage named hotspot profiles"
 complete -c apsta -n "__fish_use_subcommand" -a "config" -d "View/edit config"
 complete -c apsta -n "__fish_use_subcommand" -a "enable" -d "Install auto-start hooks"
 complete -c apsta -n "__fish_use_subcommand" -a "disable" -d "Disable auto-start hooks"
@@ -113,6 +123,7 @@ complete -c apsta -n "__fish_use_subcommand" -a "completion" -d "Print shell com
 
 complete -c apsta -n "__fish_seen_subcommand_from start" -l force -d "Force single-interface mode"
 complete -c apsta -n "__fish_seen_subcommand_from start detect status" -l json -d "Output JSON"
+complete -c apsta -n "__fish_seen_subcommand_from profile" -a "list show use create delete"
 complete -c apsta -n "__fish_seen_subcommand_from config" -l set -d "Set config key"
 complete -c apsta -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"'''
 

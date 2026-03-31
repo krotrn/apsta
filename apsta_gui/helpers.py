@@ -19,7 +19,15 @@ POLL_INTERVAL = 5
 def read_config() -> dict:
     """Read /etc/apsta/config.json. Returns {} on any error."""
     try:
-        return json.loads(CONFIG.read_text())
+        cfg = json.loads(CONFIG.read_text())
+        profiles = cfg.get("profiles")
+        active = cfg.get("active_profile")
+        if isinstance(profiles, dict) and isinstance(active, str) and active in profiles:
+            selected = profiles.get(active) or {}
+            for key in ("ssid", "password", "band", "channel", "interface"):
+                if key in selected:
+                    cfg[key] = selected.get(key)
+        return cfg
     except (OSError, json.JSONDecodeError):
         return {}
 

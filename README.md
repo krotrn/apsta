@@ -138,7 +138,7 @@ sudo apt install apsta
 If you are on a different distribution (Fedora, Arch, etc.) or prefer using `pipx`, use this one-liner to install the dependencies and the app:
 
 ```bash
-sudo apt update && sudo apt install -y pipx network-manager iw iproute2 usbutils pciutils hostapd dnsmasq python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 && pipx ensurepath && pipx install git+https://github.com/krotrn/apsta.git
+sudo apt update && sudo apt install -y pipx network-manager iw iproute2 usbutils pciutils hostapd dnsmasq python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil && pipx ensurepath && pipx install git+https://github.com/krotrn/apsta.git
 ```
 
 ### 3. Development / Source Install
@@ -249,6 +249,12 @@ apsta status
 apsta config --set ssid=MyHotspot
 sudo apsta config --set password=secret123
 
+# Manage named profiles
+apsta profile list
+sudo apsta profile create travel
+sudo apsta profile use travel
+apsta profile show travel
+
 # Scan plugged-in USB WiFi adapters
 apsta scan-usb
 
@@ -285,7 +291,6 @@ apsta completion fish | sudo tee /etc/fish/completions/apsta.fish >/dev/null
 
 ---
 
-
 ### GTK4 / Libadwaita (GNOME, KDE, Xfce, any desktop)
 
 Full three-page GUI: Status, Hardware, Settings. Force start toggle for single-radio cards.
@@ -296,10 +301,10 @@ apsta-gtk
 
 `apsta-gtk` is installed by the same one-command package install.
 
-Requires: `python3-gi`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`
+Requires: `python3-gi`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `python3-qrcode`, `python3-pil`
 
 ```bash
-sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1
+sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil
 ```
 
 ---
@@ -346,8 +351,8 @@ Realtek chipsets are intentionally excluded — out-of-kernel drivers, unreliabl
 
 ## Compatibility
 
-| Distro               | CLI | GTK UI | 
-| -------------------- | --- | ------ | 
+| Distro               | CLI | GTK UI |
+| -------------------- | --- | ------ |
 | Pop!\_OS 22.04       | ✅  | ✅     |
 | Pop!\_OS COSMIC      | ✅  | ✅     |
 | Ubuntu 22.04 / 24.04 | ✅  | ✅     |
