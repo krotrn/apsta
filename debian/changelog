@@ -1,3 +1,9 @@
+apsta (0.6.0-2) noble; urgency=medium
+
+  * Re-upload 0.6.0 for PPA publication after duplicate-version rejection.
+
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Wed, 01 Apr 2026 13:30:00 +0000
+
 apsta (0.6.0-1) noble; urgency=medium
 
   * Release 0.6.0: profiles, QR sharing, client controls, locking/logging,
