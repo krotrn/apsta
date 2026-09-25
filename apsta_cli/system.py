@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Tuple
 
-from .common import C, SCRIPT_DIR, err, head, info, ok, require_root, run, run_out, warn
+from .common import C, SCRIPT_DIR, err, head, info, install_hint, ok, require_root, run, run_out, warn
 
 SLEEP_HOOK_DEST  = Path("/usr/lib/systemd/system-sleep/apsta-sleep")
 SERVICE_DEST     = Path("/etc/systemd/system/apsta.service")
@@ -322,6 +322,6 @@ def _check_dependencies():
     if missing:
         err("Missing required dependencies:")
         for binary, package in missing:
-            print(f"     {C.BOLD}{binary}{C.RESET}  →  sudo apt install {package}")
+            print(f"     {C.BOLD}{binary}{C.RESET}  →  {install_hint(package)}")
         sys.exit(1)
 

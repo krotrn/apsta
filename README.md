@@ -135,15 +135,33 @@ sudo apt update
 sudo apt install apsta
 ```
 
-### 2. Manual One-Liner (Python pipx)
+### 2. Arch Linux / Manjaro / EndeavourOS
 
-If you are on a different distribution (Fedora, Arch, etc.) or prefer using `pipx`, use this one-liner to install the dependencies and the app:
+Build and install the bundled PKGBUILD (installs the CLI, GTK UI, systemd unit and sleep hook):
+
+```bash
+git clone https://github.com/krotrn/apsta
+cd apsta/packaging/arch
+makepkg -si
+```
+
+Optional extras for hostapd mode and the GUI:
+
+```bash
+sudo pacman -S --needed hostapd dnsmasq iptables python-gobject gtk4 libadwaita polkit
+```
+
+Auto-start on boot: `sudo systemctl enable --now apsta`
+
+### 3. Manual One-Liner (Python pipx)
+
+If you are on another Debian/Ubuntu-based distribution or prefer using `pipx`, use this one-liner to install the dependencies and the app:
 
 ```bash
 sudo apt update && sudo apt install -y pipx network-manager iw iproute2 usbutils pciutils hostapd dnsmasq python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil && pipx ensurepath && pipx install git+https://github.com/krotrn/apsta.git
 ```
 
-### 3. Development / Source Install
+### 4. Development / Source Install
 
 If you want to contribute or build from source:
 
@@ -187,6 +205,20 @@ This repo includes GitHub Actions for quality gates and release operations:
 - `.github/workflows/release.yml` — verifies version sync/tag match, builds
   distributions, validates metadata, and publishes to PyPI on version tags
 
+#### Publish: Arch (AUR)
+
+`scripts/bump_version.py` keeps `pkgver` in `packaging/arch/PKGBUILD` in sync.
+After pushing the release tag:
+
+```bash
+cd packaging/arch
+updpkgsums                      # refresh sha256sums for the new tag tarball
+makepkg -f                      # build + run tests
+makepkg --printsrcinfo > .SRCINFO
+```
+
+Then copy `PKGBUILD`, `apsta.install` and `.SRCINFO` into your AUR `apsta` repo and push.
+
 #### Publish: Launchpad PPA
 
 1. Create a PPA in Launchpad.
@@ -223,7 +255,8 @@ sudo apt install apsta
 **For hostapd mode** (Intel AX200 and similar split-block cards):
 
 ```bash
-sudo apt install hostapd dnsmasq
+sudo apt install hostapd dnsmasq         # Debian / Ubuntu
+sudo pacman -S --needed hostapd dnsmasq  # Arch
 ```
 
 apsta will prompt if these are missing when hostapd mode is needed.
@@ -329,7 +362,8 @@ apsta-gtk
 Requires: `python3-gi`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `python3-qrcode`, `python3-pil`
 
 ```bash
-sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil
+sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil   # Debian / Ubuntu
+sudo pacman -S --needed python-gobject gtk4 libadwaita python-qrcode python-pillow     # Arch
 ```
 
 ---

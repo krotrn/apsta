@@ -13,6 +13,7 @@ from ..common import (
     dbg,
     err,
     info,
+    install_hint,
     load_config,
     ok,
     require_root,
@@ -161,7 +162,7 @@ def _cmd_start_impl(args):
             else:
                 err("Cannot start hotspot without disconnecting WiFi.")
                 info("Options:")
-                info("  sudo apt install hostapd dnsmasq   then retry")
+                info(f"  {install_hint('hostapd', 'dnsmasq')}   then retry")
                 info("  sudo apsta start --force           to disconnect WiFi and proceed")
                 sys.exit(1)
         else:

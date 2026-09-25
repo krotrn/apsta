@@ -16,6 +16,12 @@ dist/
 .pybuild/
 .twine_env/
 
+# makepkg output
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.tar.gz
+packaging/arch/*.pkg.tar.*
+
 # Debian build output
 debian/.debhelper/
 debian/apsta/

@@ -21,6 +21,7 @@ from ..common import (
     HOSTAPD_CONF,
     HOSTAPD_PID,
     info,
+    install_hint,
     ok,
     run,
     run_cmd,
@@ -42,7 +43,7 @@ def _check_hostapd_deps() -> bool:
             missing.append(binary)
     if missing:
         warn(f"hostapd mode requires: {', '.join(missing)}")
-        info("Install with:  sudo apt install " + " ".join(missing))
+        info("Install with:  " + install_hint(*missing))
         return False
     return True
 

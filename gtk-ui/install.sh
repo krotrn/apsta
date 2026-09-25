@@ -21,7 +21,11 @@ gi.require_version('Adw', '1')
 from gi.repository import Gtk, Adw
 " 2>/dev/null || {
     echo "Required GTK or QR dependencies not found."
-    echo "Run: sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil"
+    if command -v pacman >/dev/null 2>&1; then
+        echo "Run: sudo pacman -S --needed python-gobject gtk4 libadwaita python-qrcode python-pillow"
+    else
+        echo "Run: sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil"
+    fi
     exit 1
 }
 

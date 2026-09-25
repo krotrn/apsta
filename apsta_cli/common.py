@@ -3,6 +3,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -218,6 +219,18 @@ def run_cmd(args: List[str], capture=True, check=False) -> subprocess.CompletedP
 def run_out(cmd: str) -> str:
     result = run(cmd)
     return result.stdout.strip() if result.returncode == 0 else ""
+
+# Debian package name -> Arch name, where they differ.
+_ARCH_PACKAGES = {"network-manager": "networkmanager"}
+
+
+def install_hint(*packages: str) -> str:
+    """Install command for this distro, given Debian package names."""
+    if shutil.which("pacman"):
+        names = " ".join(_ARCH_PACKAGES.get(p, p) for p in packages)
+        return f"sudo pacman -S --needed {names}"
+    return f"sudo apt install {' '.join(packages)}"
+
 
 def require_root():
     if os.geteuid() != 0:

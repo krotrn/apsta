@@ -43,8 +43,8 @@ class ApstaWindowActionsMixin:
         try:
             import qrcode
         except ImportError:
-            self._show_banner("QR renderer missing. Install python3-qrcode and python3-pil.", error=True)
-            self._qr_hint.set_label("QR library missing: install python3-qrcode and python3-pil.")
+            self._show_banner("QR renderer missing. Install the Python qrcode and Pillow packages.", error=True)
+            self._qr_hint.set_label("QR library missing: install the Python qrcode and Pillow packages.")
             return False
 
         try:

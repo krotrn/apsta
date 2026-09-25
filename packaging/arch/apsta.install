@@ -1,0 +1,16 @@
+post_install() {
+  echo "==> Run 'apsta detect' to check your card, then 'sudo apsta start'."
+  echo "==> Auto-start on boot + sleep/wake: sudo systemctl enable --now apsta"
+}
+
+post_upgrade() {
+  # Loading the config as root moves plaintext passwords out of the
+  # world-readable config.json into the root-only secrets.json.
+  if [ -f /etc/apsta/config.json ]; then
+    apsta config >/dev/null 2>&1 || true
+  fi
+}
+
+pre_remove() {
+  apsta stop >/dev/null 2>&1 || true
+}

@@ -11,6 +11,7 @@ TARGETS = [
     (Path("setup.py"), r'(version\s*=\s*")([^"]+)(")', 0),
     (Path("apsta_cli/common.py"), r'(__version__\s*=\s*")([^"]+)(")', 0),
     (Path("apsta_gui/helpers.py"), r'(VERSION\s*=\s*")([^"]+)(")', 0),
+    (Path("packaging/arch/PKGBUILD"), r'^(pkgver=)([^\n]+)()', re.MULTILINE),
 ]
 
 
