@@ -16,7 +16,7 @@ EMBEDDED_SLEEP_HOOK = """#!/usr/bin/env bash
 # /usr/lib/systemd/system-sleep/apsta-sleep  (systemd)
 # /etc/pm/sleep.d/10_apsta                   (pm-utils / OpenRC)
 
-APSTA=\"/usr/local/bin/apsta\"
+APSTA=\"$(command -v apsta || echo /usr/local/bin/apsta)\"
 STATE_FILE=\"/run/apsta-was-active\"
 CONFIG=\"/etc/apsta/config.json\"
 
@@ -71,8 +71,8 @@ PartOf=NetworkManager.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStartPre=/usr/bin/nm-online -q --timeout 30
-ExecStart=/usr/local/bin/apsta start
-ExecStop=/usr/local/bin/apsta stop
+ExecStart=apsta start
+ExecStop=apsta stop
 TimeoutStopSec=5
 SuccessExitStatus=0 1
 
@@ -125,24 +125,13 @@ def cmd_enable(args):
     if not launcher_source.exists():
         launcher_source = Path(sys.argv[0]).resolve()
 
-    if binary_dest.is_symlink():
-        warn(f"{binary_dest} is a symlink — overwriting it with a regular file.")
-        warn("If apsta was installed via a package manager, use that to update instead.")
-        binary_dest.unlink()
-
-    shutil.copy2(launcher_source, binary_dest)
-    binary_dest.chmod(0o755)
-    ok(f"Binary installed → {binary_dest}")
-
-    if cli_package_src.exists():
-        if cli_package_dest.exists():
-            shutil.rmtree(cli_package_dest)
-        shutil.copytree(cli_package_src, cli_package_dest)
-        for py_file in cli_package_dest.rglob("*.py"):
-            py_file.chmod(0o644)
-        ok("CLI package installed → /usr/local/bin/apsta_cli/")
+    # A packaged install (e.g. /usr/bin/apsta from the .deb) is already on the
+    # system PATH; copying into /usr/local/bin would shadow it across upgrades.
+    installed = shutil.which("apsta", path="/usr/sbin:/usr/bin:/sbin:/bin")
+    if installed:
+        ok(f"Using packaged binary → {installed}")
     else:
-        warn(f"CLI package not found, skipping: {cli_package_src}")
+        _install_local_copy(launcher_source, binary_dest, cli_package_src, cli_package_dest)
 
     system_dir     = SCRIPT_DIR / "system"
     sleep_hook_src = system_dir / "apsta-sleep"
@@ -163,6 +152,27 @@ def cmd_enable(args):
         return
 
     _enable_systemd(sleep_hook_src, service_src)
+
+
+def _install_local_copy(launcher_source: Path, binary_dest: Path, cli_package_src: Path, cli_package_dest: Path):
+    if binary_dest.is_symlink():
+        warn(f"{binary_dest} is a symlink — overwriting it with a regular file.")
+        warn("If apsta was installed via a package manager, use that to update instead.")
+        binary_dest.unlink()
+
+    shutil.copy2(launcher_source, binary_dest)
+    binary_dest.chmod(0o755)
+    ok(f"Binary installed → {binary_dest}")
+
+    if cli_package_src.exists():
+        if cli_package_dest.exists():
+            shutil.rmtree(cli_package_dest)
+        shutil.copytree(cli_package_src, cli_package_dest)
+        for py_file in cli_package_dest.rglob("*.py"):
+            py_file.chmod(0o644)
+        ok("CLI package installed → /usr/local/bin/apsta_cli/")
+    else:
+        warn(f"CLI package not found, skipping: {cli_package_src}")
 
 
 def _enable_systemd(sleep_hook_src: Path, service_src: Path):

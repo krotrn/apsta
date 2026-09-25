@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Shared constants and process helpers for the GTK UI."""
 
+from __future__ import annotations  # tuple[...] hints on Python 3.8
+
 import json
 import os
 import shutil

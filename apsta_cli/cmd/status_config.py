@@ -338,6 +338,12 @@ def cmd_config(args):
             save_config(config)
             ok(f"Switched active profile to: {val}")
         elif key in PROFILE_KEYS:
+            if key == "password" and val and not 8 <= len(val) <= 63:
+                err("WPA2 password must be 8–63 characters.")
+                sys.exit(1)
+            if key in ("ssid", "password") and "\n" in val:
+                err(f"{key} cannot contain newlines.")
+                sys.exit(1)
             if val.lower() in ("none", "null", ""):
                 set_profile_field(config, key, None)
                 save_config(config)

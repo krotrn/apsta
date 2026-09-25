@@ -90,7 +90,10 @@ _apsta() {
                 start)
                     _values 'options' --force --json
                     ;;
-                detect|status)
+                detect)
+                    _values 'options' --json
+                    ;;
+                status)
                     _values 'options' --json --clients --disconnect --limit-client --limit-kbps --use-profile
                     ;;
                 config)

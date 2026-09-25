@@ -13,7 +13,8 @@
 #   - Virtual interfaces (wlo1_ap) are destroyed by the kernel on suspend;
 #     this hook cleanly saves state before they vanish and restores after
 
-APSTA="/usr/local/bin/apsta"
+# /usr/local/bin for `apsta enable` installs, /usr/bin for the .deb
+APSTA="$(command -v apsta || echo /usr/local/bin/apsta)"
 STATE_FILE="/run/apsta-was-active"
 
 # Config is at /etc/apsta/ — NOT $HOME/.config/apsta/.

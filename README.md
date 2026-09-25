@@ -270,7 +270,7 @@ sudo apsta status --limit-client aa:bb:cc:dd:ee:ff --limit-kbps 8000
 sudo apsta status --use-profile travel
 
 # Configure SSID and password
-apsta config --set ssid=MyHotspot
+sudo apsta config --set ssid=MyHotspot
 sudo apsta config --set password=secret123
 
 # Manage named profiles
@@ -395,7 +395,7 @@ Realtek chipsets are intentionally excluded — out-of-kernel drivers, unreliabl
 
 ## Why This Exists
 
-Built out of fration with Pop!\_OS COSMIC's missing hotspot UI and the silent WiFi-disconnection behaviour of `nmcli hotspot`. The deeper problem: Windows implements a virtual WiFi multiplexing layer that makes AP+STA work on almost any card. Linux exposes raw hardware capability honestly — and for cards like the Intel AX200, that capability exists but nmcli can't use it. apsta bridges the gap using hostapd directly.
+Built out of frustration with Pop!\_OS COSMIC's missing hotspot UI and the silent WiFi-disconnection behaviour of `nmcli hotspot`. The deeper problem: Windows implements a virtual WiFi multiplexing layer that makes AP+STA work on almost any card. Linux exposes raw hardware capability honestly — and for cards like the Intel AX200, that capability exists but nmcli can't use it. apsta bridges the gap using hostapd directly.
 
 If you've ever typed:
 

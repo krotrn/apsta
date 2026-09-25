@@ -34,7 +34,7 @@ def get_wifi_interfaces() -> List[WifiInterface]:
     """Parse ip link output to find WiFi interfaces."""
     ifaces = []
     result = run_out("ip link show")
-    for match in re.finditer(r"^\d+: (\w+):.*$", result, re.MULTILINE):
+    for match in re.finditer(r"^\d+: ([^:@\s]+)[:@].*$", result, re.MULTILINE):
         name = match.group(1)
         check = run(f"iw dev {name} info")
         if check.returncode != 0:
@@ -50,8 +50,18 @@ def get_wifi_interfaces() -> List[WifiInterface]:
         ifaces.append(WifiInterface(name=name, mac=mac, state=state, connected_ssid=ssid))
     return ifaces
 
+def _iface_phy(iface: str) -> Optional[str]:
+    try:
+        return Path(f"/sys/class/net/{iface}/phy80211/name").read_text().strip() or None
+    except OSError:
+        return None
+
+
 def get_hardware_capability(iface: str) -> HardwareCapability:
-    iw_output = run_out("iw list")
+    # `iw list` covers every radio; scope to this interface's phy so a second
+    # adapter (e.g. a USB dongle) doesn't leak its capabilities into this one.
+    phy = _iface_phy(iface)
+    iw_output = (phy and run_out(f"iw phy {phy} info")) or run_out("iw list")
 
     modes = re.findall(r"\* (\w[\w/ ]+)", iw_output)
     supported_modes = [m.strip() for m in modes if len(m.strip()) < 30]

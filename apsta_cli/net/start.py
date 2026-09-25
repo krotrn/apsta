@@ -15,6 +15,7 @@ from ..common import (
     info,
     load_config,
     ok,
+    require_root,
     run,
     save_config,
     warn,
@@ -33,6 +34,7 @@ from .support import (
     _start_hostapd_ap_sta,
 )
 def cmd_start(args):
+    require_root()
     try:
         with command_lock("start"):
             _cmd_start_impl(args)
@@ -108,7 +110,8 @@ def _cmd_start_impl(args):
             info(f"Not connected to STA — using configured channel {channel}, band {band}")
 
     info(f"SSID:     {ssid}")
-    info(f"Password: {password}")
+    # print, not info(): info() also writes to the log file
+    print(f"  {C.CYAN}→{C.RESET}  Password: {password}")
     info(f"Band:     {'5 GHz' if band == 'a' else '2.4 GHz'}  (channel {channel})")
     print()
 

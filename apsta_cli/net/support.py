@@ -8,6 +8,7 @@ import signal
 import subprocess
 import textwrap
 import time
+from pathlib import Path
 from typing import Optional, Tuple
 
 from ..common import (
@@ -46,6 +47,35 @@ def _check_hostapd_deps() -> bool:
     return True
 
 
+def _ap_iface_name(base_iface: str) -> str:
+    # Kernel interface names max out at 15 chars (IFNAMSIZ - 1); USB adapters
+    # are often already 15 (e.g. wlx00c0ca123456).
+    return f"{base_iface[:12]}_ap"
+
+
+def _write_private(path, text: str) -> None:
+    """Create a root-only file, refusing to reuse whatever is already at a /tmp path."""
+    path.unlink(missing_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+
+
+def _kill_pidfile(path, expected_comm: str) -> bool:
+    """SIGTERM the pid in `path` only if it is really `expected_comm`."""
+    try:
+        pid = int(path.read_text().strip())
+        comm = Path(f"/proc/{pid}/comm").read_text().strip()
+        if comm != expected_comm:
+            return False
+        os.kill(pid, signal.SIGTERM)
+        return True
+    except (ValueError, OSError):
+        return False
+    finally:
+        path.unlink(missing_ok=True)
+
+
 def _write_hostapd_conf(ap_iface: str, ssid: str, password: str, channel: str) -> None:
     """Write hostapd configuration file for AP+STA mode."""
     # hw_mode: g = 2.4 GHz, a = 5 GHz
@@ -71,7 +101,7 @@ def _write_hostapd_conf(ap_iface: str, ssid: str, password: str, channel: str) -
         # `ip link set ap0 up` returns EBUSY when wlo1 is in use.
         ignore_broadcast_ssid=0
     """)
-    HOSTAPD_CONF.write_text(conf)
+    _write_private(HOSTAPD_CONF, conf)
 
 
 def _write_dnsmasq_conf(ap_iface: str) -> None:
@@ -86,7 +116,7 @@ def _write_dnsmasq_conf(ap_iface: str) -> None:
         server=8.8.8.8
         server=8.8.4.4
     """)
-    DNSMASQ_CONF.write_text(conf)
+    _write_private(DNSMASQ_CONF, conf)
 
 
 def _start_hostapd_ap_sta(
@@ -110,7 +140,7 @@ def _start_hostapd_ap_sta(
 
     Returns the ap interface name on success, None on failure.
     """
-    ap_iface = f"{base_iface}_ap"
+    ap_iface = _ap_iface_name(base_iface)
 
     # Remove stale virtual interface if it exists
     run(f"iw dev {ap_iface} del 2>/dev/null")
@@ -133,6 +163,8 @@ def _start_hostapd_ap_sta(
     run(f"nmcli dev set {ap_iface} managed no")
 
     # Write configs
+    for stale in (HOSTAPD_PID, DNSMASQ_PID, DNSMASQ_LEASES):
+        stale.unlink(missing_ok=True)
     _write_hostapd_conf(ap_iface, ssid, password, channel)
     _write_dnsmasq_conf(ap_iface)
 
@@ -191,25 +223,13 @@ def _stop_hostapd_ap_sta(ap_iface: str, base_iface: str) -> None:
     """Tear down hostapd-based AP+STA setup cleanly."""
 
     # Stop hostapd
-    if HOSTAPD_PID.exists():
-        try:
-            pid = int(HOSTAPD_PID.read_text().strip())
-            os.kill(pid, signal.SIGTERM)
-            time.sleep(0.5)
-        except (ValueError, ProcessLookupError, OSError):
-            pass
-        HOSTAPD_PID.unlink(missing_ok=True)
+    if _kill_pidfile(HOSTAPD_PID, "hostapd"):
+        time.sleep(0.5)
     else:
         run("pkill -f 'hostapd.*apsta' 2>/dev/null")
 
     # Stop dnsmasq
-    if DNSMASQ_PID.exists():
-        try:
-            pid = int(DNSMASQ_PID.read_text().strip())
-            os.kill(pid, signal.SIGTERM)
-        except (ValueError, ProcessLookupError, OSError):
-            pass
-        DNSMASQ_PID.unlink(missing_ok=True)
+    _kill_pidfile(DNSMASQ_PID, "dnsmasq")
 
     # Remove iptables rules
     run(f"iptables -t nat -D POSTROUTING -s {AP_SUBNET} -o {base_iface} -j MASQUERADE 2>/dev/null")
@@ -334,7 +354,7 @@ def _run_nmcli_hotspot(ap_iface: str, ssid: str, password: str, band: str, chann
     ])
 
 def _create_virtual_ap_iface(base_iface: str) -> Optional[str]:
-    ap_iface = f"{base_iface}_ap"
+    ap_iface = _ap_iface_name(base_iface)
     run(f"iw dev {ap_iface} del 2>/dev/null")
 
     result = run(f"iw dev {base_iface} interface add {ap_iface} type __ap")

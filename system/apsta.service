@@ -21,8 +21,8 @@ RemainAfterExit=yes
 # nm-online -q blocks until NM reports a full connection, preventing this race.
 ExecStartPre=/usr/bin/nm-online -q --timeout 30
 
-ExecStart=/usr/local/bin/apsta start
-ExecStop=/usr/local/bin/apsta stop
+ExecStart=apsta start
+ExecStop=apsta stop
 
 # If NM is already shutting down when systemd sends stop to this unit,
 # nmcli connection down can hang waiting for a dead daemon.

@@ -3,9 +3,10 @@
 
 import sys
 
-from ..common import command_lock, dbg, err, head, load_config, ok, require_root, run, run_out, save_config, warn
+from ..common import command_lock, dbg, err, head, load_config, ok, require_root, run, run_cmd, run_out, save_config, warn
 from .support import _stop_hostapd_ap_sta
 def cmd_stop(args):
+    require_root()
     try:
         with command_lock("stop"):
             _cmd_stop_impl(args)
@@ -15,7 +16,6 @@ def cmd_stop(args):
 
 
 def _cmd_stop_impl(args):
-    require_root()
     head("apsta — Stopping Hotspot")
     print()
 
@@ -34,22 +34,19 @@ def _cmd_stop_impl(args):
     else:
         # nmcli or nmcli-force stop
         con_name = config.get("active_con_name") or "Hotspot"
-        result = run(f"nmcli connection down '{con_name}'")
+        result = run_cmd(["nmcli", "connection", "down", con_name])
         if result.returncode == 0:
             ok(f"Hotspot connection '{con_name}' stopped.")
         else:
             warn(f"Could not bring down '{con_name}', scanning for active hotspot connections...")
             active = run_out("nmcli -t -f NAME,TYPE,DEVICE,STATE con show --active")
             hotspot_cons = [
-                l.split(":")[0] for l in active.splitlines()
-                if "802-11-wireless" in l and (
-                    l.split(":")[1].strip().lower() in ("ap", "hotspot")
-                    or "hotspot" in l.split(":")[0].lower()
-                )
+                line.split(":")[0] for line in active.splitlines()
+                if "802-11-wireless" in line and "hotspot" in line.split(":")[0].lower()
             ]
             if hotspot_cons:
                 for con in hotspot_cons:
-                    run(f"nmcli connection down '{con}'")
+                    run_cmd(["nmcli", "connection", "down", con])
                     ok(f"Stopped: {con}")
             else:
                 warn("No active hotspot connection found.")

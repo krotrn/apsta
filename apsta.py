@@ -54,7 +54,7 @@ examples:
   sudo apsta status --use-profile travel
   apsta profile list
   apsta profile use home
-  apsta config --set ssid=MyHotspot
+  sudo apsta config --set ssid=MyHotspot
   apsta completion zsh > ~/.zsh/completions/_apsta
   sudo apsta enable
         """,
