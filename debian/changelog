@@ -1,3 +1,17 @@
+apsta (0.6.1-1) noble; urgency=medium
+
+  * Fix maintainer scripts: debhelper snippets now run (were after exit 0)
+  * Service and sleep hook resolve apsta via PATH (works for /usr/bin installs)
+  * Store hotspot passwords in root-only /etc/apsta/secrets.json; migrate
+    plaintext passwords out of the world-readable config.json on upgrade
+  * Harden hostapd-mode runtime files (0600 configs, verified pid kills)
+  * Keep virtual AP interface names within the 15-char kernel limit
+  * Detect capabilities per radio instead of across all adapters
+  * Recommend iptables for hostapd-mode NAT
+  * Add Arch Linux PKGBUILD and pacman install hints
+
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Fri, 25 Sep 2026 18:38:14 +0000
+
 apsta (0.6.0-2) noble; urgency=medium
 
   * Re-upload 0.6.0 for PPA publication after duplicate-version rejection.

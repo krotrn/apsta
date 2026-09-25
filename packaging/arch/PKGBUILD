@@ -1,6 +1,6 @@
 # Maintainer: krotrn <krotrn.ks@gmail.com>
 pkgname=apsta
-pkgver=0.6.0
+pkgver=0.6.1
 pkgrel=1
 pkgdesc="Smart AP+STA WiFi hotspot manager for Linux"
 arch=('any')
