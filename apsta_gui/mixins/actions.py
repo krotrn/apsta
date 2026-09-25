@@ -32,7 +32,7 @@ class ApstaWindowActionsMixin:
     def _build_wifi_share_string(self) -> str:
         ssid = self._ssid_entry.get_text().strip() or self._ssid_status_row.get_subtitle().strip()
         password = self._pass_entry.get_text().strip()
-        if not ssid or ssid == "—":
+        if not ssid or ssid == "—" or not password:
             return ""
 
         ssid = self._escape_wifi_field(ssid)
@@ -80,8 +80,8 @@ class ApstaWindowActionsMixin:
     def _on_show_wifi_qr_clicked(self, _btn):
         payload = self._build_wifi_share_string()
         if not payload:
-            self._show_banner("No SSID available to share.", error=True)
-            self._qr_hint.set_label("No SSID found. Start hotspot or enter values first.")
+            self._show_banner("Enter the SSID and password to share.", error=True)
+            self._qr_hint.set_label("The saved password is root-only; type it above to share it.")
             return
 
         if self._render_wifi_qr(payload):
@@ -90,7 +90,7 @@ class ApstaWindowActionsMixin:
     def _on_copy_wifi_uri_clicked(self, _btn):
         payload = self._build_wifi_share_string()
         if not payload:
-            self._show_banner("No SSID available to share.", error=True)
+            self._show_banner("Enter the SSID and password to share.", error=True)
             return
 
         display = Gdk.Display.get_default()
@@ -103,7 +103,7 @@ class ApstaWindowActionsMixin:
         self._show_banner("Share string copied. Paste into any Wi-Fi QR generator.")
 
     def _refresh_status(self):
-        """Read config.json directly (0o644 — no root needed) and update UI."""
+        """Read config.json directly (0o644, no passwords — no root needed) and update UI."""
         cfg = read_config()
         ap_iface = cfg.get("ap_interface") or ""
         
@@ -135,9 +135,6 @@ class ApstaWindowActionsMixin:
         # Keep control fields pre-filled with current config
         if ssid and ssid != "—":
             self._ssid_entry.set_text(ssid)
-        pwd = cfg.get("password") or ""
-        if pwd:
-            self._pass_entry.set_text(pwd)
         self._profile_entry.set_text(active_profile)
 
         self._start_btn.set_sensitive(not active)
@@ -308,7 +305,7 @@ class ApstaWindowActionsMixin:
     def _load_config_into_settings(self):
         cfg = read_config()
         self._cfg_ssid.set_text(cfg.get("ssid") or "")
-        self._cfg_pass.set_text(cfg.get("password") or "")
+        self._cfg_pass.set_text("")
         self._cfg_iface.set_text(cfg.get("interface") or "")
 
     # ── Button handlers ────────────────────────────────────────────────────────
@@ -316,8 +313,8 @@ class ApstaWindowActionsMixin:
     def _on_start_clicked(self, _btn):
         ssid = self._ssid_entry.get_text().strip()
         pwd  = self._pass_entry.get_text().strip()
-        if not ssid or not pwd:
-            self._show_banner("SSID and password cannot be empty.", error=True)
+        if not ssid:
+            self._show_banner("SSID cannot be empty.", error=True)
             return
         force = self._force_switch.get_active()
         self._set_busy(True)
@@ -326,13 +323,13 @@ class ApstaWindowActionsMixin:
         ).start()
 
     def _bg_start(self, ssid: str, pwd: str, force: bool):
-        force_flag = "--force" if force else ""
-        script = (
-            f'"{APSTA}" config --set ssid="$1" && '
-            f'"{APSTA}" config --set password="$2" && '
-            f'"{APSTA}" start {force_flag}'.strip()
-        )
-        rc, stdout, stderr = run_apsta_root_script(script, ssid, pwd)
+        cmds = [f'"{APSTA}" config --set ssid="$1"']
+        args = [ssid]
+        if pwd:  # blank keeps the saved password
+            cmds.append(f'"{APSTA}" config --set password="$2"')
+            args.append(pwd)
+        cmds.append(f'"{APSTA}" start' + (" --force" if force else ""))
+        rc, stdout, stderr = run_apsta_root_script(" && ".join(cmds), *args)
         if rc == 0:
             GLib.idle_add(self._on_action_done, True, "Hotspot started.")
         else:
@@ -390,20 +387,20 @@ class ApstaWindowActionsMixin:
         pwd   = self._cfg_pass.get_text().strip()
         iface = self._cfg_iface.get_text().strip()
 
-        if not ssid or not pwd:
-            self._show_banner("SSID and password cannot be empty.", error=True)
+        if not ssid:
+            self._show_banner("SSID cannot be empty.", error=True)
             return
 
-        # FIX 1: Quote APSTA path throughout all shell scripts
         cmds = [f'"{APSTA}" config --set ssid="$1"']
         args = [ssid]
 
-        cmds.append(f'"{APSTA}" config --set password="$2"')
-        args.append(pwd)
+        if pwd:  # blank keeps the saved password
+            args.append(pwd)
+            cmds.append(f'"{APSTA}" config --set password="${len(args)}"')
 
         if iface:
-            cmds.append(f'"{APSTA}" config --set interface="$3"')
             args.append(iface)
+            cmds.append(f'"{APSTA}" config --set interface="${len(args)}"')
         else:
             cmds.append(f'"{APSTA}" config --set interface=none')
 

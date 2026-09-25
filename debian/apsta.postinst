@@ -5,6 +5,12 @@ if [ "$1" = "configure" ] && command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload >/dev/null 2>&1 || true
 fi
 
+# Loading the config as root moves plaintext passwords out of the
+# world-readable config.json into the root-only secrets.json.
+if [ "$1" = "configure" ] && [ -f /etc/apsta/config.json ] && command -v apsta >/dev/null 2>&1; then
+    apsta config >/dev/null 2>&1 || true
+fi
+
 #DEBHELPER#
 
 exit 0

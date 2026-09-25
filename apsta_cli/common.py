@@ -23,6 +23,9 @@ __version__ = "0.6.0"
 # service reads from /root/... and silently uses defaults.
 
 CONFIG_PATH = Path("/etc/apsta/config.json")
+# Passwords live in a root-only file so config.json can stay world-readable
+# for unprivileged readers (GUI, `apsta status`).
+SECRETS_PATH = Path("/etc/apsta/secrets.json")
 DEFAULT_CONFIG = {
     "ssid": "apsta-hotspot",
     "password": "changeme123",
@@ -348,21 +351,76 @@ def delete_profile(config: dict, profile_name: str) -> bool:
 
 # ── Config I/O ─────────────────────────────────────────────────────────────────
 
+def _load_secrets() -> Optional[dict]:
+    """Profile name -> password. {} if absent, None if unreadable (not root)."""
+    try:
+        with open(SECRETS_PATH) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except PermissionError:
+        return None
+    except json.JSONDecodeError:
+        warn(f"Secrets file {SECRETS_PATH} is corrupted. Using default passwords.")
+        return {}
+
+
+def _has_plaintext_password(saved: dict) -> bool:
+    profiles = saved.get("profiles") if isinstance(saved.get("profiles"), dict) else {}
+    return "password" in saved or any(
+        isinstance(p, dict) and "password" in p for p in profiles.values()
+    )
+
+
 def load_config() -> dict:
+    saved = {}
     if CONFIG_PATH.exists():
         try:
             with open(CONFIG_PATH) as f:
                 saved = json.load(f)
-            return normalize_config(saved)
         except json.JSONDecodeError:
             warn(f"Config file {CONFIG_PATH} is corrupted. Using defaults.")
-    return normalize_config({})
+    if not isinstance(saved, dict):
+        saved = {}
+
+    config = normalize_config(saved)
+    secrets = _load_secrets()
+    for name, profile in config["profiles"].items():
+        if secrets is None:
+            profile["password"] = None  # unknown without root; don't guess
+        elif name in secrets:
+            profile["password"] = secrets[name]
+    config["password"] = config["profiles"][config["active_profile"]]["password"]
+
+    # Migrate configs written before passwords moved to SECRETS_PATH.
+    if _has_plaintext_password(saved) and secrets is not None and os.geteuid() == 0:
+        save_config(config)
+    return config
+
+
+def _write_secrets(secrets: dict):
+    tmp = SECRETS_PATH.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(secrets, f, indent=2)
+    os.replace(tmp, SECRETS_PATH)
+
 
 def save_config(config: dict):
     config = normalize_config(config)
     CONFIG_PATH.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+    # Secrets first: if the second write fails, no password has been lost.
+    _write_secrets({name: p.get("password") for name, p in config["profiles"].items()})
+
+    public = deepcopy(config)
+    public.pop("password", None)
+    for profile in public["profiles"].values():
+        profile.pop("password", None)
     with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
+        json.dump(public, f, indent=2)
     CONFIG_PATH.chmod(0o644)
 
 SCRIPT_DIR = Path(__file__).resolve().parent.parent

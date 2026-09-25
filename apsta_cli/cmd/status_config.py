@@ -309,6 +309,14 @@ def cmd_status(args):
     print()
 
 
+def _display_value(key: str, value) -> str:
+    if value:
+        return f"{C.YELLOW}{value}{C.RESET}"
+    if key == "password":
+        return f"{C.DIM}(hidden — run with sudo to view){C.RESET}"
+    return f"{C.DIM}(auto){C.RESET}"
+
+
 def cmd_config(args):
     head("apsta — Configuration")
     config = load_config()
@@ -367,11 +375,10 @@ def cmd_config(args):
         info(f"Profiles: {', '.join(list_profile_names(config))}")
         print()
         for k in PROFILE_KEYS:
-            v = active_values.get(k)
-            display = f"{C.YELLOW}{v}{C.RESET}" if v else f"{C.DIM}(auto){C.RESET}"
+            display = _display_value(k, active_values.get(k))
             print(f"     {k:<20} {display}")
         print()
-        info("Change with:  apsta config --set ssid=MyHotspot")
+        info("Change with:  sudo apsta config --set ssid=MyHotspot")
 
     print()
 
@@ -403,8 +410,7 @@ def cmd_profile(args):
         info(f"Profile: {C.BOLD}{name}{C.RESET}")
         values = profiles[name]
         for key in PROFILE_KEYS:
-            value = values.get(key)
-            display = f"{C.YELLOW}{value}{C.RESET}" if value else f"{C.DIM}(auto){C.RESET}"
+            display = _display_value(key, values.get(key))
             print(f"     {key:<20} {display}")
         print()
         return

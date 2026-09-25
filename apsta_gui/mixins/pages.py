@@ -73,8 +73,7 @@ class ApstaWindowPagesMixin:
         self._ssid_entry.set_text("apsta-hotspot")
         control_group.add(self._ssid_entry)
 
-        self._pass_entry = Adw.PasswordEntryRow(title="Password")
-        self._pass_entry.set_text("changeme123")
+        self._pass_entry = Adw.PasswordEntryRow(title="Password (blank = keep saved)")
         control_group.add(self._pass_entry)
 
         self._profile_entry = Adw.EntryRow(title="Active profile")
@@ -348,7 +347,7 @@ class ApstaWindowPagesMixin:
         cfg_group = Adw.PreferencesGroup(title="Hotspot Configuration")
 
         self._cfg_ssid  = Adw.EntryRow(title="SSID")
-        self._cfg_pass  = Adw.PasswordEntryRow(title="Password")
+        self._cfg_pass  = Adw.PasswordEntryRow(title="Password (blank = keep saved)")
         self._cfg_iface = Adw.EntryRow(title="Interface (leave blank = auto)")
 
         cfg_group.add(self._cfg_ssid)
