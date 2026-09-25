@@ -3,6 +3,8 @@
 
 import re
 import sys
+from datetime import datetime, timezone
+from email.utils import format_datetime
 from pathlib import Path
 
 
@@ -13,6 +15,27 @@ TARGETS = [
     (Path("apsta_gui/helpers.py"), r'(VERSION\s*=\s*")([^"]+)(")', 0),
     (Path("packaging/arch/PKGBUILD"), r'^(pkgver=)([^\n]+)()', re.MULTILINE),
 ]
+
+CHANGELOG = Path("debian/changelog")
+
+
+def bump_debian_changelog(new_version: str) -> None:
+    """Prepend a `<new_version>-1` entry, reusing the top entry's series and maintainer."""
+    text = CHANGELOG.read_text(encoding="utf-8")
+    head = re.match(r"^(\S+) \(([^)]+)\) ([^;]+);", text)
+    maintainer = re.search(r"^ -- (.+?)  ", text, re.MULTILINE)
+    if not head or not maintainer:
+        raise ValueError(f"Could not parse {CHANGELOG}")
+    package, current, series = head.groups()
+    if current.rsplit("-", 1)[0] == new_version:
+        return  # already has an entry for this version
+    stamp = format_datetime(datetime.now(timezone.utc))
+    entry = (
+        f"{package} ({new_version}-1) {series}; urgency=medium\n\n"
+        f"  * Release {new_version}\n\n"
+        f" -- {maintainer.group(1)}  {stamp}\n\n"
+    )
+    CHANGELOG.write_text(entry + text, encoding="utf-8")
 
 
 def bump_version(new_version: str) -> int:
@@ -28,6 +51,7 @@ def bump_version(new_version: str) -> int:
             return 3
         path.write_text(updated, encoding="utf-8")
 
+    bump_debian_changelog(new_version)
     print(f"Updated version to {new_version}")
     return 0
 

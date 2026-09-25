@@ -1,0 +1,271 @@
+name: Packages
+
+# Builds the Arch and Ubuntu packages on every PR / main push.
+# On a v* tag it also publishes them:
+#   - GitHub release for the tag, with the .deb and .pkg.tar.zst attached
+#   - pacman repo on the rolling "arch-repo" release (pacman -S / yay -S apsta)
+#   - AUR, when the AUR_SSH_PRIVATE_KEY secret is set
+#   - Launchpad PPA, when the LAUNCHPAD_GPG_PRIVATE_KEY secret is set
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arch:
+    name: Build Arch package
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git pacman-contrib \
+            python python-build python-installer python-setuptools python-wheel \
+            python-qrcode python-pillow networkmanager iw iproute2 usbutils pciutils
+          useradd -m builder
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          chown -R builder "$GITHUB_WORKSPACE"
+          mode=local
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then mode=release; fi
+          sudo -u builder --preserve-env=GITHUB_REF_NAME packaging/arch/ci-build.sh "$mode"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          include-hidden-files: true
+          if-no-files-found: error
+          path: |
+            packaging/arch/out/*.pkg.tar.zst
+            packaging/arch/out/PKGBUILD
+            packaging/arch/out/apsta.install
+            packaging/arch/out/.SRCINFO
+
+  deb:
+    name: Build Ubuntu package
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential debhelper dh-python pybuild-plugin-pyproject \
+            python3-all python3-setuptools python3-wheel devscripts git ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          packaging/deb/ci-build.sh binary
+
+      - name: Install and smoke test
+        run: |
+          DEBIAN_FRONTEND=noninteractive apt-get install -y ./packaging/deb/out/*.deb
+          apsta --version
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          if-no-files-found: error
+          path: packaging/deb/out/*.deb
+
+  github-release:
+    name: Attach packages to GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [arch, deb]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create or update release
+        run: |
+          files=(dist/*.pkg.tar.zst dist/*.deb)
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" --verify-tag --generate-notes \
+              --title "apsta ${GITHUB_REF_NAME#v}" --repo "$GITHUB_REPOSITORY"
+          fi
+
+  arch-repo:
+    name: Publish pacman repository
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: arch
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    permissions:
+      contents: write
+    concurrency:
+      group: arch-repo
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GPG_PRIVATE_KEY: ${{ secrets.ARCH_GPG_PRIVATE_KEY }}
+      REPO_RELEASE: arch-repo
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git github-cli
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: arch-package
+          path: repo
+
+      - name: Build repository database
+        run: |
+          rm -f repo/PKGBUILD repo/apsta.install repo/.SRCINFO
+          if [[ -n $GPG_PRIVATE_KEY ]]; then
+            printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+            GPG_KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ {print $10; exit}')
+            export GPG_KEY_ID
+          else
+            echo "::notice::ARCH_GPG_PRIVATE_KEY not set; publishing an unsigned repository"
+          fi
+          packaging/arch/ci-repo.sh repo
+
+      - name: Upload to the arch-repo release
+        run: |
+          gh_repo=(--repo "$GITHUB_REPOSITORY")
+          if ! gh release view "$REPO_RELEASE" "${gh_repo[@]}" >/dev/null 2>&1; then
+            gh release create "$REPO_RELEASE" "${gh_repo[@]}" --latest=false \
+              --title "Arch Linux repository" \
+              --notes "pacman repository for apsta. Setup instructions: see README (Arch Linux)."
+          fi
+          cd repo
+          gh release upload "$REPO_RELEASE" ./* --clobber "${gh_repo[@]}"
+          # Drop assets from older versions so the repo only serves the current package.
+          gh release view "$REPO_RELEASE" "${gh_repo[@]}" --json assets -q '.assets[].name' |
+            while read -r asset; do
+              if [[ ! -e $asset ]]; then
+                gh release delete-asset "$REPO_RELEASE" "$asset" -y "${gh_repo[@]}"
+              fi
+            done
+
+  aur:
+    name: Publish to AUR
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: arch
+    runs-on: ubuntu-latest
+    env:
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+    steps:
+      - name: Skip without AUR key
+        if: env.AUR_SSH_PRIVATE_KEY == ''
+        run: echo "::notice::AUR_SSH_PRIVATE_KEY not set; skipping AUR publish"
+
+      - name: Download PKGBUILD
+        if: env.AUR_SSH_PRIVATE_KEY != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: arch-package
+          path: arch
+
+      - name: Push to aur.archlinux.org
+        if: env.AUR_SSH_PRIVATE_KEY != ''
+        run: |
+          install -dm700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes"
+
+          git clone ssh://aur@aur.archlinux.org/apsta.git aur
+          cp arch/PKGBUILD arch/apsta.install arch/.SRCINFO aur/
+          cd aur
+          # Commit as the PKGBUILD maintainer ("# Maintainer: name <email>").
+          maintainer=$(sed -n 's/^# Maintainer: //p' PKGBUILD)
+          email=${maintainer##*<}
+          git config user.name "${maintainer% <*}"
+          git config user.email "${email%>}"
+          git add PKGBUILD apsta.install .SRCINFO
+          if git diff --cached --quiet; then
+            echo "AUR already up to date"
+          else
+            git commit -m "Update to ${GITHUB_REF_NAME#v}"
+            git push origin HEAD:master
+          fi
+
+  ppa:
+    name: Upload to Launchpad PPA
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: deb
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      GPG_PRIVATE_KEY: ${{ secrets.LAUNCHPAD_GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.LAUNCHPAD_GPG_PASSPHRASE }}
+      PPA: ${{ vars.PPA || 'ppa:krotrn/apsta' }}
+    steps:
+      - name: Skip without Launchpad key
+        if: env.GPG_PRIVATE_KEY == ''
+        run: echo "::notice::LAUNCHPAD_GPG_PRIVATE_KEY not set; skipping PPA upload"
+
+      - name: Install build dependencies
+        if: env.GPG_PRIVATE_KEY != ''
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential debhelper dh-python pybuild-plugin-pyproject \
+            python3-all python3-setuptools python3-wheel devscripts dput \
+            git gpg gpg-agent ca-certificates
+
+      - name: Checkout
+        if: env.GPG_PRIVATE_KEY != ''
+        uses: actions/checkout@v4
+
+      - name: Build and sign source package
+        if: env.GPG_PRIVATE_KEY != ''
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          DEBSIGN_KEY=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ {print $10; exit}')
+          export DEBSIGN_KEY
+          if [[ -n $GPG_PASSPHRASE ]]; then
+            export DEBSIGN_PASSPHRASE_FILE="$RUNNER_TEMP/gpg-passphrase"
+            printf '%s' "$GPG_PASSPHRASE" > "$DEBSIGN_PASSPHRASE_FILE"
+          fi
+          packaging/deb/ci-build.sh source
+
+      - name: Upload with dput
+        if: env.GPG_PRIVATE_KEY != ''
+        run: dput "$PPA" packaging/deb/out/*_source.changes

@@ -10,10 +10,14 @@ on:
 
 permissions:
   contents: write
+  actions: write  # dispatch Release/Packages: tags pushed with GITHUB_TOKEN don't trigger workflows
 
 jobs:
   bump:
     runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,14 +30,19 @@ jobs:
           python-version: "3.11"
 
       - name: Bump version files
-        run: python scripts/bump_version.py "${{ inputs.version }}"
+        run: python scripts/bump_version.py "$VERSION"
 
       - name: Commit and tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml setup.py apsta_cli/common.py apsta_gui/helpers.py packaging/arch/PKGBUILD
-          git commit -m "chore: bump version to ${{ inputs.version }}"
-          git tag "v${{ inputs.version }}"
+          git add pyproject.toml setup.py apsta_cli/common.py apsta_gui/helpers.py packaging/arch/PKGBUILD debian/changelog
+          git commit -m "chore: bump version to $VERSION"
+          git tag "v$VERSION"
           git push origin HEAD
-          git push origin "v${{ inputs.version }}"
+          git push origin "v$VERSION"
+
+      - name: Start release workflows
+        run: |
+          gh workflow run release.yml --ref "v$VERSION"
+          gh workflow run packages.yml --ref "v$VERSION"

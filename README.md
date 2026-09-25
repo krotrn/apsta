@@ -137,12 +137,17 @@ sudo apt install apsta
 
 ### 2. Arch Linux / Manjaro / EndeavourOS
 
-Build and install the bundled PKGBUILD (installs the CLI, GTK UI, systemd unit and sleep hook):
+Add the apsta pacman repository once, then install with `pacman` or `yay`
+(updates arrive with your normal `pacman -Syu`):
 
 ```bash
-git clone https://github.com/krotrn/apsta
-cd apsta/packaging/arch
-makepkg -si
+sudo tee -a /etc/pacman.conf >/dev/null <<'EOF'
+
+[apsta]
+SigLevel = Optional TrustAll
+Server = https://github.com/krotrn/apsta/releases/download/arch-repo
+EOF
+sudo pacman -Sy apsta        # or: yay -S apsta
 ```
 
 Optional extras for hostapd mode and the GUI:
@@ -152,6 +157,8 @@ sudo pacman -S --needed hostapd dnsmasq iptables python-gobject gtk4 libadwaita 
 ```
 
 Auto-start on boot: `sudo systemctl enable --now apsta`
+
+Prefer building yourself? `cd packaging/arch && makepkg -si` from a clone of this repo.
 
 ### 3. Manual One-Liner (Python pipx)
 
@@ -176,78 +183,50 @@ sudo ./install.sh
 
 ### For Maintainers
 
-#### Publish APT package (enables `sudo apt install apsta`)
+#### Releasing
 
-`sudo apt install apsta` works after you publish this package in an APT repository (PPA).
-
-Build a local Debian package:
+Run the **Version Bump** workflow (Actions → Version Bump → enter `X.Y.Z`), or locally:
 
 ```bash
-sudo apt update && sudo apt install -y build-essential debhelper dh-python pybuild-plugin-pyproject python3-all python3-setuptools dpkg-dev
-dpkg-buildpackage -us -uc -b
+python scripts/bump_version.py X.Y.Z   # pyproject, setup.py, modules, PKGBUILD, debian/changelog
+git commit -am "chore: release X.Y.Z" && git tag vX.Y.Z && git push origin main vX.Y.Z
 ```
 
-Install the built package locally:
+The `vX.Y.Z` tag then publishes everything:
+
+| Workflow       | Job            | Publishes                                                        | Needs                                                      |
+| -------------- | -------------- | ---------------------------------------------------------------- | ---------------------------------------------------------- |
+| `release.yml`  | publish-pypi   | PyPI                                                             | trusted publisher or `PYPI_API_TOKEN`                      |
+| `packages.yml` | github-release | GitHub release `vX.Y.Z` with the `.deb` and `.pkg.tar.zst`       | —                                                          |
+| `packages.yml` | arch-repo      | pacman repo on the `arch-repo` release (`pacman`/`yay -S apsta`) | — (`ARCH_GPG_PRIVATE_KEY` to sign)                         |
+| `packages.yml` | aur            | AUR package `apsta`                                              | `AUR_SSH_PRIVATE_KEY`                                      |
+| `packages.yml` | ppa            | Launchpad PPA (`vars.PPA`, default `ppa:krotrn/apsta`)           | `LAUNCHPAD_GPG_PRIVATE_KEY` (+ `LAUNCHPAD_GPG_PASSPHRASE`) |
+
+Jobs whose secret is missing are skipped with a notice, so they can be enabled one at a time.
+Every PR and push to `main` also builds and smoke-tests both packages.
+
+Secrets (Settings → Secrets and variables → Actions):
+
+- `AUR_SSH_PRIVATE_KEY` — private half of an SSH key registered on your aur.archlinux.org account.
+- `LAUNCHPAD_GPG_PRIVATE_KEY` — `gpg --armor --export-secret-keys <id>` of the key registered on Launchpad;
+  `LAUNCHPAD_GPG_PASSPHRASE` if it has one.
+- `ARCH_GPG_PRIVATE_KEY` — optional, passphrase-less key to sign the pacman repo. Once set, users can
+  import it (`apsta.asc` on the `arch-repo` release) with `pacman-key --add` + `--lsign-key` and drop
+  `TrustAll` from their `SigLevel`.
+
+#### Building packages locally
 
 ```bash
-sudo apt install ../apsta_*_all.deb
+packaging/arch/ci-build.sh local   # Arch: packaging/arch/out/*.pkg.tar.zst
+packaging/deb/ci-build.sh binary   # Ubuntu (run on Ubuntu): packaging/deb/out/*.deb
 ```
 
-To enable `sudo apt install apsta` for other users, publish the generated `.deb` to your APT repo and add that repo to user systems.
-
-#### CI and release automation
-
-This repo includes GitHub Actions for quality gates and release operations:
+#### CI
 
 - `.github/workflows/ci.yml` — lint (`ruff`), compile checks, and unit tests
-- `.github/workflows/version-bump.yml` — bumps version in `pyproject.toml`,
-  `setup.py`, `apsta_cli/common.py`, and `apsta_gui/helpers.py`, then tags `vX.Y.Z`
-- `.github/workflows/release.yml` — verifies version sync/tag match, builds
-  distributions, validates metadata, and publishes to PyPI on version tags
-
-#### Publish: Arch (AUR)
-
-`scripts/bump_version.py` keeps `pkgver` in `packaging/arch/PKGBUILD` in sync.
-After pushing the release tag:
-
-```bash
-cd packaging/arch
-updpkgsums                      # refresh sha256sums for the new tag tarball
-makepkg -f                      # build + run tests
-makepkg --printsrcinfo > .SRCINFO
-```
-
-Then copy `PKGBUILD`, `apsta.install` and `.SRCINFO` into your AUR `apsta` repo and push.
-
-#### Publish: Launchpad PPA
-
-1. Create a PPA in Launchpad.
-2. Create the upstream orig tarball (required for `3.0 (quilt)`):
-
-```bash
-UPVER="$(dpkg-parsechangelog -SVersion | sed 's/-[^-]*$//')"
-git ls-files -z | grep -zv '^debian/' | tar --null -T - -czf "../apsta_${UPVER}.orig.tar.gz" --transform "s,^,apsta-${UPVER}/,"
-```
-
-3. Build source package from the repo root:
-
-```bash
-debuild -S -sa -k<your-gpg-key-id>
-```
-
-4. Upload to PPA:
-
-```bash
-dput ppa:<launchpad-user>/<ppa-name> ../apsta_*_source.changes
-```
-
-5. Users install:
-
-```bash
-sudo add-apt-repository ppa:<launchpad-user>/<ppa-name>
-sudo apt update
-sudo apt install apsta
-```
+- `.github/workflows/packages.yml` — Arch + Ubuntu package builds and publishing (above)
+- `.github/workflows/version-bump.yml` — bumps versions, tags `vX.Y.Z`, starts the release workflows
+- `.github/workflows/release.yml` — verifies version sync/tag match and publishes to PyPI
 
 **Required dependencies** (all default on Ubuntu/Pop!\_OS/Fedora/Arch):
 `nmcli` · `iw` · `ip` · `lsusb` · `lspci`

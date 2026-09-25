@@ -28,7 +28,8 @@ optdepends=(
 )
 install=apsta.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('1a733c687909f6aa58c88212e8b487f50ce37638b1f820db09b017d3bd8e71f5')
+# CI (packaging/arch/ci-build.sh release) pins the real sum for each tag.
+sha256sums=('SKIP')
 
 build() {
   cd "$pkgname-$pkgver"
