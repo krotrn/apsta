@@ -36,7 +36,7 @@ jobs:
           useradd -m builder
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Build
         run: |
@@ -46,7 +46,7 @@ jobs:
           sudo -u builder --preserve-env=GITHUB_REF_NAME packaging/arch/ci-build.sh "$mode"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: arch-package
           include-hidden-files: true
@@ -73,7 +73,7 @@ jobs:
             python3-all python3-setuptools python3-wheel devscripts git ca-certificates
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Build
         run: |
@@ -86,7 +86,7 @@ jobs:
           apsta --version
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deb-package
           if-no-files-found: error
@@ -103,7 +103,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Download packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           path: dist
           merge-multiple: true
@@ -140,10 +140,10 @@ jobs:
         run: pacman -Syu --noconfirm --needed git github-cli
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Download package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: arch-package
           path: repo
@@ -192,7 +192,7 @@ jobs:
 
       - name: Download PKGBUILD
         if: env.AUR_SSH_PRIVATE_KEY != ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: arch-package
           path: arch
@@ -251,7 +251,7 @@ jobs:
 
       - name: Checkout
         if: env.GPG_PRIVATE_KEY != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Build and sign source package
         if: env.GPG_PRIVATE_KEY != ''
