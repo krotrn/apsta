@@ -131,14 +131,17 @@ cp /tmp/shots/off-single-radio-settings.png docs/screenshots/settings.png
 **Release** (`.github/workflows/release.yml`) publishes only after every check
 passes:
 
-```
-verify (versions + changelog) ─► CI (lint, tests, GUI on 7 distros, Python build) ─┐
-                              └─► packages (Arch + .deb, install tests, lintian) ──┴─► attest provenance
-                                                                                       ├─► PyPI
-                                                                                       ├─► GitHub release
-                                                                                       ├─► pacman repo
-                                                                                       ├─► AUR
-                                                                                       └─► Launchpad PPA
+```mermaid
+flowchart LR
+    V["verify<br/>versions + changelog"] --> CI["CI<br/>lint, tests,<br/>GUI on 7 distros,<br/>Python build"]
+    V --> PK["packages<br/>Arch + .deb,<br/>install tests, lintian"]
+    CI --> AT["attest<br/>build provenance"]
+    PK --> AT
+    AT --> PYPI["PyPI"]
+    AT --> GH["GitHub release"]
+    AT --> PAC["pacman repo"]
+    AT --> AUR["AUR"]
+    AT --> PPA["Launchpad PPA"]
 ```
 
 | Target         | Needs                                                                     |

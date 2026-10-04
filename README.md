@@ -204,6 +204,20 @@ apsta completion fish | sudo tee /etc/fish/completions/apsta.fish >/dev/null
 | `nmcli`        | card supports AP+STA                    | yes           | list/kick         |
 | `nmcli-single` | card supports AP only                   | **no**        | list/kick         |
 
+```mermaid
+flowchart LR
+    S(["sudo apsta start"]) --> H{"AP+STA card and<br/>hostapd installed?"}
+    H -- "yes" --> HA["hostapd ✔<br/>WiFi stays up"]
+    H -- "no / failed" --> N{"AP+STA card?"}
+    N -- "yes" --> NM["nmcli ✔<br/>WiFi stays up"]
+    N -- "no / failed" --> D{"WiFi not connected, or<br/>--allow-disconnect?"}
+    D -- "yes" --> NS["nmcli-single ✔<br/>WiFi drops"]
+    D -- "no" --> E(["Explains why, suggests a fix"])
+```
+
+A method that fails part-way is rolled back completely before the next one
+is tried.
+
 On single-channel cards (most laptop chips) the hotspot has to use the same
 channel as your WiFi. apsta reads it from the live connection and refuses
 cases that can't work, such as DFS or 6 GHz channels, with an explanation.

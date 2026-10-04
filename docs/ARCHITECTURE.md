@@ -5,34 +5,22 @@ non-trivial change.
 
 ## Layers
 
-```
-            ┌──────────────────────┐     ┌────────────────────────────┐
-            │ apsta_cli/cli.py     │     │ apsta_gui (GTK4/libadwaita)│
-            │ argparse + errors    │     │ a client of the CLI:       │
-            └─────────┬────────────┘     │ `--json` reads, pkexec     │
-                      │                  │ writes (see "The GUI")     │
-                      │                  └────────────┬───────────────┘
-            ┌─────────▼────────────┐                  │
- present    │ cmd/*                │◄─────────────────┘
-            │ thin: print results  │
-            └─────────┬────────────┘
-            ┌─────────▼────────────┐
- use cases  │ services/hotspot.py  │ start / stop / status, strategy selection
-            │ services/watch.py    │ `apsta run`: keep the hotspot healthy
-            └─────────┬────────────┘
-       ┌──────────────┼──────────────────────────┐
-┌──────▼──────┐ ┌─────▼───────────────────┐ ┌────▼─────────────┐
-│ config/     │ │ net/                    │ │ hw/              │
-│ model/store │ │ strategies, transaction │ │ combinations     │
-│ validate    │ │ hostapd, dnsmasq, nm    │ │ capability       │
-│ state.py    │ │ firewall, supervisor    │ │ interfaces, usb  │
-└──────┬──────┘ │ iface, subnet, channels │ └────┬─────────────┘
-       │        │ clients                 │      │
-       │        └─────┬───────────────────┘      │
-┌──────▼──────────────▼──────────────────────────▼─────┐
-│ core/: shell (argv only), paths, fsutil (atomic),     │
-│        lock, output, log, errors                      │
-└───────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    CLI["<b>apsta_cli/cli.py</b><br/>argparse, errors → exit codes"]
+    GUI["<b>apsta_gui</b> (GTK 4 / libadwaita)<br/>a client of the CLI:<br/>--json reads, pkexec writes"]
+    CMD["<b>cmd/*</b> · present<br/>thin: print results"]
+    SVC["<b>services/</b> · use cases<br/>hotspot.py: start / stop / status, strategy selection<br/>watch.py: apsta run keeps the hotspot healthy"]
+    CFG["<b>config/</b><br/>model, store, validate<br/>state.py"]
+    NET["<b>net/</b><br/>strategies, transaction<br/>hostapd, dnsmasq, nm<br/>firewall, supervisor<br/>iface, subnet, channels, clients"]
+    HW["<b>hw/</b><br/>combinations, capability<br/>interfaces, usb"]
+    CORE["<b>core/</b><br/>shell (argv only), paths, fsutil (atomic)<br/>lock, output, log, errors"]
+
+    CLI --> CMD
+    GUI -. "runs apsta" .-> CMD
+    CMD --> SVC
+    SVC --> CFG & NET & HW
+    CFG & NET & HW --> CORE
 ```
 
 Dependencies only point downwards. `core` imports nothing from apsta.
@@ -61,6 +49,21 @@ in order. Each `start` registers an undo step with the `Transaction` after
 every side effect, so a failure part-way rolls back to a clean system before
 the next strategy is tried.
 
+```mermaid
+flowchart TD
+    S(["apsta start"]) --> P["Plan: capability, WiFi channel,<br/>allowed channels, subnet"]
+    P -- "can't work (DFS, no IR, 6 GHz)" --> E(["HardwareError with hints"])
+    P --> N{"Next strategy:<br/>hostapd → nmcli → nmcli-single"}
+    N -- "unavailable" --> N
+    N --> T["start(ctx, tx): each side effect<br/>registers its undo step"]
+    T -- "all steps OK, hotspot live" --> W["Write /run/apsta/state.json"] --> D(["Running"])
+    T -- "a step fails" --> R["tx.rollback(): undo in reverse order"] --> N
+    N -- "none left" --> F(["Error listing what each strategy hit"])
+```
+
+`nmcli-single` drops the WiFi connection, so while connected it is only tried
+with `--allow-disconnect`.
+
 ### Runtime state lives in /run
 
 `state.py` writes `HotspotState` to `/run/apsta/state.json` once the hotspot
@@ -87,6 +90,26 @@ every 5 s and `decide()` (a pure function) restarts the hotspot when:
 - on single-channel radios, the WiFi connection moved to another channel;
 - on single-channel radios, the WiFi connection has been gone for 20 s.
   The AP may be what stops NetworkManager reconnecting on another channel.
+
+```mermaid
+flowchart TD
+    Poll(["every 5 s"]) --> St{"state.json present?"}
+    St -- "no (apsta stop)" --> Exit(["exit"])
+    St -- "yes" --> Alive{"hotspot alive?"}
+    Alive -- "no" --> Restart
+    Alive -- "yes" --> Same{"same-channel<br/>radio?"}
+    Same -- "no" --> Poll
+    Same -- "yes" --> Link{"WiFi connected?"}
+    Link -- "yes, same channel" --> Poll
+    Link -- "yes, other channel" --> Restart
+    Link -- "no, for 20 s" --> Restart
+    Link -- "no, < 20 s" --> Poll
+    Restart["stop, then start again<br/>retry 10 s → 20 s → … → 5 min"] --> Poll
+```
+
+If the WiFi moved to a channel the card can't host on, every retry fails
+with the "no IR" error until the network moves back; see
+[5ghz-wifi.md](5ghz-wifi.md).
 
 ### Firewall backends record their own undo data
 
@@ -137,6 +160,24 @@ helpers.py    pure formatting / text logic (no GTK, unit-tested)
 `update(data)` on the main loop. `apsta detect --json` runs once at startup.
 Pages never block the main loop: subprocesses always run through
 `window.run_async(work, done)`, and widgets are touched only in `done`.
+
+```mermaid
+sequenceDiagram
+    participant W as window.py (main loop)
+    participant T as worker thread
+    participant C as apsta CLI
+    loop every 5 s and after each action
+        W->>T: run_async(status)
+        T->>C: apsta status --json
+        C-->>T: JSON
+        T-->>W: done(data)
+        W->>W: page.update(data) for each tab
+    end
+    W->>T: run_privileged(start)
+    T->>C: pkexec /usr/bin/apsta start (secrets via stdin)
+    C-->>T: exit code + message
+    T-->>W: toast, then refresh
+```
 
 **Changes** go through `window.run_privileged(work)`. It shows the spinner,
 runs `pkexec /usr/bin/apsta <args>` in a thread, shows the outcome as a toast
@@ -192,7 +233,6 @@ CI runs the GUI on the newest releases (Arch, Fedora) to catch problems early.
 | New USB chipset          | `USB_CHIPSET_DB` in `hw/usb.py`                                             |
 | Card detected wrongly    | add its `iw phy` output to `tests/fixtures/iw/` with a test                 |
 | New command              | parser in `cli.py`, handler in `cmd/`, logic in `services/`                 |
-
 | GUI: new tab             | class in `apsta_gui/pages/` with `widget` + `update(data, detect)`; register in `window.py` |
 | GUI: widget newer than libadwaita 1.1 | add a helper with a fallback to `apsta_gui/compat.py` |
 | GUI: new action          | a `backend.py` method calling the CLI + `window.run_privileged(...)` |

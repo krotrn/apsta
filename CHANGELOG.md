@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Documentation
+
+- `docs/5ghz-wifi.md`: what happens when the network switches band while the
+  hotspot is running (phone hotspots do this by themselves), and how the
+  service recovers.
+- Mermaid diagrams in the README (method selection), `docs/ARCHITECTURE.md`
+  (layers, start and rollback, the watcher, the GUI's data flow),
+  `docs/5ghz-wifi.md` and `CONTRIBUTING.md` (release pipeline).
+
 ## [0.7.1] - 2026-10-04
 
 ### Fixed
