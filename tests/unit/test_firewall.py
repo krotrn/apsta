@@ -108,7 +108,7 @@ class NftablesTests(unittest.TestCase):
             "ruleset",
             stdout="table inet filter {\n chain forward {\n  type filter hook forward priority 0; policy drop;\n }\n}",
         )
-        from unittest import mock
+        import unittest.mock as mock
 
         with mock.patch("sys.stderr"), mock.patch("sys.stdout"):
             record = firewall.apply(AP, NET)
