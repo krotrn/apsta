@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from ..core import output
+from ..core.errors import UsageError
 from ..core.output import C
 from ..services import hotspot
 
@@ -77,5 +78,7 @@ def _forward_deprecated(args):
         return cmd_clients(SimpleNamespace(action="disconnect", client=args.disconnect, block=False, json=False))
     if getattr(args, "limit_client", None) or getattr(args, "limit_kbps", None):
         output.warn("'status --limit-client' is deprecated; use 'apsta clients limit CLIENT KBPS'.")
+        if not args.limit_client or args.limit_kbps is None:
+            raise UsageError("--limit-client and --limit-kbps must be used together.")
         return cmd_clients(SimpleNamespace(action="limit", client=args.limit_client, kbps=args.limit_kbps, json=False))
     return None

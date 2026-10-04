@@ -12,7 +12,7 @@ from gi.repository import Adw, Gio  # noqa: E402
 from apsta_cli import __version__  # noqa: E402
 
 from .backend import ApstaBackend  # noqa: E402
-from .compat import register_bundled_icons, show_about  # noqa: E402
+from .compat import ensure_font_dpi, register_bundled_icons, show_about  # noqa: E402
 from .helpers import APP_ID  # noqa: E402
 from .window import ApstaWindow, MissingApstaWindow  # noqa: E402
 
@@ -24,7 +24,7 @@ class ApstaApp(Adw.Application):
         self.connect("activate", self._on_activate)
         for name, callback, accels in (
             ("quit", lambda *_: self.quit(), ["<Control>q"]),
-            ("about", lambda *_: show_about(self.get_active_window(), __version__), []),
+            ("about", lambda *_: show_about(self.get_active_window(), __version__, APP_ID), []),
         ):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", callback)
@@ -36,6 +36,7 @@ class ApstaApp(Adw.Application):
     def do_startup(self):
         Adw.Application.do_startup(self)
         register_bundled_icons(APP_ID)
+        ensure_font_dpi()
 
     def _on_activate(self, app):
         window = self.get_active_window()

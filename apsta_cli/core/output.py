@@ -12,9 +12,21 @@ import sys
 
 from . import log
 
+_MESSAGES_TO_STDERR = False
+
+
+def machine_output(enabled: bool = True) -> None:
+    """``--json`` mode: stdout carries only the JSON document; messages go to stderr."""
+    global _MESSAGES_TO_STDERR
+    _MESSAGES_TO_STDERR = enabled
+
+
+def _stream():
+    return sys.stderr if _MESSAGES_TO_STDERR else sys.stdout
+
 
 def _use_color() -> bool:
-    return "NO_COLOR" not in os.environ and sys.stdout.isatty()
+    return "NO_COLOR" not in os.environ and _stream().isatty()
 
 
 class _Palette:
@@ -43,7 +55,7 @@ def is_interactive() -> bool:
 
 
 def ok(msg: str) -> None:
-    print(f"  {C.GREEN}✔{C.RESET}  {msg}")
+    print(f"  {C.GREEN}✔{C.RESET}  {msg}", file=_stream())
     log.event("INFO", "ok", message=msg)
 
 
@@ -58,17 +70,17 @@ def warn(msg: str) -> None:
 
 
 def info(msg: str) -> None:
-    print(f"  {C.CYAN}→{C.RESET}  {msg}")
+    print(f"  {C.CYAN}→{C.RESET}  {msg}", file=_stream())
     log.event("INFO", "info", message=msg)
 
 
 def head(msg: str) -> None:
-    print(f"\n{C.BOLD}{msg}{C.RESET}")
+    print(f"\n{C.BOLD}{msg}{C.RESET}", file=_stream())
 
 
 def detail(msg: str) -> None:
     """Indented continuation line under a previous message."""
-    print(f"     {msg}")
+    print(f"     {msg}", file=_stream())
 
 
 def hint(msg: str) -> None:
@@ -77,7 +89,7 @@ def hint(msg: str) -> None:
 
 
 def blank() -> None:
-    print()
+    print(file=_stream())
 
 
 def dbg(msg: str, **fields) -> None:

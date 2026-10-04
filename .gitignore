@@ -42,3 +42,4 @@ debian/files
 .coverage
 coverage.xml
 htmlcov/
+gui-screenshots/

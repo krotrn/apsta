@@ -21,7 +21,7 @@ security problems.
   deprecated. Use `apsta clients …` and `apsta profile use`.
 - `detect --json`: `supports_ap_sta_concurrent`/`supports_ap_sta_split` are
   replaced by `ap_sta` and `same_channel_required`.
-- Python ≥ 3.9 is required.
+- Python ≥ 3.10 is required (3.9 reached end of life in October 2025).
 
 ### Fixed
 
@@ -46,6 +46,9 @@ security problems.
 - config.json is written atomically. A corrupt file is backed up instead of
   silently replaced by defaults.
 - GUI no longer overwrites fields while you type.
+- `--json` output is clean JSON: progress messages go to stderr (`start --json`
+  mixed them into stdout).
+- `status --limit-kbps` without `--limit-client` is a usage error instead of a crash.
 
 ### Security
 
@@ -66,7 +69,8 @@ security problems.
 - `apsta status --check` (exit code only).
 - `apsta enable` supports OpenRC and runit.
 - Shell completions generated from the CLI definition.
-- Unit and integration test suites (no root or hardware needed), coverage gate in CI.
+- Unit and integration test suites (no root or hardware needed), tests for
+  the sleep hook, coverage gate in CI (≥ 94 %).
 
 ### GUI
 
@@ -75,6 +79,9 @@ security problems.
   block, a Share dialog (QR code + password, fetched with authentication),
   network settings with band and interface pickers, profiles, a start-at-boot
   toggle, a hardware report, toasts, keyboard shortcuts and an About window.
+- Uses the newest libadwaita widgets when present (ToolbarView, adaptive
+  tabs with a bottom bar on narrow windows, SwitchRow, ButtonRow, Adw.Dialog
+  sheets, AboutDialog, Adw.Spinner) and falls back on older versions.
 - Runs on libadwaita ≥ 1.1 / GTK ≥ 4.6. It previously crashed on Ubuntu/Pop!_OS
   22.04, Linux Mint 21 and Debian 12 (`Adw.ToolbarView`, `Adw.Banner`,
   `Adw.EntryRow`). Newer widgets go through `apsta_gui/compat.py`.
@@ -84,8 +91,20 @@ security problems.
   previously interpreted as Pango markup.
 - pkexec failures are explained (cancelled, not authorized, no polkit agent).
   Shows a helpful window instead of exiting when the CLI isn't installed.
+- Works around libadwaita 1.5 (Ubuntu 24.04) collapsing page width when the
+  session sets no font DPI. Replaces the deprecated `Gdk.Texture.new_for_pixbuf`.
 - Own app icon; the desktop file's `StartupWMClass` now matches the app ID, so
   docks group the window with its launcher.
+
+### Documentation
+
+- `docs/ARCHITECTURE.md`: layers, design decisions, the GUI's structure and
+  compatibility strategy, testing.
+- `docs/json-output.md`: the `--json` output of every command and exit codes,
+  now a documented, stable interface. `detect --json` and `status --json`
+  share one interface shape (`type`, not `iftype`).
+- `CONTRIBUTING.md` (development, GUI rules, releasing), `SECURITY.md`,
+  issue and pull request templates.
 
 ### Removed
 

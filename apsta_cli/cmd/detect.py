@@ -57,7 +57,7 @@ def cmd_detect(args) -> int:
         print(
             json.dumps(
                 {
-                    "interfaces": [i.__dict__ for i in ifaces],
+                    "interfaces": [interfaces.to_json(i) for i in ifaces],
                     "target_interface": target.name,
                     "capability": cap.to_dict(),
                     "methods": available,

@@ -52,7 +52,7 @@ Verdict
 - **Safe by default**: a random password on first start (never a shared
   default), passwords never on a command line, a scoped polkit action for the
   GUI.
-- **GTK4/libadwaita GUI** with QR-code sharing.
+- **Desktop app** (GTK 4/libadwaita) with device management and QR-code sharing.
 
 ## Install
 
@@ -85,9 +85,9 @@ sudo ./install.sh              # installs into /usr/local
 sudo ./install.sh --uninstall  # removes it again
 ```
 
-Runtime requirements: Python ≥ 3.9, NetworkManager, `iw`, `iproute2`.
+Runtime requirements: Python ≥ 3.10, NetworkManager, `iw`, `iproute2`.
 Recommended: `hostapd` + `dnsmasq` (needed for client management), and one of
-`iptables`/`nftables`/`firewalld`. GUI: see [GUI](#gui).
+`iptables`/`nftables`/`firewalld`. Desktop app: see [Desktop app](#desktop-app).
 
 > **pipx/pip users:** `sudo` can't see `~/.local/bin`. Install system-wide
 > with `sudo pipx install --global apsta` (pipx ≥ 1.5), or use the packages above.
@@ -99,7 +99,7 @@ apsta detect                         # what can my card do?
 sudo apsta start                     # start (keeps WiFi when the card allows it)
 sudo apsta start --allow-disconnect  # also allow a mode that drops WiFi
 sudo apsta stop
-apsta status                         # add --json for scripts, --check for exit code only
+apsta status                         # --check: exit code only (0 running, 3 not)
 
 sudo apsta enable                    # start at boot, recover after sleep (systemd/OpenRC/runit)
 sudo apsta disable
@@ -121,7 +121,8 @@ sudo apsta profile use travel
 
 Settings: `ssid`, `password`, `band` (`bg` = 2.4 GHz, `a` = 5 GHz), `channel`
 (used only when the hotspot doesn't have to follow your WiFi channel) and
-`interface` (`auto` by default).
+`interface` (`auto` by default). Configuration lives in `/etc/apsta/` and
+passwords in the root-only `/etc/apsta/secrets.json`.
 
 ### Clients (hostapd mode)
 
@@ -134,37 +135,56 @@ sudo apsta clients limit 192.168.42.17 8000 # Kbps, upload and download
 sudo apsta clients unlimit 192.168.42.17
 ```
 
-### GUI
+### Scripting
 
-<p>
-  <img src="docs/screenshots/hotspot.png" alt="Hotspot tab" width="270">
-  <img src="docs/screenshots/devices.png" alt="Devices tab" width="270">
-  <img src="docs/screenshots/share.png" alt="Share dialog with QR code" width="270">
-</p>
+`status`, `detect`, `config`, `clients` and `start` accept `--json`. See
+[docs/json-output.md](docs/json-output.md) for the keys and exit codes.
 
 ```bash
-apsta-gtk
+apsta status --json | jq -r '.clients[].ip'
 ```
 
-- **Hotspot**: start/stop, connection details, profile switcher, and *Share*
-  (QR code + password).
-- **Devices**: connected devices with speed limits, disconnect and block.
-- **Settings**: network name, password, band, interface, profiles, start at
-  boot, and a hardware report.
+## Desktop app
 
-Privileged actions go through polkit (`com.github.apsta.manage`), so you
-authenticate once every few minutes, not on every click. A polkit
-authentication agent must be running; GNOME, KDE, Cinnamon, MATE and Xfce
-start one. On i3/sway, run e.g. `polkit-gnome` or `lxpolkit`.
+<p>
+  <img src="docs/screenshots/hotspot.png" alt="Hotspot tab" width="300">
+  <img src="docs/screenshots/devices.png" alt="Devices tab" width="300">
+</p>
+<p>
+  <img src="docs/screenshots/share.png" alt="Share dialog with QR code" width="300">
+  <img src="docs/screenshots/narrow.png" alt="Narrow window with tabs at the bottom" width="170">
+</p>
 
-Works with libadwaita ≥ 1.1 / GTK ≥ 4.6 and is tested in CI on Ubuntu 22.04,
-Debian 12, Ubuntu 24.04, Fedora and Arch:
+Open **Hotspot (apsta)** from your app menu, or run `apsta-gtk`.
 
-| Distribution          | Packages                                                                                   |
-| --------------------- | ------------------------------------------------------------------------------------------ |
-| Ubuntu / Debian / Mint | `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil`                       |
-| Fedora                | `python3-gobject gobject-introspection gtk4 libadwaita python3-qrcode python3-pillow`       |
-| Arch                  | `python-gobject gtk4 libadwaita python-qrcode python-pillow`                               |
+- **Hotspot**: one button to start/stop, whether you're still connected to
+  your WiFi, connection details, a profile switcher, and **Share**: a QR code
+  phones can scan, plus the password.
+- **Devices**: everything connected, with a menu per device to limit its
+  speed, disconnect it, or block it. Blocked devices can be unblocked here.
+- **Settings**: network name, password, band, interface, profiles, *Start
+  automatically* (boot + recovery after sleep), and what your WiFi card supports.
+
+The window adapts to its size (tabs move to the bottom on narrow windows),
+and follows your light/dark preference. Shortcuts: <kbd>Ctrl</kbd>+<kbd>R</kbd>
+or <kbd>F5</kbd> refresh, <kbd>Ctrl</kbd>+<kbd>Q</kbd> quit.
+
+Starting, stopping and changing settings ask for your password through
+polkit. It's remembered for a few minutes, so you aren't asked on every click.
+
+**Requirements.** The packages above install everything. From source, install
+your distribution's GTK bindings:
+
+| Distribution           | Packages                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| Ubuntu / Debian / Mint | `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil`                   |
+| Fedora                 | `python3-gobject gobject-introspection gtk4 libadwaita python3-qrcode python3-pillow`  |
+| Arch                   | `python-gobject gtk4 libadwaita python-qrcode python-pillow`                           |
+
+It works with libadwaita 1.1 / GTK 4.6 and newer, and uses newer libadwaita
+features when your system has them. CI checks it on Ubuntu 22.04, Debian 12,
+Ubuntu 24.04, Fedora and Arch. `python3-qrcode` is optional; without it,
+Share shows the name and password only.
 
 ### Shell completion
 
@@ -196,10 +216,22 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
 - `APSTA_DEBUG=1 sudo apsta start` prints every step; privileged runs also log
   JSON lines to `/var/log/apsta.log`.
+- The service's own log: `journalctl -u apsta`.
 - In hostapd mode, `journalctl -u apsta-hostapd -u apsta-dnsmasq` shows the
   daemons' own logs.
 - Wrong verdict from `apsta detect`? Please open an issue with
   `apsta detect --json` and `iw phy phy0 info`.
+
+**Desktop app:**
+
+- *"No polkit authentication agent is running"*: your session has no agent to
+  ask for the password. GNOME, KDE, Cinnamon, MATE and Xfce start one; on
+  i3/sway/Hyprland start one yourself, e.g. `polkit-gnome` or `lxpolkit`.
+- *"Not authorized"*: your account isn't an administrator (not in `sudo` /
+  `wheel`).
+- *"apsta is not installed"* window: the desktop app can't find the `apsta`
+  command. Install the CLI (it's in the same package) or put it on `PATH`.
+- Settings changes apply to the next start; stop and start the hotspot.
 
 If your card can't do AP+STA, `apsta recommend` suggests USB adapters with
 in-kernel drivers that can (MediaTek mt7921au, mt7612u, mt7610u, mt7925u).

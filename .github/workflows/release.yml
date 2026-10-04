@@ -22,7 +22,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Verify version sync and tag
         id: versions
@@ -67,7 +67,7 @@ jobs:
         run: twine check dist/*
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-dist-${{ steps.versions.outputs.pkg_version }}
           path: dist/*
