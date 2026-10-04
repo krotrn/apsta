@@ -27,7 +27,7 @@ class SettingsPage:
         self.password = EntryField("New password", password=True)
         self.band = Adw.ComboRow(title="Band")
         self.band.set_model(Gtk.StringList.new([label for _, label in BANDS]))
-        self.band.set_subtitle("Used when the hotspot doesn't have to follow your Wi-Fi channel")
+        self.band.set_subtitle("If not tied to your Wi-Fi's channel")
         self.iface = Adw.ComboRow(title="Wi-Fi interface")
         self.iface_model = Gtk.StringList.new(["Automatic"])
         self.iface.set_model(self.iface_model)

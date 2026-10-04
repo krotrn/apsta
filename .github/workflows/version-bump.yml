@@ -10,17 +10,22 @@ on:
 
 permissions:
   contents: write
-  actions: write  # dispatch Release/Packages: tags pushed with GITHUB_TOKEN don't trigger workflows
+  actions: write  # dispatch release.yml: tags pushed with GITHUB_TOKEN don't trigger workflows
+
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
 
 jobs:
   bump:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       VERSION: ${{ inputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -36,13 +41,13 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml apsta_cli/__init__.py packaging/arch/PKGBUILD debian/changelog
+          python scripts/release_check.py "$VERSION"
+          git add pyproject.toml apsta_cli/__init__.py packaging/arch/PKGBUILD debian/changelog CHANGELOG.md
           git commit -m "chore: bump version to $VERSION"
           git tag "v$VERSION"
           git push origin HEAD
           git push origin "v$VERSION"
 
-      - name: Start release workflows
-        run: |
-          gh workflow run release.yml --ref "v$VERSION"
-          gh workflow run packages.yml --ref "v$VERSION"
+      # Tags pushed with GITHUB_TOKEN don't trigger workflows, so start it explicitly.
+      - name: Start the release pipeline
+        run: gh workflow run release.yml --ref "v$VERSION"

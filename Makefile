@@ -7,7 +7,7 @@
 # as the code under test (e.g. an activated .venv).
 PYTHON ?= python3
 
-.PHONY: dev test coverage lint fmt check gui-smoke clean
+.PHONY: dev test coverage lint fmt check gui gui-smoke clean
 
 # uv-managed environments have no pip; use uv when it's available.
 dev:
@@ -33,6 +33,11 @@ fmt: _require-dev
 	$(PYTHON) -m ruff check --fix .
 
 check: lint coverage
+
+# Run the desktop app from this checkout. The system Python provides the GTK
+# bindings (PyGObject); the app calls the `apsta` from .venv when it exists.
+gui:
+	PATH="$(CURDIR)/.venv/bin:$$PATH" /usr/bin/python3 apsta_gtk.py
 
 # Builds every GUI view on a headless display and saves screenshots.
 gui-smoke:

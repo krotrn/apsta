@@ -83,7 +83,7 @@ fi
 
 install -Dm644 "$SRC/apsta_gui/data/com.github.apsta.Gtk.desktop" /usr/share/applications/com.github.apsta.Gtk.desktop
 for kind in scalable symbolic; do
-    for icon in "$SRC"/apsta_gui/data/icons/hicolor/$kind/apps/*.svg; do
+    for icon in "$SRC"/apsta_gui/data/icons/hicolor/"$kind"/apps/*.svg; do
         install -Dm644 "$icon" "/usr/share/icons/hicolor/$kind/apps/$(basename "$icon")"
     done
 done

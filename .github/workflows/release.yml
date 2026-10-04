@@ -1,100 +1,296 @@
 name: Release
 
+# One pipeline for a tagged release, publishing only after everything passed:
+#
+#   verify ──► ci (lint, tests, GUI, Python build) ──┐
+#          └─► packages (Arch + Debian builds) ──────┴─► attest
+#                                                         ├─► PyPI
+#                                                         ├─► GitHub release (notes from CHANGELOG.md)
+#                                                         ├─► pacman repo ("arch-repo" release)
+#                                                         ├─► AUR      (needs AUR_SSH_PRIVATE_KEY)
+#                                                         └─► Launchpad PPA (needs LAUNCHPAD_GPG_PRIVATE_KEY)
+#
+# Start it with the "Version Bump" workflow, or push a vX.Y.Z tag yourself.
+
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build-and-verify:
+  verify:
+    name: Verify version and changelog
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
-      pkg_version: ${{ steps.versions.outputs.pkg_version }}
-      tag_version: ${{ steps.versions.outputs.tag_version }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: "3.14"
 
-      - name: Verify version sync and tag
-        id: versions
+      - name: Versions agree with the tag
+        id: version
         run: |
-          python - <<'PY'
-          import pathlib
-          import re
+          if [[ $GITHUB_REF != refs/tags/v* ]]; then
+            echo "::error::Run this workflow on a vX.Y.Z tag (Version Bump does that)."
+            exit 1
+          fi
+          python scripts/release_check.py "${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-          root = pathlib.Path('.')
-          pyproject = root.joinpath('pyproject.toml').read_text(encoding='utf-8')
-          init_py = root.joinpath('apsta_cli/__init__.py').read_text(encoding='utf-8')
+  ci:
+    needs: verify
+    uses: ./.github/workflows/ci.yml
 
-          m1 = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
-          m2 = re.search(r'__version__\s*=\s*"([^"]+)"', init_py)
-          if not m1 or not m2:
-              raise SystemExit('Could not extract version from pyproject.toml or apsta_cli/__init__.py')
+  packages:
+    needs: verify
+    uses: ./.github/workflows/packages.yml
 
-          pyproject_version = m1.group(1)
-          module_version = m2.group(1)
-          if pyproject_version != module_version:
-              raise SystemExit(f'Version mismatch: pyproject={pyproject_version} apsta_cli={module_version}')
-
-          tag_ref = '${{ github.ref_name }}'
-          tag_version = tag_ref[1:] if tag_ref.startswith('v') else tag_ref
-          if tag_ref and tag_ref != 'main' and tag_ref.startswith('v') and tag_version != pyproject_version:
-              raise SystemExit(f'Tag/version mismatch: tag={tag_ref} package={pyproject_version}')
-
-          with open('${{ github.output }}', 'a', encoding='utf-8') as out:
-              out.write(f'pkg_version={pyproject_version}\n')
-              out.write(f'tag_version={tag_version}\n')
-          PY
-
-      - name: Install build tools
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install build twine
-
-      - name: Build package
-        run: python -m build
-
-      - name: Validate package metadata
-        run: twine check dist/*
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: python-dist-${{ steps.versions.outputs.pkg_version }}
-          path: dist/*
-
-  publish-pypi:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    needs: build-and-verify
+  attest:
+    name: Collect and attest artifacts
+    needs: [verify, ci, packages]
     runs-on: ubuntu-latest
-    environment: pypi
-    env:
-      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+    timeout-minutes: 10
     permissions:
+      contents: read
       id-token: write
+      attestations: write
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8
         with:
-          name: python-dist-${{ needs.build-and-verify.outputs.pkg_version }}
+          path: artifacts
+
+      - name: Gather release files
+        run: |
+          mkdir release
+          cp artifacts/python-dist/* artifacts/deb-package/*.deb artifacts/arch-package/*.pkg.tar.zst release/
+          (cd release && sha256sum -- * > SHA256SUMS)
+          ls -l release
+
+      - name: Build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: release/*
+
+      - name: Upload release files
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-files
+          path: release/
+          if-no-files-found: error
+
+  pypi:
+    name: Publish to PyPI
+    needs: [verify, attest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/apsta/${{ needs.verify.outputs.version }}/
+    permissions:
+      id-token: write  # trusted publishing; no API token stored in the repo
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: python-dist
           path: dist
 
-      - name: Publish to PyPI (Trusted Publisher)
-        if: ${{ env.PYPI_API_TOKEN == '' }}
+      - name: Publish
         uses: pypa/gh-action-pypi-publish@release/v1
 
-      - name: Publish to PyPI (API token fallback)
-        if: ${{ env.PYPI_API_TOKEN != '' }}
-        uses: pypa/gh-action-pypi-publish@release/v1
+  github-release:
+    name: GitHub release
+    needs: [verify, attest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download release files
+        uses: actions/download-artifact@v8
         with:
-          user: __token__
-          password: ${{ env.PYPI_API_TOKEN }}
+          name: release-files
+          path: release
+
+      - name: Create or update the release
+        run: |
+          python3 scripts/release_notes.py "$VERSION" > notes.md
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" release/* --verify-tag \
+              --title "apsta $VERSION" --notes-file notes.md
+          fi
+
+  arch-repo:
+    name: Publish pacman repository
+    needs: [verify, attest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: archlinux:base-devel
+    permissions:
+      contents: write
+    concurrency:
+      group: arch-repo
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GPG_PRIVATE_KEY: ${{ secrets.ARCH_GPG_PRIVATE_KEY }}
+      REPO_RELEASE: arch-repo
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git github-cli
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download package
+        uses: actions/download-artifact@v8
+        with:
+          name: arch-package
+          path: repo
+
+      - name: Build repository database
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          rm -f repo/PKGBUILD repo/apsta.install repo/.SRCINFO
+          if [[ -n $GPG_PRIVATE_KEY ]]; then
+            printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+            GPG_KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ {print $10; exit}')
+            export GPG_KEY_ID
+          else
+            echo "::notice::ARCH_GPG_PRIVATE_KEY not set; publishing an unsigned repository"
+          fi
+          packaging/arch/ci-repo.sh repo
+
+      - name: Upload to the arch-repo release
+        run: |
+          gh_repo=(--repo "$GITHUB_REPOSITORY")
+          if ! gh release view "$REPO_RELEASE" "${gh_repo[@]}" >/dev/null 2>&1; then
+            gh release create "$REPO_RELEASE" "${gh_repo[@]}" --latest=false \
+              --title "Arch Linux repository" \
+              --notes "pacman repository for apsta. Setup instructions: see README (Arch Linux)."
+          fi
+          cd repo
+          gh release upload "$REPO_RELEASE" ./* --clobber "${gh_repo[@]}"
+          # Drop assets from older versions so the repo only serves the current package.
+          gh release view "$REPO_RELEASE" "${gh_repo[@]}" --json assets -q '.assets[].name' |
+            while read -r asset; do
+              if [[ ! -e $asset ]]; then
+                gh release delete-asset "$REPO_RELEASE" "$asset" -y "${gh_repo[@]}"
+              fi
+            done
+
+  aur:
+    name: Publish to AUR
+    needs: [verify, attest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+    steps:
+      - name: Skip without AUR key
+        if: env.AUR_SSH_PRIVATE_KEY == ''
+        run: echo "::notice::AUR_SSH_PRIVATE_KEY not set; skipping AUR publish"
+
+      - name: Download PKGBUILD
+        if: env.AUR_SSH_PRIVATE_KEY != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: arch-package
+          path: arch
+
+      - name: Push to aur.archlinux.org
+        if: env.AUR_SSH_PRIVATE_KEY != ''
+        run: |
+          install -dm700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes"
+
+          git clone ssh://aur@aur.archlinux.org/apsta.git aur
+          cp arch/PKGBUILD arch/apsta.install arch/.SRCINFO aur/
+          cd aur
+          # Commit as the PKGBUILD maintainer ("# Maintainer: name <email>").
+          maintainer=$(sed -n 's/^# Maintainer: //p' PKGBUILD)
+          email=${maintainer##*<}
+          git config user.name "${maintainer% <*}"
+          git config user.email "${email%>}"
+          git add PKGBUILD apsta.install .SRCINFO
+          if git diff --cached --quiet; then
+            echo "AUR already up to date"
+          else
+            git commit -m "Update to ${GITHUB_REF_NAME#v}"
+            git push origin HEAD:master
+          fi
+
+  ppa:
+    name: Upload to Launchpad PPA
+    needs: [verify, attest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: ubuntu:24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      GPG_PRIVATE_KEY: ${{ secrets.LAUNCHPAD_GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.LAUNCHPAD_GPG_PASSPHRASE }}
+      PPA: ${{ vars.PPA || 'ppa:krotrn/apsta' }}
+    steps:
+      - name: Skip without Launchpad key
+        if: env.GPG_PRIVATE_KEY == ''
+        run: echo "::notice::LAUNCHPAD_GPG_PRIVATE_KEY not set; skipping PPA upload"
+
+      - name: Install build dependencies
+        if: env.GPG_PRIVATE_KEY != ''
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential debhelper dh-python pybuild-plugin-pyproject \
+            python3-all python3-setuptools python3-wheel devscripts dput \
+            git gpg gpg-agent ca-certificates
+
+      - name: Checkout
+        if: env.GPG_PRIVATE_KEY != ''
+        uses: actions/checkout@v7
+
+      - name: Build and sign source package
+        if: env.GPG_PRIVATE_KEY != ''
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          DEBSIGN_KEY=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ {print $10; exit}')
+          export DEBSIGN_KEY
+          if [[ -n $GPG_PASSPHRASE ]]; then
+            export DEBSIGN_PASSPHRASE_FILE="$RUNNER_TEMP/gpg-passphrase"
+            printf '%s' "$GPG_PASSPHRASE" > "$DEBSIGN_PASSPHRASE_FILE"
+          fi
+          packaging/deb/ci-build.sh source
+
+      - name: Upload with dput
+        if: env.GPG_PRIVATE_KEY != ''
+        run: dput "$PPA" packaging/deb/out/*_source.changes

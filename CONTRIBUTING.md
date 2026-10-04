@@ -47,6 +47,7 @@ make test       # python -m unittest discover -s tests -t .
 make coverage   # same, with a coverage report (CI requires ≥ 94 %)
 make lint       # ruff check + ruff format --check
 make fmt        # apply formatting
+make gui        # run the desktop app from this checkout
 make gui-smoke  # build every GUI view headlessly (see below)
 ```
 
