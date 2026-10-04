@@ -116,23 +116,47 @@ cp /tmp/shots/off-single-radio-settings.png docs/screenshots/settings.png
 
 ## Releasing (maintainers)
 
-Run the **Version Bump** workflow (Actions → Version Bump → `X.Y.Z`), or locally:
+1. Make sure `CHANGELOG.md` has everything under `## [Unreleased]`.
+2. Run the **Version Bump** workflow (Actions → Version Bump → `X.Y.Z`). It
+   updates every version field and turns "Unreleased" into
+   `## [X.Y.Z] - date`, commits, tags `vX.Y.Z` and starts **Release**.
+   Locally, the same steps are:
 
-```bash
-python scripts/bump_version.py X.Y.Z   # pyproject, apsta_cli/__init__.py, PKGBUILD, debian/changelog
-git commit -am "chore: release X.Y.Z" && git tag vX.Y.Z && git push origin main vX.Y.Z
+   ```bash
+   python scripts/bump_version.py X.Y.Z
+   python scripts/release_check.py X.Y.Z
+   git commit -am "chore: release X.Y.Z" && git tag vX.Y.Z && git push origin main vX.Y.Z
+   ```
+
+**Release** (`.github/workflows/release.yml`) publishes only after every check
+passes:
+
+```
+verify (versions + changelog) ─► CI (lint, tests, GUI on 7 distros, Python build) ─┐
+                              └─► packages (Arch + .deb, install tests, lintian) ──┴─► attest provenance
+                                                                                       ├─► PyPI
+                                                                                       ├─► GitHub release
+                                                                                       ├─► pacman repo
+                                                                                       ├─► AUR
+                                                                                       └─► Launchpad PPA
 ```
 
-The tag publishes everything:
+| Target         | Needs                                                                     |
+| -------------- | ------------------------------------------------------------------------- |
+| PyPI           | trusted publisher for this repo + `pypi` environment (no stored token)    |
+| GitHub release | nothing; notes come from the CHANGELOG section, files get `SHA256SUMS`    |
+| pacman repo    | nothing (`ARCH_GPG_PRIVATE_KEY` to sign it)                               |
+| AUR            | `AUR_SSH_PRIVATE_KEY`                                                     |
+| Launchpad PPA  | `LAUNCHPAD_GPG_PRIVATE_KEY` (+ `LAUNCHPAD_GPG_PASSPHRASE`), `vars.PPA`    |
 
-| Workflow       | Job            | Publishes                                              | Needs                                                      |
-| -------------- | -------------- | ------------------------------------------------------ | ---------------------------------------------------------- |
-| `release.yml`  | publish-pypi   | PyPI                                                   | trusted publisher or `PYPI_API_TOKEN`                      |
-| `packages.yml` | github-release | GitHub release with the `.deb` and `.pkg.tar.zst`      | —                                                          |
-| `packages.yml` | arch-repo      | pacman repo on the `arch-repo` release                 | — (`ARCH_GPG_PRIVATE_KEY` to sign)                         |
-| `packages.yml` | aur            | AUR package `apsta`                                    | `AUR_SSH_PRIVATE_KEY`                                      |
-| `packages.yml` | ppa            | Launchpad PPA (`vars.PPA`, default `ppa:krotrn/apsta`) | `LAUNCHPAD_GPG_PRIVATE_KEY` (+ `LAUNCHPAD_GPG_PASSPHRASE`) |
+Targets whose secret is missing are skipped with a notice. Every release
+file carries a build-provenance attestation:
+`gh attestation verify apsta_X.Y.Z-1_all.deb --repo krotrn/apsta`.
 
-Jobs whose secret is missing are skipped with a notice. Build packages locally
-with `packaging/arch/ci-build.sh local` or `packaging/deb/ci-build.sh binary`
-(on Ubuntu).
+Build packages locally with `packaging/arch/ci-build.sh local` (Arch) or
+`packaging/deb/ci-build.sh binary` (on Ubuntu).
+
+### Automation
+
+- **Dependabot** proposes updates to GitHub Actions and the dev tools weekly.
+- **CodeQL** scans the Python code and the workflows on every PR and weekly.

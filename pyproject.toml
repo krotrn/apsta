@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "apsta"
 version = "0.6.2"
-description = "Run a WiFi hotspot on Linux while staying connected to WiFi (AP+STA)"
+description = "Run a Wi-Fi hotspot on Linux while staying connected to Wi-Fi (AP+STA)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}

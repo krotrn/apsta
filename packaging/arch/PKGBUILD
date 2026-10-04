@@ -2,7 +2,7 @@
 pkgname=apsta
 pkgver=0.6.2
 pkgrel=1
-pkgdesc="Smart AP+STA WiFi hotspot manager for Linux"
+pkgdesc="Run a Wi-Fi hotspot while staying connected to Wi-Fi (AP+STA)"
 arch=('any')
 url="https://github.com/krotrn/apsta"
 license=('MIT')
