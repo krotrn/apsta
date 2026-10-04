@@ -4,8 +4,8 @@ import json
 import re
 import subprocess
 import unittest
+import unittest.mock as mock
 from pathlib import Path
-from unittest import mock
 
 from apsta_gui import backend, helpers
 

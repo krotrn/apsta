@@ -39,7 +39,9 @@ uninstall() {
           /etc/bash_completion.d/apsta \
           /usr/local/share/zsh/site-functions/_apsta \
           /etc/fish/completions/apsta.fish
-    command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload || true
+    fi
     say "✔" "apsta removed (configuration kept in /etc/apsta)"
 }
 
@@ -53,7 +55,7 @@ echo "Installing apsta into $PREFIX ..."
 # Python packages go to a private directory, not onto the system site-packages.
 rm -rf "$LIB"
 install -d "$LIB"
-cp -r "$SRC/apsta_cli" "$SRC/apsta_gui" "$LIB/"
+cp -R "$SRC/apsta_cli" "$SRC/apsta_gui" "$LIB/"
 find "$LIB" -name '__pycache__' -prune -exec rm -rf {} +
 say "✔" "Python packages → $LIB"
 
@@ -87,10 +89,14 @@ for kind in scalable symbolic; do
         install -Dm644 "$icon" "/usr/share/icons/hicolor/$kind/apps/$(basename "$icon")"
     done
 done
-command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+if command -v gtk-update-icon-cache >/dev/null; then
+    gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+fi
 say "✔" "desktop entry and icon"
 
-"$BIN/apsta" completion bash > /etc/bash_completion.d/apsta 2>/dev/null && say "✔" "bash completion" || true
+if "$BIN/apsta" completion bash > /etc/bash_completion.d/apsta 2>/dev/null; then
+    say "✔" "bash completion"
+fi
 if [[ -d /usr/local/share/zsh/site-functions ]]; then
     "$BIN/apsta" completion zsh > /usr/local/share/zsh/site-functions/_apsta && say "✔" "zsh completion"
 fi

@@ -28,7 +28,7 @@ def atomic_write(path: Path, text: str, mode: int = 0o644) -> None:
         try:
             os.unlink(tmp)
         except FileNotFoundError:
-            pass
+            pass  # the temp file was never created or is already gone
         raise
 
 
@@ -36,4 +36,4 @@ def remove(path: Path) -> None:
     try:
         Path(path).unlink()
     except FileNotFoundError:
-        pass
+        pass  # already absent, which is the goal

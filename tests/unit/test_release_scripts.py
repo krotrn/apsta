@@ -82,7 +82,12 @@ class ReleaseCheckTests(unittest.TestCase):
 
         versions = set(release_check.versions().values())
         self.assertEqual(len(versions), 1, versions)  # every source agrees
-        self.assertEqual(release_check.main("0.0.0-never"), 1)
+        import contextlib
+        import io
+
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(release_check.main("0.0.0-never"), 1)
+        self.assertIn("::error::", err.getvalue())
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@
 # as the code under test (e.g. an activated .venv).
 PYTHON ?= python3
 
-.PHONY: dev test coverage lint fmt check gui gui-smoke clean
+.PHONY: dev test coverage lint lint-ci fmt check gui gui-smoke clean
 
 # uv-managed environments have no pip; use uv when it's available.
 dev:
@@ -27,6 +27,12 @@ coverage: _require-dev
 lint: _require-dev
 	$(PYTHON) -m ruff check .
 	$(PYTHON) -m ruff format --check .
+
+# Same shellcheck/actionlint versions as CI (needs Docker).
+lint-ci:
+	docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 -s sh apsta_cli/data/apsta-sleep apsta_cli/data/apsta.runit
+	docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 install.sh scripts/hardware_check.sh packaging/arch/ci-build.sh packaging/arch/ci-repo.sh packaging/deb/ci-build.sh
+	docker run --rm -v "$(CURDIR):/repo" -w /repo rhysd/actionlint:1.7.12
 
 fmt: _require-dev
 	$(PYTHON) -m ruff format .

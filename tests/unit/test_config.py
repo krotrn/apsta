@@ -2,7 +2,7 @@ import json
 import os
 import stat
 import unittest
-from unittest import mock
+import unittest.mock as mock
 
 from apsta_cli.config import model, store, validate
 from apsta_cli.core import paths
@@ -19,7 +19,7 @@ class ValidateTests(unittest.TestCase):
 
     def test_password(self):
         self.assertEqual(validate.password("12345678"), "12345678")
-        self.assertEqual(validate.password("a" * 64 if False else "ab" * 32), "ab" * 32)
+        self.assertEqual(validate.password("ab" * 32), "ab" * 32)  # 64 hex digits = raw PSK
         for bad in ("short", "x" * 64, "pässwörd1", "line\nbreak"):
             with self.assertRaises(UsageError):
                 validate.password(bad)

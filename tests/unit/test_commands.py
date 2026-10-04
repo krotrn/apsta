@@ -1,15 +1,14 @@
 """Command-layer paths not reached by the integration tests."""
 
 import io
-import os
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+import unittest.mock as mock
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import mock
 
 from apsta_cli.cmd import config as config_cmd
 from apsta_cli.cmd import hotspot as hotspot_cmd
@@ -67,6 +66,15 @@ time.sleep(60)
 """
 
 
+def _dead(pid: int) -> bool:
+    """Exited or a zombie: in containers without an init, nothing reaps killed orphans."""
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
+    except (OSError, IndexError):
+        return True
+    return state in ("Z", "X")
+
+
 class SupervisorEscalationTests(unittest.TestCase):
     def test_sigkill_after_ignored_sigterm(self):
         with tempfile.TemporaryDirectory() as td:
@@ -86,8 +94,8 @@ class SupervisorEscalationTests(unittest.TestCase):
             sup.stop(d)
             self.assertLess(time.monotonic() - started, 10)
             time.sleep(0.2)
-            with self.assertRaises(ProcessLookupError):
-                os.kill(pid, 0)  # gone (reaped by init once killed)
+            self.assertFalse(sup.running(d))
+            self.assertTrue(_dead(pid))
 
 
 class InterfaceTests(unittest.TestCase):

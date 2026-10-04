@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import tempfile
+import unittest.mock as mock
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Union
-from unittest import mock
 
 from apsta_cli.core import paths, shell
 

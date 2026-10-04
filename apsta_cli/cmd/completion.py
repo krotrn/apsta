@@ -124,7 +124,5 @@ GENERATORS = {"bash": bash, "zsh": zsh, "fish": fish}
 
 
 def cmd_completion(args) -> int:
-    from ..cli import build_parser
-
-    print(GENERATORS[args.shell](spec(build_parser())))
+    print(GENERATORS[args.shell](spec(args.parser)))
     return 0

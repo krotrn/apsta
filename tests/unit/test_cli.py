@@ -1,9 +1,9 @@
 import io
 import unittest
+import unittest.mock as mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import mock
 
 from apsta_cli import cli
 from apsta_cli.cmd import completion, detect, service, usb

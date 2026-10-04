@@ -56,7 +56,7 @@ def _backup_corrupt(path) -> None:
         os.replace(path, backup)
         output.warn(f"Moved the unreadable file to {backup}")
     except OSError:
-        pass
+        pass  # couldn't move it aside; the warning above still tells the user
 
 
 def load() -> dict:
@@ -65,7 +65,7 @@ def load() -> dict:
     try:
         raw = _read_json(paths.CONFIG_PATH) or {}
     except FileNotFoundError:
-        pass
+        pass  # first run: no config yet, defaults apply
     except (json.JSONDecodeError, UnicodeDecodeError):
         output.warn(f"{paths.CONFIG_PATH} is corrupted; using defaults.")
         _backup_corrupt(paths.CONFIG_PATH)

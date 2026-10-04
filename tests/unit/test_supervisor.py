@@ -2,8 +2,8 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock as mock
 from pathlib import Path
-from unittest import mock
 
 from apsta_cli.core.errors import SetupError
 from apsta_cli.net import supervisor

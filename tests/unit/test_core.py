@@ -5,8 +5,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock as mock
 from pathlib import Path
-from unittest import mock
 
 from apsta_cli.core import fsutil, lock, log, output, paths, shell
 from apsta_cli.core.errors import ApstaError, SetupError
@@ -172,8 +172,8 @@ class LockTests(unittest.TestCase):
             [
                 sys.executable,
                 "-c",
-                "import sys,time; from fcntl import flock, LOCK_EX; f=open(sys.argv[1],'a+'); flock(f.fileno(), LOCK_EX);"
-                " print('locked', flush=True); time.sleep(5)",
+                "import sys,time; from fcntl import flock, LOCK_EX; f=open(sys.argv[1],'a+'); "
+                + "flock(f.fileno(), LOCK_EX); print('locked', flush=True); time.sleep(5)",
                 str(paths.LOCK_PATH),
             ],
             stdout=subprocess.PIPE,

@@ -6,9 +6,9 @@ import os
 import signal
 import tempfile
 import unittest
+import unittest.mock as mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest import mock
 
 from apsta_cli import cli
 from apsta_cli import state as state_store
@@ -42,7 +42,7 @@ class FakeWorldTestCase(unittest.TestCase):
             try:
                 os.kill(int(pidfile.read_text()), signal.SIGKILL)
             except (ValueError, OSError):
-                pass
+                pass  # the daemon already exited
 
     # ── helpers ───────────────────────────────────────────────────────────────
 

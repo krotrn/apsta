@@ -36,7 +36,7 @@ def _rotate_if_needed(path) -> None:
         if path.stat().st_size > MAX_BYTES:
             os.replace(path, path.with_name(path.name + ".1"))
     except OSError:
-        pass
+        pass  # rotation is best-effort; logging continues in the same file
 
 
 def event(level: str, name: str, **fields) -> None:
@@ -55,7 +55,8 @@ def event(level: str, name: str, **fields) -> None:
     path = paths.LOG_PATH
     try:
         _rotate_if_needed(path)
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o640)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        os.fchmod(fd, 0o600)  # also tightens logs created world-readable by apsta <= 0.6
         with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, sort_keys=True) + "\n")
     except OSError:

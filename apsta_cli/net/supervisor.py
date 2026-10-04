@@ -104,7 +104,7 @@ class PidfileSupervisor:
                 else:
                     os.kill(pid, signal.SIGKILL)
             except ProcessLookupError:
-                pass
+                pass  # it exited on its own between the check and the signal
         fsutil.remove(d.pidfile)
 
     def running(self, d: Daemon) -> bool:
