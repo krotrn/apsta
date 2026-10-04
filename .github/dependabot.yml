@@ -13,6 +13,10 @@ updates:
 
   - package-ecosystem: uv
     directory: /
+    # Only refresh uv.lock. The minimums in pyproject.toml are what users'
+    # distros must satisfy (e.g. Ubuntu 22.04 ships qrcode 7.3, and .deb builds
+    # use the distro's setuptools), so they are raised by hand, not by a bot.
+    versioning-strategy: lockfile-only
     schedule:
       interval: weekly
     groups:
