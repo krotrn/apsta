@@ -8,6 +8,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+if not (ROOT / "scripts" / "bump_version.py").exists():
+    # Distribution package builds (e.g. Debian's pybuild) copy only the package and tests.
+    raise unittest.SkipTest("release scripts are not part of this tree")
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import bump_version  # noqa: E402
