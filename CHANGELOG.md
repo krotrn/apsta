@@ -68,6 +68,25 @@ security problems.
 - Shell completions generated from the CLI definition.
 - Unit and integration test suites (no root or hardware needed), coverage gate in CI.
 
+### GUI
+
+- Redesigned: Hotspot / Devices / Settings tabs. A status hero with one
+  start/stop button, a device list with per-device speed limit, disconnect and
+  block, a Share dialog (QR code + password, fetched with authentication),
+  network settings with band and interface pickers, profiles, a start-at-boot
+  toggle, a hardware report, toasts, keyboard shortcuts and an About window.
+- Runs on libadwaita ≥ 1.1 / GTK ≥ 4.6. It previously crashed on Ubuntu/Pop!_OS
+  22.04, Linux Mint 21 and Debian 12 (`Adw.ToolbarView`, `Adw.Banner`,
+  `Adw.EntryRow`). Newer widgets go through `apsta_gui/compat.py`.
+- CI builds every view on Ubuntu 22.04, Debian 12, Ubuntu 24.04, Fedora and
+  Arch (`scripts/gui_smoke.py`) and uploads screenshots.
+- User-supplied text (SSIDs, hostnames) is escaped before display; it was
+  previously interpreted as Pango markup.
+- pkexec failures are explained (cancelled, not authorized, no polkit agent).
+  Shows a helpful window instead of exiting when the CLI isn't installed.
+- Own app icon; the desktop file's `StartupWMClass` now matches the app ID, so
+  docks group the window with its launcher.
+
 ### Removed
 
 - `setup.py` (pyproject.toml only), `gtk-ui/` launcher scripts (entry points

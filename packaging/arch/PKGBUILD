@@ -48,5 +48,7 @@ package() {
   install -Dm755 apsta_cli/data/apsta-sleep -t "$pkgdir/usr/lib/systemd/system-sleep/"
   install -Dm644 apsta_cli/data/com.github.apsta.policy -t "$pkgdir/usr/share/polkit-1/actions/"
   install -Dm644 apsta_gui/data/com.github.apsta.Gtk.desktop -t "$pkgdir/usr/share/applications/"
+  install -Dm644 apsta_gui/data/icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg -t "$pkgdir/usr/share/icons/hicolor/scalable/apps/"
+  install -Dm644 apsta_gui/data/icons/hicolor/symbolic/apps/com.github.apsta.Gtk-symbolic.svg -t "$pkgdir/usr/share/icons/hicolor/symbolic/apps/"
   install -Dm644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname/"
 }

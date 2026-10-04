@@ -1,0 +1,76 @@
+"""Share dialog: QR code + network name + password."""
+
+from __future__ import annotations
+
+import io
+
+from gi.repository import Adw, Gdk, GdkPixbuf, Gtk
+
+from .compat import copy_to_clipboard
+from .helpers import wifi_share_string
+
+
+def qr_texture(payload: str):
+    """A Gdk.Texture of the QR code, or None if the qrcode module is missing."""
+    try:
+        import qrcode
+    except ImportError:
+        return None
+    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=2)
+    qr.add_data(payload)
+    qr.make(fit=True)
+    buf = io.BytesIO()
+    qr.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
+    loader = GdkPixbuf.PixbufLoader.new_with_type("png")
+    loader.write(buf.getvalue())
+    loader.close()
+    return Gdk.Texture.new_for_pixbuf(loader.get_pixbuf())
+
+
+class ShareDialog:
+    def __init__(self, parent: Gtk.Window, ssid: str, password: str):
+        self.window = Adw.Window(
+            transient_for=parent, modal=True, title="Share hotspot", default_width=360, resizable=False
+        )
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        content.append(Adw.HeaderBar())
+
+        body = Gtk.Box(
+            orientation=Gtk.Orientation.VERTICAL,
+            spacing=12,
+            margin_top=12,
+            margin_bottom=24,
+            margin_start=24,
+            margin_end=24,
+        )
+        texture = qr_texture(wifi_share_string(ssid, password))
+        if texture is not None:
+            frame = Gtk.Box(halign=Gtk.Align.CENTER)
+            frame.add_css_class("card")
+            picture = Gtk.Picture.new_for_paintable(texture)
+            picture.set_size_request(240, 240)
+            frame.append(picture)
+            body.append(frame)
+            hint = Gtk.Label(label="Point a phone camera at the code to join.", wrap=True)
+        else:
+            hint = Gtk.Label(label="Install python3-qrcode to show a QR code.", wrap=True)
+        hint.add_css_class("dim-label")
+        body.append(hint)
+
+        group = Adw.PreferencesGroup()
+        for title, value in (("Network name", ssid), ("Password", password)):
+            row = Adw.ActionRow(title=title)
+            label = Gtk.Label(label=value, selectable=True, wrap=True, xalign=1)
+            label.add_css_class("monospace")
+            row.add_suffix(label)
+            button = Gtk.Button(icon_name="edit-copy-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Copy")
+            button.add_css_class("flat")
+            button.connect("clicked", lambda _b, v=value: copy_to_clipboard(body, v))
+            row.add_suffix(button)
+            group.add(row)
+        body.append(group)
+        content.append(body)
+        self.window.set_content(content)
+
+    def present(self) -> None:
+        self.window.present()

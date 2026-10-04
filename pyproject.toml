@@ -46,7 +46,7 @@ include = ["apsta_cli*", "apsta_gui*"]
 
 [tool.setuptools.package-data]
 apsta_cli = ["data/*"]
-apsta_gui = ["data/*"]
+apsta_gui = ["data/*.desktop", "data/icons/hicolor/*/apps/*.svg"]
 
 # ── Tooling ───────────────────────────────────────────────────────────────────
 
@@ -69,8 +69,15 @@ ignore = [
 [tool.coverage.run]
 branch = true
 source = ["apsta_cli", "apsta_gui"]
-# GTK widget code needs a display; it is kept thin and checked by hand.
-omit = ["*/__main__.py", "apsta_gui/app.py", "apsta_gui/mixins/*"]
+# GTK widget code needs a display; scripts/gui_smoke.py exercises it in the CI "gui" job.
+omit = [
+  "*/__main__.py",
+  "apsta_gui/app.py",
+  "apsta_gui/compat.py",
+  "apsta_gui/share.py",
+  "apsta_gui/window.py",
+  "apsta_gui/pages/*",
+]
 
 [tool.coverage.report]
 show_missing = true

@@ -312,3 +312,21 @@ class WatcherTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutostartTests(unittest.TestCase):
+    def test_systemd(self):
+        from apsta_cli.services import autostart
+        from tests.support import FakeShell
+
+        FakeShell(["systemctl"]).on("systemctl", "is-active", rc=3).install(self)
+        self.assertEqual(autostart.info("systemd"), {"init": "systemd", "enabled": True, "running": False})
+
+    def test_openrc_and_unknown(self):
+        from apsta_cli.services import autostart
+        from tests.support import FakeShell
+
+        FakeShell(["rc-update"]).on("rc-update", "show", stdout="  apsta | default\n  sshd | default").install(self)
+        self.assertTrue(autostart.info("openrc")["enabled"])
+        self.assertIsNone(autostart.info("runit")["enabled"])
+        self.assertIn(autostart.detect_init(), ("systemd", "openrc", "runit", "unknown"))

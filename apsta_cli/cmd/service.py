@@ -10,6 +10,7 @@ from typing import List, Optional
 from ..core import fsutil, output, shell
 from ..core.errors import ApstaError
 from ..services import hotspot
+from ..services.autostart import detect_init
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 PACKAGED_BINARY = "/usr/bin/apsta"
@@ -37,16 +38,6 @@ def apsta_binary() -> str:
 
 def render(name: str, binary: str) -> str:
     return data_file(name).replace(PACKAGED_BINARY, binary)
-
-
-def detect_init() -> str:
-    if Path("/run/systemd/system").is_dir():
-        return "systemd"
-    if Path("/run/openrc").is_dir():
-        return "openrc"
-    if Path("/run/runit").is_dir() or Path("/etc/runit").is_dir():
-        return "runit"
-    return "unknown"
 
 
 def _run(argv: List[str], what: str) -> None:

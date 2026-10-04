@@ -87,8 +87,7 @@ sudo ./install.sh --uninstall  # removes it again
 
 Runtime requirements: Python ≥ 3.9, NetworkManager, `iw`, `iproute2`.
 Recommended: `hostapd` + `dnsmasq` (needed for client management), and one of
-`iptables`/`nftables`/`firewalld`. GUI: PyGObject, GTK 4, libadwaita, polkit,
-and `python3-qrcode` for QR codes.
+`iptables`/`nftables`/`firewalld`. GUI: see [GUI](#gui).
 
 > **pipx/pip users:** `sudo` can't see `~/.local/bin`. Install system-wide
 > with `sudo pipx install --global apsta` (pipx ≥ 1.5), or use the packages above.
@@ -137,13 +136,35 @@ sudo apsta clients unlimit 192.168.42.17
 
 ### GUI
 
+<p>
+  <img src="docs/screenshots/hotspot.png" alt="Hotspot tab" width="270">
+  <img src="docs/screenshots/devices.png" alt="Devices tab" width="270">
+  <img src="docs/screenshots/share.png" alt="Share dialog with QR code" width="270">
+</p>
+
 ```bash
 apsta-gtk
 ```
 
-It talks to the CLI, and privileged actions go through polkit
-(`com.github.apsta.manage`), so you authenticate once per few minutes, not
-once per click.
+- **Hotspot**: start/stop, connection details, profile switcher, and *Share*
+  (QR code + password).
+- **Devices**: connected devices with speed limits, disconnect and block.
+- **Settings**: network name, password, band, interface, profiles, start at
+  boot, and a hardware report.
+
+Privileged actions go through polkit (`com.github.apsta.manage`), so you
+authenticate once every few minutes, not on every click. A polkit
+authentication agent must be running; GNOME, KDE, Cinnamon, MATE and Xfce
+start one. On i3/sway, run e.g. `polkit-gnome` or `lxpolkit`.
+
+Works with libadwaita ≥ 1.1 / GTK ≥ 4.6 and is tested in CI on Ubuntu 22.04,
+Debian 12, Ubuntu 24.04, Fedora and Arch:
+
+| Distribution          | Packages                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| Ubuntu / Debian / Mint | `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil`                       |
+| Fedora                | `python3-gobject gobject-introspection gtk4 libadwaita python3-qrcode python3-pillow`       |
+| Arch                  | `python-gobject gtk4 libadwaita python-qrcode python-pillow`                               |
 
 ### Shell completion
 

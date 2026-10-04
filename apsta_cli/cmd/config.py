@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import getpass
+import json
 import sys
 from typing import Dict, Optional
 
@@ -92,6 +93,16 @@ def cmd_config(args) -> int:
     if args.show_password:
         hotspot.require_root("Showing the password")
     config = store.load()
+    if getattr(args, "json", False):
+        data = {
+            "active_profile": model.active_name(config),
+            "profiles": model.profile_names(config),
+            "settings": {k: v for k, v in model.active_profile(config).items() if k != "password"},
+        }
+        if args.show_password:
+            data["password"] = config["password"]
+        print(json.dumps(data, indent=2))
+        return 0
     output.head("apsta — Configuration")
     output.blank()
     output.info(f"Profiles: {', '.join(model.profile_names(config))}")
