@@ -1,4 +1,4 @@
-"""apsta-gtk: application bootstrap and window wiring."""
+"""apsta-gtk: application bootstrap."""
 
 import sys
 
@@ -7,43 +7,45 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, Gio, GLib  # noqa: E402
+from gi.repository import Adw, Gio  # noqa: E402
+
+from apsta_cli import __version__  # noqa: E402
 
 from .backend import ApstaBackend  # noqa: E402
-from .helpers import APP_ID, POLL_INTERVAL  # noqa: E402
-from .mixins.actions import ApstaWindowActionsMixin  # noqa: E402
-from .mixins.pages import ApstaWindowPagesMixin  # noqa: E402
-
-
-class ApstaWindow(ApstaWindowPagesMixin, ApstaWindowActionsMixin, Adw.ApplicationWindow):
-    def __init__(self, app: Adw.Application, backend: ApstaBackend):
-        super().__init__(application=app, title="apsta — Hotspot Manager")
-        self.set_default_size(480, 620)
-        self._backend = backend
-        self._refreshing = False
-        self._busy = False
-        self._synced = {}  # entry key -> last value written from config
-
-        self._build_ui()
-        self._request_refresh()
-        GLib.timeout_add_seconds(POLL_INTERVAL, self._on_poll_tick)
+from .compat import register_bundled_icons, show_about  # noqa: E402
+from .helpers import APP_ID  # noqa: E402
+from .window import ApstaWindow, MissingApstaWindow  # noqa: E402
 
 
 class ApstaApp(Adw.Application):
     def __init__(self, backend: ApstaBackend):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.FLAGS_NONE)
-        self._backend = backend
+        self.backend = backend
         self.connect("activate", self._on_activate)
+        for name, callback, accels in (
+            ("quit", lambda *_: self.quit(), ["<Control>q"]),
+            ("about", lambda *_: show_about(self.get_active_window(), __version__), []),
+        ):
+            action = Gio.SimpleAction.new(name, None)
+            action.connect("activate", callback)
+            self.add_action(action)
+            if accels:
+                self.set_accels_for_action(f"app.{name}", accels)
+        self.set_accels_for_action("win.refresh", ["<Control>r", "F5"])
+
+    def do_startup(self):
+        Adw.Application.do_startup(self)
+        register_bundled_icons(APP_ID)
 
     def _on_activate(self, app):
-        window = self.get_active_window() or ApstaWindow(app, self._backend)
+        window = self.get_active_window()
+        if window is None:
+            if self.backend.available():
+                window = ApstaWindow(app, self.backend)
+            else:
+                window = MissingApstaWindow(app, self.backend.apsta)
         window.present()
 
 
 def main():
-    backend = ApstaBackend()
-    if not backend.available():
-        print(f"Error: apsta not found at {backend.apsta}", file=sys.stderr)
-        print("Install apsta first: https://github.com/krotrn/apsta", file=sys.stderr)
-        raise SystemExit(1)
-    raise SystemExit(ApstaApp(backend).run(None))
+    raise SystemExit(ApstaApp(ApstaBackend()).run(sys.argv[:1]))

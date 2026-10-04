@@ -20,6 +20,7 @@ from ..net import channels, clients, nm, strategies
 from ..net.strategies import StartContext, Strategy
 from ..net.transaction import Transaction
 from ..state import HotspotState
+from . import autostart
 
 
 def require_root(action: str = "This command") -> None:
@@ -193,6 +194,7 @@ def status() -> dict:
             {"name": i.name, "mac": i.mac, "type": i.iftype, "state": i.state, "connected_ssid": i.connected_ssid}
             for i in interfaces.list_wifi_interfaces()
         ],
+        "autostart": autostart.info(),
         "config": {
             "active_profile": model.active_name(config),
             "profiles": model.profile_names(config),

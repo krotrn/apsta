@@ -33,7 +33,8 @@ Recommends:
  hostapd,
  dnsmasq,
  iptables | nftables,
- pkexec | policykit-1
+ pkexec | policykit-1,
+ librsvg2-common
 Description: Smart AP+STA WiFi hotspot manager for Linux
  apsta lets you broadcast a WiFi hotspot while staying connected to your
  existing WiFi network simultaneously, without dropping your connection.

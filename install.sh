@@ -34,6 +34,8 @@ uninstall() {
           /usr/lib/systemd/system-sleep/apsta-sleep \
           /usr/share/polkit-1/actions/com.github.apsta.policy \
           /usr/share/applications/com.github.apsta.Gtk.desktop \
+          /usr/share/icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg \
+          /usr/share/icons/hicolor/symbolic/apps/com.github.apsta.Gtk-symbolic.svg \
           /etc/bash_completion.d/apsta \
           /usr/local/share/zsh/site-functions/_apsta \
           /etc/fish/completions/apsta.fish
@@ -80,7 +82,13 @@ if [[ -d /usr/share/polkit-1/actions ]]; then
 fi
 
 install -Dm644 "$SRC/apsta_gui/data/com.github.apsta.Gtk.desktop" /usr/share/applications/com.github.apsta.Gtk.desktop
-say "✔" "desktop entry"
+for kind in scalable symbolic; do
+    for icon in "$SRC"/apsta_gui/data/icons/hicolor/$kind/apps/*.svg; do
+        install -Dm644 "$icon" "/usr/share/icons/hicolor/$kind/apps/$(basename "$icon")"
+    done
+done
+command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q /usr/share/icons/hicolor || true
+say "✔" "desktop entry and icon"
 
 "$BIN/apsta" completion bash > /etc/bash_completion.d/apsta 2>/dev/null && say "✔" "bash completion" || true
 if [[ -d /usr/local/share/zsh/site-functions ]]; then

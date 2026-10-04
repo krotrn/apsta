@@ -79,6 +79,66 @@ jobs:
           name: coverage-xml
           path: coverage.xml
 
+  # Build every GUI state on a headless Broadway display, on the oldest and
+  # newest libadwaita we support, failing on exceptions and GTK criticals.
+  gui:
+    name: GUI on ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu 22.04 (libadwaita 1.1)
+            slug: ubuntu-22.04
+            image: ubuntu:22.04
+            install: >-
+              apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends
+              python3 python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 libgtk-4-bin python3-qrcode python3-pil
+              dbus adwaita-icon-theme librsvg2-common xvfb imagemagick
+          - name: Debian 12 (libadwaita 1.2)
+            slug: debian-12
+            image: debian:12
+            install: >-
+              apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends
+              python3 python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 libgtk-4-bin python3-qrcode python3-pil
+              dbus adwaita-icon-theme librsvg2-common
+          - name: Ubuntu 24.04 (libadwaita 1.5)
+            slug: ubuntu-24.04
+            image: ubuntu:24.04
+            install: >-
+              apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends
+              python3 python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 libgtk-4-bin python3-qrcode python3-pil
+              dbus adwaita-icon-theme librsvg2-common
+          - name: Fedora (latest)
+            slug: fedora
+            image: fedora:latest
+            install: >-
+              dnf install -y python3 python3-gobject gobject-introspection gtk4 libadwaita python3-qrcode
+              python3-pillow dbus-daemon dbus-tools adwaita-icon-theme /usr/bin/gtk4-broadwayd
+          - name: Arch Linux (latest)
+            slug: arch
+            image: archlinux:latest
+            install: >-
+              pacman -Syu --noconfirm python python-gobject gtk4 libadwaita python-qrcode python-pillow
+              dbus adwaita-icon-theme
+    steps:
+      - name: Install GTK and libadwaita
+        run: ${{ matrix.install }}
+
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Smoke test
+        run: G_DEBUG=fatal-criticals dbus-run-session -- python3 scripts/gui_smoke.py gui-screenshots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gui-screenshots-${{ matrix.slug }}
+          path: gui-screenshots/
+
   build:
     runs-on: ubuntu-latest
     steps:

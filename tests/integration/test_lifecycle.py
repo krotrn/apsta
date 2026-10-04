@@ -183,6 +183,10 @@ class ConfigCommandTests(FakeWorldTestCase):
         code, out, _ = self.apsta("config", "--show-password")
         self.assertIn("correct horse", out)
         self.assertIn("Cafe", self.apsta("config")[1])
+        data = self.apsta_json("config", "--json")
+        self.assertEqual(data["settings"]["band"], "a")
+        self.assertNotIn("password", data)
+        self.assertEqual(self.apsta_json("config", "--json", "--show-password")["password"], "correct horse")
         self.assertNotIn("correct horse", self.apsta("config")[1])
 
     def test_validation_errors(self):

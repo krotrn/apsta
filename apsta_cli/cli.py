@@ -103,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--password-stdin", action="store_true", help="Read the new password from stdin/prompt")
     p.add_argument("--generate-password", action="store_true", help="Set a new random password")
     p.add_argument("--show-password", action="store_true", help="Show the password (root)")
+    p.add_argument("--json", action="store_true", help="Machine-readable output")
 
     p = sub.add_parser("profile", help="Manage named hotspot profiles")
     psub = p.add_subparsers(dest="action", metavar="ACTION")

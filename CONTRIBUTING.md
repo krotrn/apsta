@@ -34,6 +34,20 @@ make lint       # ruff check + ruff format --check
 make fmt        # apply formatting
 ```
 
+### GUI changes
+
+The GUI must run on libadwaita 1.1 / GTK 4.6 (Ubuntu 22.04). Use widgets
+newer than libadwaita 1.0 only through `apsta_gui/compat.py`;
+`tests/unit/test_gui.py` enforces this. To check views and get screenshots
+for your PR without a desktop session:
+
+```bash
+G_DEBUG=fatal-criticals python3 scripts/gui_smoke.py /tmp/shots   # needs gtk4-broadwayd or Xvfb
+```
+
+CI runs the same script on Ubuntu 22.04, Debian 12, Ubuntu 24.04, Fedora and
+Arch, and uploads the screenshots as artifacts.
+
 ## Guidelines
 
 - Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. Keep dependencies
