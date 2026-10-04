@@ -120,7 +120,12 @@ class LogTests(unittest.TestCase):
 
 class OutputTests(unittest.TestCase):
     def test_no_color_when_not_tty(self):
-        self.assertEqual(output.C.RED, "")  # unittest stdout is not a TTY
+        with mock.patch.object(sys.stdout, "isatty", return_value=False):
+            self.assertEqual(output.C.RED, "")
+
+    def test_no_color_env_wins_on_tty(self):
+        with mock.patch.object(sys.stdout, "isatty", return_value=True), mock.patch.dict(os.environ, {"NO_COLOR": "1"}):
+            self.assertEqual(output.C.RED, "")
 
     def test_color_on_tty(self):
         with mock.patch.object(sys.stdout, "isatty", return_value=True), mock.patch.dict(os.environ, {}, clear=False):
@@ -183,3 +188,21 @@ class LockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MachineOutputTests(unittest.TestCase):
+    def test_json_mode_moves_messages_to_stderr(self):
+        with (
+            mock.patch.object(output, "_MESSAGES_TO_STDERR", False),
+            mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out,
+            mock.patch("sys.stderr", new_callable=__import__("io").StringIO) as err,
+        ):
+            output.machine_output()
+            output.info("progress")
+            output.ok("done")
+            output.head("Title")
+            output.detail("more")
+            output.blank()
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("progress", err.getvalue())
+        self.assertIn("done", err.getvalue())

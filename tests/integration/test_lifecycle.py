@@ -1,5 +1,6 @@
 """End-to-end: the real CLI against the simulated network stack."""
 
+import json
 import os
 import stat
 import subprocess
@@ -227,6 +228,9 @@ class DetectTests(FakeWorldTestCase):
         self.assertEqual(data["verdict"]["mode"], "ap+sta")
         self.assertTrue(data["capability"]["same_channel_required"])
         self.assertEqual(data["methods"], {"hostapd": "ready", "nmcli": "ready"})
+        status = self.apsta_json("status", "--json")
+        self.assertEqual(set(data["interfaces"][0]), set(status["interfaces"][0]))  # same shape everywhere
+        self.assertEqual(data["interfaces"][0]["type"], "managed")
         code, out, _ = self.apsta("detect")
         self.assertIn("same channel", out)
 
@@ -256,3 +260,50 @@ class SubprocessSmokeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StatusOutputTests(FakeWorldTestCase):
+    def test_text_output_with_devices_and_json_start(self):
+        code, out, err = self.apsta("start", "--json")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(out)["method"], "hostapd")
+        self.update_world(stations=[{"mac": PHONE}])
+        paths.DNSMASQ_LEASES.write_text(f"0 {PHONE} 192.168.42.50 phone *\n")
+
+        _, out, _ = self.apsta("status")
+        self.assertIn("Clients connected: 1", out)
+        _, out, _ = self.apsta("status", "--clients")
+        self.assertIn("phone", out)
+        self.assertIn("192.168.42.50", out)
+        _, out, _ = self.apsta("clients")
+        self.assertIn(PHONE, out)
+        self.apsta("stop")
+
+    def test_stale_hotspot_is_reported(self):
+        self.apsta("start")
+        self._kill_daemons()
+        _, out, err = self.apsta("status")
+        self.assertIn("not running", out)
+        self.assertIn("stopped unexpectedly", err)
+
+
+class DeprecatedFlagTests(FakeWorldTestCase):
+    def setUp(self):
+        super().setUp()
+        self.apsta("start")
+        self.update_world(stations=[{"mac": PHONE}])
+        self.addCleanup(self.apsta, "stop")
+
+    def test_status_disconnect_and_limit_still_work(self):
+        code, _, err = self.apsta("status", "--limit-client", PHONE, "--limit-kbps", "300")
+        self.assertEqual(code, 0, err)
+        self.assertIn("deprecated", err)
+        self.assertEqual(self.state().client_limits[PHONE]["kbps"], 300)
+        code, _, err = self.apsta("status", "--disconnect", PHONE)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.world["stations"], [])
+
+    def test_limit_kbps_alone_is_a_usage_error_not_a_crash(self):
+        code, _, err = self.apsta("status", "--limit-kbps", "500")
+        self.assertEqual(code, 2)
+        self.assertIn("must be used together", err)

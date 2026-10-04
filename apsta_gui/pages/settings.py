@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from gi.repository import Adw, Gtk
 
-from ..compat import EntryField, esc, switch_row
+from ..compat import EntryField, button_row, esc, switch_row
 from ..helpers import BANDS, capability_rows
 
 
@@ -31,11 +31,7 @@ class SettingsPage:
         self.iface = Adw.ComboRow(title="Wi-Fi interface")
         self.iface_model = Gtk.StringList.new(["Automatic"])
         self.iface.set_model(self.iface_model)
-        save_row = Adw.ActionRow()
-        self.save_btn = Gtk.Button(label="Save", valign=Gtk.Align.CENTER, halign=Gtk.Align.END)
-        self.save_btn.add_css_class("suggested-action")
-        self.save_btn.connect("clicked", self._on_save)
-        save_row.add_suffix(self.save_btn)
+        save_row, self.save_btn = button_row("Save", self._on_save, style="suggested-action")
         for row in (self.ssid.widget, self.password.widget, self.band, self.iface, save_row):
             net.add(row)
         self.widget.add(net)
@@ -43,10 +39,7 @@ class SettingsPage:
         # ── profiles ──────────────────────────────────────────────────────────
         profiles = Adw.PreferencesGroup(title="Profiles", description="Switch profiles on the Hotspot tab.")
         self.new_profile = EntryField("New profile name")
-        create_row = Adw.ActionRow(title="Copy the active profile")
-        create_btn = Gtk.Button(label="Create", valign=Gtk.Align.CENTER)
-        create_btn.connect("clicked", self._on_create_profile)
-        create_row.add_suffix(create_btn)
+        create_row, _ = button_row("Create Profile", self._on_create_profile, subtitle="Copy the active profile")
         profiles.add(self.new_profile.widget)
         profiles.add(create_row)
         self.widget.add(profiles)
@@ -139,7 +132,7 @@ class SettingsPage:
 
     # ── actions ───────────────────────────────────────────────────────────────
 
-    def _on_save(self, _btn) -> None:
+    def _on_save(self) -> None:
         ssid = self.ssid.get_text().strip()
         if not ssid:
             self.window.toast("The network name can't be empty.")
@@ -160,7 +153,7 @@ class SettingsPage:
 
         self.window.run_privileged(work, on_success=lambda: self.password.set_text(""))
 
-    def _on_create_profile(self, _btn) -> None:
+    def _on_create_profile(self) -> None:
         name = self.new_profile.get_text().strip()
         if not name:
             self.window.toast("Enter a name for the new profile.")

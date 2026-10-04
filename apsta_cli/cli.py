@@ -172,6 +172,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not args.command:
         parser.print_help()
         return 0
+    output.machine_output(bool(getattr(args, "json", False)))
     try:
         _check_tools(args.command)
         return _handler(args.command)(args) or 0

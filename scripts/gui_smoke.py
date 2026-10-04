@@ -27,7 +27,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-DISPLAY = os.environ.get("BROADWAY_DISPLAY", ":42")
+# A per-process display number avoids clashing with a leftover server.
+DISPLAY = os.environ.get("BROADWAY_DISPLAY", f":{40 + os.getpid() % 50}")
 
 
 def start_display():
@@ -38,11 +39,11 @@ def start_display():
         os.environ.update(GDK_BACKEND="broadway", BROADWAY_DISPLAY=DISPLAY)
     elif shutil.which("Xvfb"):
         proc = subprocess.Popen(
-            ["Xvfb", ":99", "-screen", "0", "1280x1024x24", "-nolisten", "tcp"],
+            ["Xvfb", DISPLAY, "-screen", "0", "1280x1024x24", "-nolisten", "tcp"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        os.environ.update(GDK_BACKEND="x11", DISPLAY=":99", GSK_RENDERER="cairo")
+        os.environ.update(GDK_BACKEND="x11", DISPLAY=DISPLAY, GSK_RENDERER="cairo")
     else:
         sys.exit("Need gtk4-broadwayd or Xvfb for a headless display.")
     time.sleep(1.5)
@@ -194,12 +195,32 @@ def screenshot(widget: Gtk.Widget, path: Path) -> None:
     raise RuntimeError(f"nothing rendered for {path.name}")
 
 
-def other_windows(main):
-    return [w for w in Gtk.Window.list_toplevels() if w is not main and w.get_visible()]
+def capture_dialog(main, path: Path) -> None:
+    """Screenshot and close the dialog the main window just opened.
+
+    libadwaita >= 1.5 shows Adw.Dialog inside its parent window; older versions
+    open a separate window.
+    """
+    pump(0.8)
+    dialog = main.get_visible_dialog() if hasattr(main, "get_visible_dialog") else None
+    if dialog is not None:
+        screenshot(dialog, path)  # a window snapshot doesn't include the dialog layer
+        dialog.force_close()
+        pump(0.3)
+        return
+    others = [w for w in Gtk.Window.list_toplevels() if w is not main and w.get_visible()]
+    assert others, f"no dialog opened for {path.name}"
+    screenshot(others[0], path)
+    for window in others:
+        window.close()
 
 
 def run(app: Adw.Application, out: Path) -> None:
     compat.register_bundled_icons("com.github.apsta.Gtk")
+    compat.ensure_font_dpi()  # same startup steps as apsta_gui.app
+    # Headless displays have no frame clock driving animations, so dialogs would
+    # stay at their first (transparent) frame. Real sessions are unaffected.
+    Gtk.Settings.get_default().set_property("gtk-enable-animations", False)
     for name, (status, detect) in SCENARIOS.items():
         print(f"scenario {name}", flush=True)
         backend = FakeBackend(status, detect)
@@ -214,14 +235,11 @@ def run(app: Adw.Application, out: Path) -> None:
             win.show_page("hotspot")
             print("  share dialog", flush=True)
             win.share()
-            pump(0.8)
-            dialogs = other_windows(win)
-            assert dialogs, "share dialog did not open"
-            screenshot(dialogs[0], out / f"{name}-share.png")
-            for dialog in dialogs:
-                dialog.close()
+            capture_dialog(win, out / f"{name}-share.png")
             if win.clients_page.rows:
                 print("  client menu", flush=True)
+                win.show_page("clients")  # a popover can only open on a visible row
+                pump(0.3)
                 row = next(iter(win.clients_page.rows.values()))
                 row.popover.popup()
                 pump(0.3)
@@ -238,17 +256,21 @@ def run(app: Adw.Application, out: Path) -> None:
         win.close()
         pump(0.2)
 
+    print("narrow window", flush=True)
+    narrow = ApstaWindow(app, FakeBackend(*SCENARIOS["on"]))
+    narrow.set_default_size(360, 700)
+    narrow.present()
+    pump(1.0)
+    screenshot(narrow, out / "narrow.png")
+    narrow.close()
+
     print("about window", flush=True)
     host = ApstaWindow(app, FakeBackend(*SCENARIOS["off"]))
     host.present()
     pump(0.5)
-    compat.show_about(host, "0.0.0")
-    pump(0.8)
-    abouts = other_windows(host)
-    assert abouts, "about window did not open"
-    screenshot(abouts[0], out / "about.png")
-    for window in abouts + [host]:
-        window.close()
+    compat.show_about(host, "0.0.0", "com.github.apsta.Gtk")
+    capture_dialog(host, out / "about.png")
+    host.close()
 
     missing = MissingApstaWindow(app, "/usr/bin/apsta")
     missing.present()

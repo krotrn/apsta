@@ -190,10 +190,7 @@ def status() -> dict:
         "stale": st is not None and not alive,
         "hotspot": st.to_dict() if alive else None,
         "clients": [c.to_dict() for c in clients.list_clients(st)] if alive else [],
-        "interfaces": [
-            {"name": i.name, "mac": i.mac, "type": i.iftype, "state": i.state, "connected_ssid": i.connected_ssid}
-            for i in interfaces.list_wifi_interfaces()
-        ],
+        "interfaces": [interfaces.to_json(i) for i in interfaces.list_wifi_interfaces()],
         "autostart": autostart.info(),
         "config": {
             "active_profile": model.active_name(config),

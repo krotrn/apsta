@@ -6,7 +6,7 @@ import threading
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from .compat import esc
+from .compat import Spinner, adaptive_tabs, esc, toolbar
 from .helpers import POLL_INTERVAL
 from .pages.clients import ClientsPage
 from .pages.hotspot import HotspotPage
@@ -16,7 +16,7 @@ from .share import ShareDialog
 
 class ApstaWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application, backend):
-        super().__init__(application=app, title="Hotspot", default_width=460, default_height=760)
+        super().__init__(application=app, title="Hotspot", default_width=640, default_height=760)
         self.set_size_request(360, 480)
         self.backend = backend
         self.data: dict = {}
@@ -39,10 +39,9 @@ class ApstaWindow(Adw.ApplicationWindow):
             self.stack.add_titled(page.widget, name, title).set_icon_name(icon)
 
         header = Adw.HeaderBar()
-        switcher = Adw.ViewSwitcher(stack=self.stack, policy=Adw.ViewSwitcherPolicy.NARROW)
-        header.set_title_widget(switcher)
-        self.spinner = Gtk.Spinner()
-        header.pack_start(self.spinner)
+        tab_bar = adaptive_tabs(self, header, self.stack)
+        self.spinner = Spinner()
+        header.pack_start(self.spinner.widget)
         menu = Gio.Menu()
         menu.append("Refresh", "win.refresh")
         menu.append("About apsta", "app.about")
@@ -51,11 +50,7 @@ class ApstaWindow(Adw.ApplicationWindow):
 
         self.toasts = Adw.ToastOverlay()
         self.toasts.set_child(self.stack)
-        layout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        layout.append(header)
-        layout.append(self.toasts)
-        self.toasts.set_vexpand(True)
-        self.set_content(layout)
+        self.set_content(toolbar(header, self.toasts, tab_bar))
 
         refresh = Gio.SimpleAction.new("refresh", None)
         refresh.connect("activate", lambda *_: self.refresh())
@@ -80,7 +75,7 @@ class ApstaWindow(Adw.ApplicationWindow):
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
-        self.spinner.set_spinning(busy)
+        self.spinner.set_busy(busy)
         self.hotspot_page.toggle.set_sensitive(not busy)
 
     def run_privileged(self, work, on_success=None) -> None:
@@ -162,8 +157,6 @@ class MissingApstaWindow(Adw.ApplicationWindow):
 
     def __init__(self, app: Adw.Application, path: str):
         super().__init__(application=app, title="Hotspot", default_width=460, default_height=400)
-        layout = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        layout.append(Adw.HeaderBar())
         page = Adw.StatusPage(
             icon_name="dialog-warning-symbolic",
             title="apsta is not installed",
@@ -171,5 +164,4 @@ class MissingApstaWindow(Adw.ApplicationWindow):
             "Install it from https://github.com/krotrn/apsta",
             vexpand=True,
         )
-        layout.append(page)
-        self.set_content(layout)
+        self.set_content(toolbar(Adw.HeaderBar(), page))

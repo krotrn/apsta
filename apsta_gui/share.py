@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import io
 
-from gi.repository import Adw, Gdk, GdkPixbuf, Gtk
+from gi.repository import Adw, Gdk, GLib, Gtk
 
-from .compat import copy_to_clipboard
+from .compat import Dialog, copy_to_clipboard
 from .helpers import wifi_share_string
 
 
@@ -21,10 +21,7 @@ def qr_texture(payload: str):
     qr.make(fit=True)
     buf = io.BytesIO()
     qr.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
-    loader = GdkPixbuf.PixbufLoader.new_with_type("png")
-    loader.write(buf.getvalue())
-    loader.close()
-    return Gdk.Texture.new_for_pixbuf(loader.get_pixbuf())
+    return Gdk.Texture.new_from_bytes(GLib.Bytes.new(buf.getvalue()))
 
 
 class ShareDialog:
@@ -69,8 +66,7 @@ class ShareDialog:
             row.add_suffix(button)
             group.add(row)
         body.append(group)
-        content.append(body)
-        self.window.set_content(content)
+        self.dialog = Dialog(parent, "Share hotspot", body)
 
     def present(self) -> None:
-        self.window.present()
+        self.dialog.present()

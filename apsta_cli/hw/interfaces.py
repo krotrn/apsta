@@ -20,6 +20,18 @@ class WifiInterface:
     connected_ssid: Optional[str]
 
 
+def to_json(iface: WifiInterface) -> dict:
+    """The interface shape used by every ``--json`` output."""
+    return {
+        "name": iface.name,
+        "mac": iface.mac,
+        "phy": iface.phy,
+        "type": iface.iftype,
+        "state": iface.state,
+        "connected_ssid": iface.connected_ssid,
+    }
+
+
 @dataclass
 class StaLink:
     ssid: Optional[str]

@@ -7,9 +7,10 @@ non-trivial change.
 
 ```
             ┌──────────────────────┐     ┌────────────────────────────┐
-            │ apsta_cli/cli.py     │     │ apsta_gui (GTK4)           │
-            │ argparse + errors    │     │ talks to the CLI only      │
-            └─────────┬────────────┘     │ (backend.py, pkexec+JSON)  │
+            │ apsta_cli/cli.py     │     │ apsta_gui (GTK4/libadwaita)│
+            │ argparse + errors    │     │ a client of the CLI:       │
+            └─────────┬────────────┘     │ `--json` reads, pkexec     │
+                      │                  │ writes (see "The GUI")     │
                       │                  └────────────┬───────────────┘
             ┌─────────▼────────────┐                  │
  present    │ cmd/*                │◄─────────────────┘
@@ -102,13 +103,84 @@ travel through files: hostapd.conf (0600), NetworkManager keyfiles in
 (`--password-stdin`), never command-line arguments that other users can read
 in `ps`.
 
-### The GUI is a CLI client
+### The CLI's JSON output is an interface
 
-`apsta_gui/backend.py` runs `apsta status --json` unprivileged and
-`pkexec /usr/bin/apsta <args>` for changes, never `pkexec sh -c`. The polkit
-action `com.github.apsta.manage` (`auth_admin_keep`) names apsta in the
-prompt. There is one implementation of every operation and one privilege
-boundary.
+`status`, `detect`, `config`, `clients` and `start` accept `--json`. The GUI is
+built on that output and scripts may be too, so treat its keys as a public
+interface: add keys freely, but don't rename or remove them without a
+changelog entry. The keys are documented in [json-output.md](json-output.md).
+
+## The GUI
+
+`apsta_gui` is a GTK 4 / libadwaita application, and a *client of the CLI*.
+It never imports `apsta_cli` logic (only its version string). That gives one
+implementation of every operation, one privilege boundary, and a GUI that
+can't put the system into states the CLI can't explain.
+
+```
+app.py        Adw.Application: actions (refresh, about, quit), shortcuts,
+              startup fixes (bundled icons, missing font DPI)
+window.py     main window: header, tabs, toasts, busy spinner, 5 s refresh loop,
+              run_async / run_privileged helpers used by every page
+pages/        one class per tab, each builds its widgets and exposes update(data)
+  hotspot.py    status hero + start/stop, connection details, profile switcher
+  clients.py    device rows with a menu (speed limit, disconnect, block), blocked list
+  settings.py   network settings, profiles, start at boot, hardware report
+share.py      Share dialog (QR code + password)
+compat.py     newest libadwaita widget when available, fallback otherwise
+backend.py    runs `apsta … --json` and `pkexec apsta …` (no GTK, unit-tested)
+helpers.py    pure formatting / text logic (no GTK, unit-tested)
+```
+
+**Data flow.** Every 5 seconds (and after every action) the window runs
+`apsta status --json` in a worker thread and hands the result to each page's
+`update(data)` on the main loop. `apsta detect --json` runs once at startup.
+Pages never block the main loop: subprocesses always run through
+`window.run_async(work, done)`, and widgets are touched only in `done`.
+
+**Changes** go through `window.run_privileged(work)`. It shows the spinner,
+runs `pkexec /usr/bin/apsta <args>` in a thread, shows the outcome as a toast
+and refreshes. Only one privileged action runs at a time. Secrets (new
+passwords, the password fetched for Share) travel over stdin and stdout,
+never argv. The polkit action `com.github.apsta.manage` (`auth_admin_keep`)
+names apsta in the prompt and remembers authentication for a few minutes.
+
+**Rules the pages follow:**
+
+- Periodic refreshes must not overwrite a field the user is editing. Pages
+  remember the last value they wrote and update a field only if it still
+  holds that value.
+- Device rows are kept per MAC across refreshes, so an open menu isn't
+  destroyed by the 5-second update.
+- Everything user-controlled (SSIDs, hostnames) passes through `compat.esc()`
+  before reaching a row title, subtitle, toast or status page, because those
+  are Pango markup.
+
+**Supporting old and new libadwaita.** Distros ship very different versions
+(1.1 on Ubuntu 22.04, 1.5 on 24.04, the latest on Arch/Fedora). The GUI uses
+the newest widgets available and falls back on older systems, entirely inside
+`compat.py`:
+
+| Need                  | ≥ this libadwaita                        | Fallback                    |
+| --------------------- | ---------------------------------------- | --------------------------- |
+| window layout         | ToolbarView (1.4)                        | Gtk.Box                     |
+| tabs                  | header + bottom bar via Breakpoint (1.4) | compact header switcher     |
+| text fields           | EntryRow / PasswordEntryRow (1.2)        | ActionRow + Gtk.Entry       |
+| toggles               | SwitchRow (1.4)                          | ActionRow + Gtk.Switch      |
+| action rows           | ButtonRow (1.6)                          | ActionRow + Gtk.Button      |
+| busy indicator        | Adw.Spinner (1.6)                        | Gtk.Spinner                 |
+| dialogs               | Adw.Dialog (1.5, sheet on narrow)        | modal Adw.Window            |
+| about                 | AboutDialog (1.5) / AboutWindow (1.2)    | Gtk.AboutDialog             |
+
+Outside `compat.py` only libadwaita 1.1 / GTK 4.6 API is allowed;
+`tests/unit/test_gui.py` fails otherwise. `compat.ensure_font_dpi()` works
+around libadwaita 1.5 collapsing page width when the session provides no
+font DPI.
+
+Because GTK 4 and libadwaita 1 keep their API stable within the major
+version (deprecations warn, nothing is removed) and the app pins
+`Gtk 4.0`/`Adw 1` via `gi.require_version`, library updates don't break it.
+CI runs the GUI on the newest releases (Arch, Fedora) to catch problems early.
 
 ## Extending
 
@@ -120,6 +192,10 @@ boundary.
 | New USB chipset          | `USB_CHIPSET_DB` in `hw/usb.py`                                             |
 | Card detected wrongly    | add its `iw phy` output to `tests/fixtures/iw/` with a test                 |
 | New command              | parser in `cli.py`, handler in `cmd/`, logic in `services/`                 |
+
+| GUI: new tab             | class in `apsta_gui/pages/` with `widget` + `update(data, detect)`; register in `window.py` |
+| GUI: widget newer than libadwaita 1.1 | add a helper with a fallback to `apsta_gui/compat.py` |
+| GUI: new action          | a `backend.py` method calling the CLI + `window.run_privileged(...)` |
 
 Shell completion is generated from the argparse tree, so new commands and
 flags are completable without extra work.
@@ -135,4 +211,15 @@ flags are completable without extra work.
   fallback with rollback, stale-state recovery, DFS refusal and more, with no
   root and no hardware.
 
-Run `make test` or `make coverage`. CI enforces ≥ 90 % coverage.
+- `tests/unit/test_gui.py`: the GUI's non-GTK parts (`backend.py`,
+  `helpers.py`) and a portability check that GTK code outside `compat.py`
+  uses only libadwaita 1.1 API.
+- `scripts/gui_smoke.py`: builds every GUI state (on, empty, off, single-radio
+  card, CLI unavailable, narrow window, dialogs) against a fake backend on a
+  headless display (Broadway, or Xvfb where GTK lacks Broadway), with GTK
+  criticals made fatal. It saves a screenshot of each view. CI runs it on
+  Ubuntu 22.04, Debian 12, Ubuntu 24.04, Fedora and Arch.
+
+Run `make test`, `make coverage` or `make gui-smoke`. CI enforces ≥ 94 %
+coverage of `apsta_cli` and the GUI's non-GTK modules. GTK widget code is
+covered by the smoke test instead.
