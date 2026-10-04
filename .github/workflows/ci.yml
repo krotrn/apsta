@@ -42,11 +42,16 @@ jobs:
       - name: Ruff format
         run: ruff format --check .
 
-      - name: Shell scripts
-        run: |
-          shellcheck -s sh apsta_cli/data/apsta-sleep apsta_cli/data/apsta.runit
-          shellcheck install.sh scripts/hardware_check.sh packaging/arch/ci-build.sh \
-            packaging/arch/ci-repo.sh packaging/deb/ci-build.sh
+      # A fixed release, not the runner's preinstalled copy, so CI and local runs agree.
+      - name: Shell scripts (POSIX sh)
+        uses: docker://koalaman/shellcheck:v0.11.0
+        with:
+          args: -s sh apsta_cli/data/apsta-sleep apsta_cli/data/apsta.runit
+
+      - name: Shell scripts (bash)
+        uses: docker://koalaman/shellcheck:v0.11.0
+        with:
+          args: install.sh scripts/hardware_check.sh packaging/arch/ci-build.sh packaging/arch/ci-repo.sh packaging/deb/ci-build.sh
 
       - name: Workflows (actionlint)
         uses: docker://rhysd/actionlint:1.7.12

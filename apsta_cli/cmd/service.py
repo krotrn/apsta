@@ -111,7 +111,7 @@ def _disable_runit() -> None:
     try:
         RUNIT_DIR.rmdir()
     except OSError:
-        pass
+        pass  # not empty: the user keeps their own files there
     output.ok("Removed the runit service")
 
 

@@ -1,6 +1,6 @@
 import threading
 import unittest
-from unittest import mock
+import unittest.mock as mock
 
 from apsta_cli import state as state_store
 from apsta_cli.config import store

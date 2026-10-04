@@ -143,7 +143,7 @@ def scan_usb_wifi() -> List[UsbWifiDevice]:
             devnum = (dev_path / "devnum").read_text().strip().zfill(3)
             name = lsusb_names.get((busnum, devnum), "")
         except OSError:
-            pass
+            pass  # device vanished or sysfs entry unreadable; keep the name empty
 
         if not matched_chipset:
             wifi_keywords = ("wireless", "wlan", "wifi", "802.11", "wi-fi", "mediatek", "ralink")
@@ -183,6 +183,6 @@ def _find_usb_iface_by_path(dev_path: Path) -> Tuple[Optional[str], Optional[str
                     try:
                         driver = os.path.basename(os.readlink(str(driver_link)))
                     except OSError:
-                        pass
+                        pass  # driver link vanished; report it as unknown
                 return iface, driver
     return None, None

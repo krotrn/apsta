@@ -84,7 +84,7 @@ def cmd_config(args) -> int:
         output.head("apsta — Configuration")
         config = apply_settings(settings)
         if args.generate_password:
-            output.info(f"New password: {config['password']}")
+            output.reveal_secret("New password", config["password"])
         if hotspot.current():
             output.info("Restart the hotspot to apply: sudo apsta stop && sudo apsta start")
         output.blank()

@@ -1,5 +1,5 @@
 import unittest
-from unittest import mock
+import unittest.mock as mock
 
 from apsta_cli.core import paths
 from apsta_cli.core.errors import SetupError, UsageError

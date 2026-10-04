@@ -60,7 +60,7 @@ def cmd_start(args) -> int:
         # Only on a terminal: under systemd stdout lands in the journal.
         from ..config import store
 
-        print(f"  {C.CYAN}→{C.RESET}  Password: {store.load()['password']}")
+        output.reveal_secret("Password", store.load()["password"])
     else:
         output.info("Show the password with: sudo apsta config --show-password")
     output.info("Stop with: sudo apsta stop")

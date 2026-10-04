@@ -1,5 +1,5 @@
 import unittest
-from unittest import mock
+import unittest.mock as mock
 
 from apsta_cli import state
 from apsta_cli.core import paths
@@ -52,11 +52,14 @@ class StateTests(unittest.TestCase):
 class TransactionTests(unittest.TestCase):
     def test_rollback_in_reverse_on_error(self):
         order = []
-        with self.assertRaises(RuntimeError):
+
+        def failing_setup():
             with Transaction() as tx:
                 tx.on_rollback("a", lambda: order.append("a"))
                 tx.on_rollback("b", lambda: order.append("b"))
                 raise RuntimeError("boom")
+
+        self.assertRaises(RuntimeError, failing_setup)
         self.assertEqual(order, ["b", "a"])
 
     def test_commit_keeps_changes(self):

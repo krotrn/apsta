@@ -54,7 +54,8 @@ class Strategy(ABC):
         """Why this strategy can't be used here, or None if it can."""
 
     @abstractmethod
-    def start(self, ctx: StartContext, tx: Transaction) -> HotspotState: ...
+    def start(self, ctx: StartContext, tx: Transaction) -> HotspotState:
+        """Bring the hotspot up, registering an undo step on ``tx`` after every change."""
 
     @abstractmethod
     def stop(self, state: HotspotState) -> None:

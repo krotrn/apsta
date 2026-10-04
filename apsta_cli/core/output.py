@@ -83,6 +83,15 @@ def detail(msg: str) -> None:
     print(f"     {msg}", file=_stream())
 
 
+def reveal_secret(label: str, value: str, stream=None) -> None:
+    """Show a secret the user explicitly asked to see. The only place apsta prints one.
+
+    Never logged; callers only use it for an interactive terminal or for
+    ``--show-password`` output requested by an authenticated (root) user.
+    """
+    print(f"  {C.CYAN}→{C.RESET}  {label}: {value}", file=stream or _stream())
+
+
 def hint(msg: str) -> None:
     """Indented follow-up to an error or warning (goes to stderr with it)."""
     print(f"     {msg}", file=sys.stderr)
