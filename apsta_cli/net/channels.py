@@ -12,6 +12,9 @@ DFS_CHANNELS = frozenset(list(range(52, 65, 4)) + list(range(100, 145, 4)))
 SAFE_24G = (1, 6, 11)
 SAFE_5G = (36, 40, 44, 48)
 
+# User guide for "can't host on this channel" (no IR); linked from errors.
+DOCS_5GHZ = "https://github.com/krotrn/apsta/blob/main/docs/5ghz-wifi.md"
+
 
 @dataclass(frozen=True)
 class Channel:
@@ -107,6 +110,7 @@ def plan(
                     "Switch the network you're connected to to 2.4 GHz (e.g. your phone's hotspot: AP band 2.4 GHz),",
                     "or connect to a 2.4 GHz network,",
                     "or run with --allow-disconnect to drop WiFi and host on an allowed channel.",
+                    f"Why: {DOCS_5GHZ}",
                 ],
             )
         return ChannelPlan(sta, "matches the WiFi connection (single-channel radio)")

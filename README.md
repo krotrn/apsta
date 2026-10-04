@@ -207,6 +207,9 @@ apsta completion fish | sudo tee /etc/fish/completions/apsta.fish >/dev/null
 On single-channel cards (most laptop chips) the hotspot has to use the same
 channel as your WiFi. apsta reads it from the live connection and refuses
 cases that can't work, such as DFS or 6 GHz channels, with an explanation.
+Many cards also can't host on some 5 GHz channels at all, so a hotspot can't
+start while your WiFi is on one of them; see
+[docs/5ghz-wifi.md](docs/5ghz-wifi.md).
 Under `apsta run`/the service, the hotspot follows the connection when it
 changes channel.
 
@@ -214,6 +217,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
 ## Troubleshooting
 
+- **Won't start while connected to a 5 GHz network** (e.g. a phone hotspot)?
+  Your card can't host on that channel. Switch the network to 2.4 GHz, or see
+  [docs/5ghz-wifi.md](docs/5ghz-wifi.md) for why and the other fixes.
 - `APSTA_DEBUG=1 sudo apsta start` prints every step; privileged runs also log
   JSON lines to `/var/log/apsta.log`.
 - The service's own log: `journalctl -u apsta`.

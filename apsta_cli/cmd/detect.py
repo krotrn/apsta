@@ -27,6 +27,7 @@ def verdict(cap: capability.HardwareCapability, sta_freq: Optional[int] = None) 
                     "warnings": [
                         f"Your WiFi is on {sta.label} channel {sta.number}, where this card can't host.",
                         "Switch that network to 2.4 GHz, or connect to a 2.4 GHz network, then start.",
+                        f"Why: {channels.DOCS_5GHZ}",
                     ],
                     "next": "sudo apsta start  (after switching to 2.4 GHz)",
                 }

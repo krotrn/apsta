@@ -22,6 +22,12 @@ All notable changes to this project are documented here. The format follows
 - NetworkManager fallback: wait until NetworkManager has adopted the new
   interface instead of failing with "No suitable device found".
 
+### Documentation
+
+- `docs/5ghz-wifi.md`: why the hotspot can't start while your WiFi is on some
+  5 GHz channels, how to check, and the fixes. Linked from the error, from
+  `apsta detect` and from the README.
+
 ## [0.7.0] - 2026-10-04
 
 Rewrite of the internals around a layered architecture
