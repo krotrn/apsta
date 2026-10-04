@@ -1,476 +1,266 @@
-#!/usr/bin/env python3
-"""Status, actions, and background worker mixin for the GTK window."""
+"""Event handlers and background work for the GTK window.
+
+Rules followed here:
+* anything that may block (subprocesses) runs in a worker thread;
+* widgets are touched only on the main loop (``GLib.idle_add``);
+* periodic refreshes never overwrite a field the user has edited.
+"""
 
 import io
-import json
-import os
-import subprocess
 import threading
 
 from gi.repository import Gdk, GdkPixbuf, GLib
 
-from ..helpers import (
-    APSTA,
-    first_error_line,
-    pkexec_error_message,
-    read_config,
-    run_apsta,
-    run_apsta_root_script,
-    strip_ansi,
-)
+from ..helpers import band_label, format_clients, wifi_share_string
 
 
 class ApstaWindowActionsMixin:
-    @staticmethod
-    def _escape_wifi_field(value: str) -> str:
-        escaped = value.replace("\\", "\\\\")
-        escaped = escaped.replace(";", "\\;")
-        escaped = escaped.replace(",", "\\,")
-        escaped = escaped.replace(":", "\\:")
-        return escaped
+    # ── threading helpers ─────────────────────────────────────────────────────
 
-    def _build_wifi_share_string(self) -> str:
-        ssid = self._ssid_entry.get_text().strip() or self._ssid_status_row.get_subtitle().strip()
-        password = self._pass_entry.get_text().strip()
-        if not ssid or ssid == "—" or not password:
-            return ""
+    def _in_background(self, work, done=None):
+        """Run ``work()`` off the main loop, then ``done(result)`` on it."""
 
-        ssid = self._escape_wifi_field(ssid)
-        password = self._escape_wifi_field(password)
-        return f"WIFI:T:WPA;S:{ssid};P:{password};;"
+        def runner():
+            result = work()
+            if done is not None:
+                GLib.idle_add(done, result)
+
+        threading.Thread(target=runner, daemon=True).start()
+
+    def _privileged(self, work, button=None, refresh=True):
+        if button is not None:
+            button.set_sensitive(False)
+
+        def done(result):
+            if button is not None:
+                button.set_sensitive(True)
+            self._show_banner(result.message, error=not result.ok)
+            if refresh:
+                self._request_refresh()
+            return False
+
+        self._in_background(work, done)
+
+    # ── status polling ────────────────────────────────────────────────────────
+
+    def _on_poll_tick(self) -> bool:
+        self._request_refresh()
+        return True  # keep the timer
+
+    def _request_refresh(self):
+        if self._refreshing:
+            return
+        self._refreshing = True
+        self._in_background(self._backend.status, self._apply_status)
+
+    def _sync_entry(self, entry, key: str, value: str):
+        """Update ``entry`` from config only if the user hasn't edited it since the last sync."""
+        last = self._synced.get(key)
+        if last is None or entry.get_text() == last:
+            entry.set_text(value)
+            self._synced[key] = value
+
+    def _apply_status(self, data: dict):
+        self._refreshing = False
+        hotspot = data.get("hotspot")
+        config = data.get("config") or {}
+        active = bool(hotspot)
+
+        if active:
+            self._status_row.set_subtitle(f"Active ({hotspot['method']})")
+            self._status_icon.set_from_icon_name("network-wireless-hotspot-symbolic")
+            self._ssid_status_row.set_subtitle(hotspot["ssid"])
+            self._iface_row.set_subtitle(hotspot["ap_interface"])
+            self._channel_row.set_subtitle(f"ch{hotspot['channel']} ({band_label(hotspot['band'])})")
+        else:
+            self._status_row.set_subtitle("Unavailable" if not data else "Inactive")
+            self._status_icon.set_from_icon_name("network-wireless-symbolic")
+            for row in (self._ssid_status_row, self._iface_row, self._channel_row):
+                row.set_subtitle("—")
+
+        if config:
+            self._sync_entry(self._ssid_entry, "ssid", config.get("ssid") or "")
+            self._sync_entry(self._profile_entry, "profile", config.get("active_profile") or "default")
+            self._sync_entry(self._cfg_ssid, "cfg_ssid", config.get("ssid") or "")
+            self._sync_entry(self._cfg_iface, "cfg_iface", config.get("interface") or "")
+
+        self._start_btn.set_sensitive(not active and not self._busy)
+        self._stop_btn.set_sensitive(active and not self._busy)
+        self._clients_buf.set_text(
+            format_clients(data.get("clients") or []) if active else "Start the hotspot to see clients."
+        )
+        return False
+
+    # ── start / stop ──────────────────────────────────────────────────────────
+
+    def _set_busy(self, busy: bool):
+        self._busy = busy
+        label = "Working…" if busy else None
+        self._start_btn.set_label(label or "Start Hotspot")
+        self._stop_btn.set_label(label or "Stop Hotspot")
+        self._start_btn.set_sensitive(not busy)
+        self._stop_btn.set_sensitive(not busy)
+
+    def _run_busy(self, work):
+        self._set_busy(True)
+
+        def done(result):
+            self._set_busy(False)
+            self._show_banner(result.message, error=not result.ok)
+            if result.ok:
+                self._pass_entry.set_text("")
+            self._request_refresh()
+            return False
+
+        self._in_background(work, done)
+
+    def _on_start_clicked(self, _btn):
+        ssid = self._ssid_entry.get_text().strip()
+        password = self._pass_entry.get_text()
+        if not ssid:
+            self._show_banner("SSID cannot be empty.", error=True)
+            return
+        allow = self._allow_disconnect_switch.get_active()
+        self._run_busy(lambda: self._backend.start(ssid, password, allow))
+
+    def _on_stop_clicked(self, _btn):
+        self._run_busy(self._backend.stop)
+
+    # ── profiles / config / service ───────────────────────────────────────────
+
+    def _on_apply_profile_clicked(self, btn):
+        name = self._profile_entry.get_text().strip()
+        if not name:
+            self._show_banner("Profile name cannot be empty.", error=True)
+            return
+        self._synced.pop("ssid", None)  # take the new profile's SSID
+        self._privileged(lambda: self._backend.use_profile(name), btn)
+
+    def _on_save_config_clicked(self, btn):
+        ssid = self._cfg_ssid.get_text().strip()
+        if not ssid:
+            self._show_banner("SSID cannot be empty.", error=True)
+            return
+        password = self._cfg_pass.get_text()
+        iface = self._cfg_iface.get_text().strip()
+
+        def work():
+            result = self._backend.save_config(ssid, password, iface)
+            if result.ok:
+                GLib.idle_add(self._cfg_pass.set_text, "")
+            return result
+
+        self._privileged(work, btn)
+
+    def _on_enable_clicked(self, btn):
+        self._privileged(self._backend.enable_service, btn)
+
+    def _on_disable_clicked(self, btn):
+        self._privileged(self._backend.disable_service, btn)
+
+    # ── clients ───────────────────────────────────────────────────────────────
+
+    def _client_id(self):
+        ident = self._client_entry.get_text().strip()
+        if not ident:
+            self._show_banner("Enter a client MAC, IP, or hostname.", error=True)
+        return ident
+
+    def _on_disconnect_client_clicked(self, btn):
+        ident = self._client_id()
+        if ident:
+            self._privileged(lambda: self._backend.disconnect(ident), btn)
+
+    def _on_block_client_clicked(self, btn):
+        ident = self._client_id()
+        if ident:
+            self._privileged(lambda: self._backend.disconnect(ident, block=True), btn)
+
+    def _on_limit_client_clicked(self, btn):
+        ident = self._client_id()
+        kbps = self._limit_kbps_entry.get_text().strip()
+        if not ident:
+            return
+        if not kbps.isdigit() or int(kbps) <= 0:
+            self._show_banner("Limit must be a positive number of Kbps.", error=True)
+            return
+        self._privileged(lambda: self._backend.limit(ident, int(kbps)), btn)
+
+    # ── hardware page ─────────────────────────────────────────────────────────
+
+    def _show_command_output(self, buffer, *args):
+        buffer.set_text("Working…")
+        self._in_background(lambda: self._backend.text(*args), lambda out: buffer.set_text(out or "(no output)"))
+
+    def _on_detect_clicked(self, _btn):
+        self._show_command_output(self._detect_buf, "detect")
+
+    def _on_usb_scan_clicked(self, _btn):
+        self._show_command_output(self._usb_buf, "scan-usb")
+
+    def _on_recommend_clicked(self, _btn):
+        self._show_command_output(self._rec_buf, "recommend")
+
+    # ── sharing ───────────────────────────────────────────────────────────────
+
+    def _share_payload(self) -> str:
+        payload = wifi_share_string(self._ssid_entry.get_text().strip(), self._pass_entry.get_text())
+        if not payload:
+            self._show_banner("Type the SSID and password to share them.", error=True)
+            self._qr_hint.set_label("The saved password is root-only; type it above to share it.")
+        return payload
+
+    def _on_show_wifi_qr_clicked(self, _btn):
+        payload = self._share_payload()
+        if payload and self._render_wifi_qr(payload):
+            self._show_banner("QR code generated.")
+
+    def _on_copy_wifi_uri_clicked(self, _btn):
+        payload = self._share_payload()
+        if not payload:
+            return
+        display = Gdk.Display.get_default()
+        if display is None:
+            self._show_banner("Could not access the clipboard.", error=True)
+            return
+        display.get_clipboard().set(payload)
+        self._show_banner("Share string copied.")
 
     def _render_wifi_qr(self, payload: str) -> bool:
         try:
             import qrcode
         except ImportError:
-            self._show_banner("QR renderer missing. Install the Python qrcode and Pillow packages.", error=True)
-            self._qr_hint.set_label("QR library missing: install the Python qrcode and Pillow packages.")
+            self._show_banner("Install the Python qrcode and Pillow packages for QR codes.", error=True)
             return False
-
         try:
-            qr = qrcode.QRCode(
-                error_correction=qrcode.constants.ERROR_CORRECT_M,
-                box_size=8,
-                border=2,
-            )
+            qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=2)
             qr.add_data(payload)
             qr.make(fit=True)
-            image = qr.make_image(fill_color="black", back_color="white")
-
-            png_buf = io.BytesIO()
-            image.save(png_buf, format="PNG")
-
+            buf = io.BytesIO()
+            qr.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
             loader = GdkPixbuf.PixbufLoader.new_with_type("png")
-            loader.write(png_buf.getvalue())
+            loader.write(buf.getvalue())
             loader.close()
-            pixbuf = loader.get_pixbuf()
-            if pixbuf is None:
-                raise RuntimeError("Failed to decode generated QR image")
-
-            # Keep a reference so the paintable is not GC'd while shown.
-            self._qr_texture = Gdk.Texture.new_for_pixbuf(pixbuf)
+            self._qr_texture = Gdk.Texture.new_for_pixbuf(loader.get_pixbuf())  # keep a reference
             self._qr_picture.set_paintable(self._qr_texture)
             self._qr_hint.set_label("Scan with your phone camera to join the hotspot.")
             return True
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - surface any rendering failure in the UI
             self._show_banner(f"Could not generate QR: {str(exc)[:120]}", error=True)
-            self._qr_hint.set_label("Failed to render QR code.")
             return False
 
-    def _on_show_wifi_qr_clicked(self, _btn):
-        payload = self._build_wifi_share_string()
-        if not payload:
-            self._show_banner("Enter the SSID and password to share.", error=True)
-            self._qr_hint.set_label("The saved password is root-only; type it above to share it.")
-            return
-
-        if self._render_wifi_qr(payload):
-            self._show_banner("QR code generated.")
-
-    def _on_copy_wifi_uri_clicked(self, _btn):
-        payload = self._build_wifi_share_string()
-        if not payload:
-            self._show_banner("Enter the SSID and password to share.", error=True)
-            return
-
-        display = Gdk.Display.get_default()
-        if display is None:
-            self._show_banner("Could not access display clipboard.", error=True)
-            return
-
-        clipboard = display.get_clipboard()
-        clipboard.set(payload)
-        self._show_banner("Share string copied. Paste into any Wi-Fi QR generator.")
-
-    def _refresh_status(self):
-        """Read config.json directly (0o644, no passwords — no root needed) and update UI."""
-        cfg = read_config()
-        ap_iface = cfg.get("ap_interface") or ""
-        
-        if ap_iface and not os.path.exists(f"/sys/class/net/{ap_iface}"):
-            ap_iface = ""
-
-        active   = bool(ap_iface)
-        ssid     = cfg.get("ssid") or "—"
-        active_profile = cfg.get("active_profile") or "default"
-
-        if active:
-            self._status_row.set_subtitle("Active")
-            self._status_icon.set_from_icon_name("network-wireless-hotspot-symbolic")
-            self._ssid_status_row.set_subtitle(ssid)
-            self._iface_row.set_subtitle(ap_iface)
-            # Get channel from iw asynchronously
-            threading.Thread(
-                target=self._fetch_channel_info,
-                args=(ap_iface,),
-                daemon=True,
-            ).start()
-        else:
-            self._status_row.set_subtitle("Inactive")
-            self._status_icon.set_from_icon_name("network-wireless-symbolic")
-            self._ssid_status_row.set_subtitle("—")
-            self._iface_row.set_subtitle("—")
-            self._channel_row.set_subtitle("—")
-
-        # Keep control fields pre-filled with current config
-        if ssid and ssid != "—":
-            self._ssid_entry.set_text(ssid)
-        self._profile_entry.set_text(active_profile)
-
-        self._start_btn.set_sensitive(not active)
-        self._stop_btn.set_sensitive(active)
-
-        # Refresh client list asynchronously so status polling doesn't block UI.
-        threading.Thread(target=self._bg_refresh_clients, daemon=True).start()
-
-    def _bg_refresh_clients(self):
-        rc, stdout, stderr = run_apsta("status", "--json")
-        if rc != 0:
-            message = first_error_line(strip_ansi(stderr or stdout or "Failed to load clients."))
-            GLib.idle_add(self._clients_buf.set_text, f"Could not refresh clients:\n{message}")
-            return
-
-        try:
-            payload = json.loads(stdout or "{}")
-        except json.JSONDecodeError:
-            GLib.idle_add(self._clients_buf.set_text, "Could not parse client status output.")
-            return
-
-        method = payload.get("method")
-        clients = payload.get("clients") or []
-        if method != "hostapd":
-            GLib.idle_add(self._clients_buf.set_text, "Client management is available in hostapd mode.")
-            return
-
-        if not clients:
-            GLib.idle_add(self._clients_buf.set_text, "No clients connected.")
-            return
-
-        lines = ["HOSTNAME             MAC                 IP"]
-        lines.append("------------------------------------------------")
-        for client in clients:
-            host = client.get("hostname") or "(no hostname)"
-            mac = client.get("mac") or "-"
-            ip = client.get("ip") or "-"
-            lines.append(f"{host[:20]:<20} {mac:<18} {ip}")
-        GLib.idle_add(self._clients_buf.set_text, "\n".join(lines))
-
-    def _on_disconnect_client_clicked(self, _btn):
-        identifier = self._disconnect_entry.get_text().strip()
-        if not identifier:
-            self._show_banner("Enter a client MAC, IP, or hostname.", error=True)
-            return
-        self._disconnect_btn.set_sensitive(False)
-        threading.Thread(target=self._bg_disconnect_client, args=(identifier,), daemon=True).start()
-
-    def _bg_disconnect_client(self, identifier: str):
-        rc, stdout, stderr = run_apsta_root_script(f'"{APSTA}" status --disconnect "$1"', identifier)
-        if rc == 0:
-            GLib.idle_add(self._on_disconnect_done, True, "Client disconnected.")
-            return
-
-        raw = strip_ansi(stderr or stdout or "Unknown error").strip()
-        msg = first_error_line(raw)
-        GLib.idle_add(self._on_disconnect_done, False, msg)
-
-    def _on_disconnect_done(self, success: bool, message: str):
-        self._disconnect_btn.set_sensitive(True)
-        self._show_banner(message, error=not success)
-        if success:
-            self._disconnect_entry.set_text("")
-        threading.Thread(target=self._bg_refresh_clients, daemon=True).start()
-
-    def _on_limit_client_clicked(self, _btn):
-        identifier = self._disconnect_entry.get_text().strip()
-        kbps = self._limit_kbps_entry.get_text().strip()
-        if not identifier:
-            self._show_banner("Enter client MAC, IP, or hostname first.", error=True)
-            return
-        if not kbps.isdigit() or int(kbps) <= 0:
-            self._show_banner("Limit must be a positive Kbps number.", error=True)
-            return
-
-        self._limit_btn.set_sensitive(False)
-        threading.Thread(target=self._bg_limit_client, args=(identifier, kbps), daemon=True).start()
-
-    def _bg_limit_client(self, identifier: str, kbps: str):
-        script = f'"{APSTA}" status --limit-client "$1" --limit-kbps "$2"'
-        rc, stdout, stderr = run_apsta_root_script(script, identifier, kbps)
-        if rc == 0:
-            GLib.idle_add(self._on_limit_done, True, f"Applied {kbps} Kbps limit.")
-            return
-
-        raw = strip_ansi(stderr or stdout or "Unknown error").strip()
-        msg = first_error_line(raw)
-        GLib.idle_add(self._on_limit_done, False, msg)
-
-    def _on_limit_done(self, success: bool, message: str):
-        self._limit_btn.set_sensitive(True)
-        self._show_banner(message, error=not success)
-
-    def _on_apply_profile_clicked(self, _btn):
-        profile = self._profile_entry.get_text().strip()
-        if not profile:
-            self._show_banner("Profile name cannot be empty.", error=True)
-            return
-        self._profile_apply_btn.set_sensitive(False)
-        threading.Thread(target=self._bg_apply_profile, args=(profile,), daemon=True).start()
-
-    def _bg_apply_profile(self, profile: str):
-        rc, stdout, stderr = run_apsta_root_script(f'"{APSTA}" status --use-profile "$1"', profile)
-        if rc == 0:
-            GLib.idle_add(self._on_apply_profile_done, True, f"Switched profile to '{profile}'.")
-            return
-
-        raw = strip_ansi(stderr or stdout or "Unknown error").strip()
-        msg = first_error_line(raw)
-        GLib.idle_add(self._on_apply_profile_done, False, msg)
-
-    def _on_apply_profile_done(self, success: bool, message: str):
-        self._profile_apply_btn.set_sensitive(True)
-        self._show_banner(message, error=not success)
-        if success:
-            self._refresh_status()
-
-    def _fetch_channel_info(self, iface: str):
-        """Run `iw dev <iface> info` in a thread; update UI via GLib.idle_add."""
-        try:
-            r = subprocess.run(
-                ["iw", "dev", iface, "info"],
-                capture_output=True, text=True,
-            )
-            channel, band = "", ""
-            for line in r.stdout.splitlines():
-                line = line.strip()
-                if line.startswith("channel "):
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        channel = parts[1]
-                        freq_str = parts[2].lstrip("(")
-                        try:
-                            freq = int(freq_str)
-                            band = "5 GHz" if freq >= 5000 else "2.4 GHz"
-                        except ValueError:
-                            pass
-                    break
-            label = f"ch{channel} ({band})" if channel else "—"
-            GLib.idle_add(self._channel_row.set_subtitle, label)
-        except Exception:
-            GLib.idle_add(self._channel_row.set_subtitle, "—")
-
-    def _on_poll_tick(self) -> bool:
-        """
-        Background poll — called by GLib every POLL_INTERVAL seconds.
-        Must return True to keep the timer alive.
-        Guard with _refreshing so overlapping polls can't stack up if a
-        config read takes longer than the poll interval.
-        """
-        if not self._refreshing:
-            self._refreshing = True
-            threading.Thread(target=self._poll_worker, daemon=True).start()
-        return True  # keep polling
-
-    def _poll_worker(self):
-        done = threading.Event()
-        def _run():
-            try:
-                self._refresh_status()
-            finally:
-                done.set()
-            return False
-        GLib.idle_add(_run)
-        done.wait(timeout=30)
-        self._refreshing = False
-
-    def _load_config_into_settings(self):
-        cfg = read_config()
-        self._cfg_ssid.set_text(cfg.get("ssid") or "")
-        self._cfg_pass.set_text("")
-        self._cfg_iface.set_text(cfg.get("interface") or "")
-
-    # ── Button handlers ────────────────────────────────────────────────────────
-
-    def _on_start_clicked(self, _btn):
-        ssid = self._ssid_entry.get_text().strip()
-        pwd  = self._pass_entry.get_text().strip()
-        if not ssid:
-            self._show_banner("SSID cannot be empty.", error=True)
-            return
-        force = self._force_switch.get_active()
-        self._set_busy(True)
-        threading.Thread(
-            target=self._bg_start, args=(ssid, pwd, force), daemon=True
-        ).start()
-
-    def _bg_start(self, ssid: str, pwd: str, force: bool):
-        cmds = [f'"{APSTA}" config --set ssid="$1"']
-        args = [ssid]
-        if pwd:  # blank keeps the saved password
-            cmds.append(f'"{APSTA}" config --set password="$2"')
-            args.append(pwd)
-        cmds.append(f'"{APSTA}" start' + (" --force" if force else ""))
-        rc, stdout, stderr = run_apsta_root_script(" && ".join(cmds), *args)
-        if rc == 0:
-            GLib.idle_add(self._on_action_done, True, "Hotspot started.")
-        else:
-            # apsta writes errors to stdout (coloured terminal output),
-            # stderr is often empty. Show the first meaningful error line.
-            raw = strip_ansi(stderr or stdout or "Unknown error").strip()
-            msg = first_error_line(raw)
-            GLib.idle_add(self._on_action_done, False, msg)
-
-    def _on_stop_clicked(self, _btn):
-        self._set_busy(True)
-        threading.Thread(target=self._bg_stop, daemon=True).start()
-
-    def _bg_stop(self):
-        rc, stdout, stderr = run_apsta_root_script(f'"{APSTA}" stop')
-        if rc == 0:
-            GLib.idle_add(self._on_action_done, True, "Hotspot stopped.")
-        else:
-            GLib.idle_add(self._on_action_done, False, pkexec_error_message(rc, stderr, stdout))
-
-    def _on_action_done(self, success: bool, message: str):
-        self._set_busy(False)
-        self._show_banner(message, error=not success)
-        self._refresh_status()
-
-    def _on_detect_clicked(self, _btn):
-        self._detect_buf.set_text("Running detect…")
-        threading.Thread(target=self._bg_detect, daemon=True).start()
-
-    def _bg_detect(self):
-        rc, stdout, stderr = run_apsta("detect")
-        output = strip_ansi(stdout if rc == 0 else stderr or stdout)
-        GLib.idle_add(self._detect_buf.set_text, output)
-
-    def _on_usb_scan_clicked(self, _btn):
-        self._usb_buf.set_text("Scanning…")
-        threading.Thread(target=self._bg_usb_scan, daemon=True).start()
-
-    def _bg_usb_scan(self):
-        rc, stdout, stderr = run_apsta("scan-usb")
-        output = strip_ansi(stdout if rc == 0 else stderr or stdout)
-        GLib.idle_add(self._usb_buf.set_text, output or "No USB WiFi adapters found.")
-
-    def _on_recommend_clicked(self, _btn):
-        self._rec_buf.set_text("Checking…")
-        threading.Thread(target=self._bg_recommend, daemon=True).start()
-
-    def _bg_recommend(self):
-        rc, stdout, stderr = run_apsta("recommend")
-        output = strip_ansi(stdout if rc == 0 else stderr or stdout)
-        GLib.idle_add(self._rec_buf.set_text, output)
-
-    def _on_save_config_clicked(self, _btn):
-        ssid  = self._cfg_ssid.get_text().strip()
-        pwd   = self._cfg_pass.get_text().strip()
-        iface = self._cfg_iface.get_text().strip()
-
-        if not ssid:
-            self._show_banner("SSID cannot be empty.", error=True)
-            return
-
-        cmds = [f'"{APSTA}" config --set ssid="$1"']
-        args = [ssid]
-
-        if pwd:  # blank keeps the saved password
-            args.append(pwd)
-            cmds.append(f'"{APSTA}" config --set password="${len(args)}"')
-
-        if iface:
-            args.append(iface)
-            cmds.append(f'"{APSTA}" config --set interface="${len(args)}"')
-        else:
-            cmds.append(f'"{APSTA}" config --set interface=none')
-
-        script = " && ".join(cmds)
-        threading.Thread(
-            target=self._bg_save_config,
-            args=(script, args),
-            daemon=True,
-        ).start()
-
-    def _bg_save_config(self, script: str, args: list):
-        rc, stdout, stderr = run_apsta_root_script(script, *args)
-        if rc == 0:
-            GLib.idle_add(self._show_banner, "Configuration saved.", False)
-            GLib.idle_add(self._load_config_into_settings)
-        else:
-            GLib.idle_add(
-                self._show_banner,
-                pkexec_error_message(rc, stderr, stdout),
-                True,
-            )
-
-    def _on_enable_clicked(self, _btn):
-        threading.Thread(target=self._bg_enable, daemon=True).start()
-
-    def _bg_enable(self):
-        rc, stdout, stderr = run_apsta_root_script(f'"{APSTA}" enable')
-        msg = "Auto-start enabled." if rc == 0 else pkexec_error_message(rc, stderr, stdout)
-        GLib.idle_add(self._show_banner, msg, rc != 0)
-
-    def _on_disable_clicked(self, _btn):
-        threading.Thread(target=self._bg_disable, daemon=True).start()
-
-    def _bg_disable(self):
-        # FIX 1: Quote APSTA path
-        rc, stdout, stderr = run_apsta_root_script(f'"{APSTA}" disable')
-        msg = "Auto-start disabled." if rc == 0 else pkexec_error_message(rc, stderr, stdout)
-        GLib.idle_add(self._show_banner, msg, rc != 0)
-
-    # ── UI utilities ───────────────────────────────────────────────────────────
-
-    def _set_busy(self, busy: bool):
-        """Disable buttons while a privileged operation is in progress."""
-        self._start_btn.set_sensitive(not busy)
-        self._stop_btn.set_sensitive(not busy)
-        if busy:
-            self._start_btn.set_label("Working…")
-            self._stop_btn.set_label("Working…")
-        else:
-            self._start_btn.set_label("Start Hotspot")
-            self._stop_btn.set_label("Stop Hotspot")
+    # ── banner ────────────────────────────────────────────────────────────────
 
     def _show_banner(self, message: str, error: bool = False):
-        """Show the Adw.Banner at the top of the Status page."""
         self._banner.set_title(message)
-        if error:
-            self._banner.add_css_class("error")
-        else:
-            self._banner.remove_css_class("error")
+        (self._banner.add_css_class if error else self._banner.remove_css_class)("error")
         self._banner.set_revealed(True)
-
-        # Cancel the existing hide timer before starting a new one.
-        # Without this, rapid successive actions (start → stop within 4s)
-        # leave a stale timer that prematurely hides the newer banner.
         if self._banner_timeout_id is not None:
             GLib.source_remove(self._banner_timeout_id)
-
         self._banner_timeout_id = GLib.timeout_add(4000, self._hide_banner)
+        return False
 
     def _hide_banner(self) -> bool:
         self._banner.set_revealed(False)
         self._banner_timeout_id = None
-        return False  # returning False removes the timer from the GLib main loop
+        return False

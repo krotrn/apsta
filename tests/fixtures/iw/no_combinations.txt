@@ -1,0 +1,7 @@
+Wiphy phy0
+	Supported interface modes:
+		 * managed
+		 * AP
+		 * monitor
+	Supported commands:
+		 * new_interface

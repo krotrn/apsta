@@ -1,0 +1,31 @@
+name: Hardware report
+description: Tell us how apsta works on your WiFi card (good or bad)
+labels: [hardware]
+body:
+  - type: input
+    id: card
+    attributes:
+      label: Card / chipset and driver
+      placeholder: "Intel AX210, iwlwifi"
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Works, WiFi stays connected
+        - Works, but WiFi disconnects
+        - Doesn't work
+    validations:
+      required: true
+  - type: textarea
+    id: detect
+    attributes:
+      label: Output of `apsta detect --json`
+      render: json
+  - type: textarea
+    id: iw
+    attributes:
+      label: Output of `iw phy phy0 info`
+      render: text

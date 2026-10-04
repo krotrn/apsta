@@ -1,0 +1,36 @@
+name: Bug report
+description: Something doesn't work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: The command you ran, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: apsta version and distribution
+      placeholder: "apsta 0.7.0, Ubuntu 24.04"
+    validations:
+      required: true
+  - type: textarea
+    id: detect
+    attributes:
+      label: Output of `apsta detect --json`
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: iw
+    attributes:
+      label: Output of `iw phy phy0 info` (your card's phy)
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug output
+      description: Run the failing command with `APSTA_DEBUG=1`, and add `journalctl -u apsta -u apsta-hostapd -n 100` if relevant. Remove passwords.
+      render: text

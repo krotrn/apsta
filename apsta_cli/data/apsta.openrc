@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+# apsta hotspot service for OpenRC.
+
+description="apsta WiFi hotspot (AP+STA)"
+command="/usr/bin/apsta"
+command_args="run --wait-sta 30"
+supervisor="supervise-daemon"
+respawn_delay=10
+
+depend() {
+    need NetworkManager
+    after net
+}

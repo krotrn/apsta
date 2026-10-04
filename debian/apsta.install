@@ -1,3 +1,4 @@
-system/apsta-sleep usr/lib/systemd/system-sleep/
-system/apsta.service usr/lib/systemd/system/
-gtk-ui/com.github.apsta.Gtk.desktop usr/share/applications/
+apsta_cli/data/apsta-sleep usr/lib/systemd/system-sleep/
+apsta_cli/data/apsta.service usr/lib/systemd/system/
+apsta_cli/data/com.github.apsta.policy usr/share/polkit-1/actions/
+apsta_gui/data/com.github.apsta.Gtk.desktop usr/share/applications/

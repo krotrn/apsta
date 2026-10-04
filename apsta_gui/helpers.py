@@ -1,113 +1,35 @@
-#!/usr/bin/env python3
-"""Shared constants and process helpers for the GTK UI."""
+"""Small pure helpers for the GTK UI (no GTK imports, unit-testable)."""
 
-from __future__ import annotations  # tuple[...] hints on Python 3.8
+from __future__ import annotations
 
-import json
-import os
-import shutil
-import subprocess
-from pathlib import Path
+from typing import List
 
 APP_ID = "com.github.apsta.Gtk"
-APSTA = shutil.which("apsta") or "/usr/local/bin/apsta"
-CONFIG = Path("/etc/apsta/config.json")
-VERSION = "0.6.2"
-
-# Background poll interval in seconds — keeps status in sync with daemon
-POLL_INTERVAL = 5
+POLL_INTERVAL = 5  # seconds between status refreshes
 
 
-def read_config() -> dict:
-    """Read /etc/apsta/config.json. Returns {} on any error."""
-    try:
-        cfg = json.loads(CONFIG.read_text())
-        profiles = cfg.get("profiles")
-        active = cfg.get("active_profile")
-        if isinstance(profiles, dict) and isinstance(active, str) and active in profiles:
-            selected = profiles.get(active) or {}
-            for key in ("ssid", "password", "band", "channel", "interface"):
-                if key in selected:
-                    cfg[key] = selected.get(key)
-        return cfg
-    except (OSError, json.JSONDecodeError):
-        return {}
+def escape_wifi_field(value: str) -> str:
+    for ch in ("\\", ";", ",", ":", '"'):
+        value = value.replace(ch, "\\" + ch)
+    return value
 
 
-def run_apsta(*args: str) -> tuple[int, str, str]:
-    """
-    Run apsta with the given arguments. Returns (returncode, stdout, stderr).
-    Does NOT use pkexec — for read-only commands (detect, status, scan-usb).
-    """
-    try:
-        r = subprocess.run(
-            [APSTA, *args],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "NO_COLOR": "1"},
-        )
-        return r.returncode, r.stdout.strip(), r.stderr.strip()
-    except FileNotFoundError:
-        return 127, "", f"apsta not found at {APSTA}"
+def wifi_share_string(ssid: str, password: str) -> str:
+    """The ``WIFI:`` payload phone cameras understand for joining a network."""
+    if not ssid or not password:
+        return ""
+    return f"WIFI:T:WPA;S:{escape_wifi_field(ssid)};P:{escape_wifi_field(password)};;"
 
 
-def run_apsta_root_script(script: str, *positional: str) -> tuple[int, str, str]:
-    """
-    Run a shell script via pkexec, passing user-supplied values as positional
-    arguments ($1, $2, ...) rather than interpolating them into the script.
-    """
-    try:
-        r = subprocess.run(
-            ["pkexec", "sh", "-c", script, "--", *positional],
-            capture_output=True,
-            text=True,
-        )
-        return r.returncode, r.stdout.strip(), r.stderr.strip()
-    except FileNotFoundError:
-        return 127, "", "pkexec not found — cannot escalate privileges"
+def format_clients(clients: List[dict]) -> str:
+    if not clients:
+        return "No clients connected."
+    lines = [f"{'HOSTNAME':<20} {'MAC':<18} {'IP':<16} LIMIT", "-" * 64]
+    for c in clients:
+        limit = f"{c['limit_kbps']} Kbps" if c.get("limit_kbps") else "-"
+        lines.append(f"{(c.get('hostname') or '-')[:20]:<20} {c.get('mac', '-'):<18} {c.get('ip') or '-':<16} {limit}")
+    return "\n".join(lines)
 
 
-def pkexec_error_message(returncode: int, stderr: str, stdout: str = "") -> str:
-    if returncode == 126:
-        return "Authentication cancelled."
-    if returncode == 127:
-        return "pkexec or apsta not found. Is apsta installed?"
-    raw = stderr or stdout or "Unknown error"
-    return strip_ansi(raw).strip()[:200]
-
-
-def strip_ansi(s: str) -> str:
-    result = []
-    i = 0
-    while i < len(s):
-        if s[i] == "\x1b" and i + 1 < len(s) and s[i + 1] == "[":
-            i += 2
-            while i < len(s) and s[i] != "m":
-                i += 1
-            i += 1
-        else:
-            result.append(s[i])
-            i += 1
-    return "".join(result)
-
-
-def first_error_line(text: str) -> str:
-    lines = text.splitlines()
-    for line in lines:
-        stripped = line.strip()
-        if any(marker in stripped for marker in ("✘", "⚠", "Error", "error", "failed", "Failed")):
-            clean = stripped.lstrip("✘⚠ ").strip()
-            if clean:
-                return clean
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("→"):
-            continue
-        if "—" in stripped:
-            continue
-        return stripped
-
-    return text[:120]
+def band_label(band: str) -> str:
+    return "5 GHz" if band == "a" else "2.4 GHz"

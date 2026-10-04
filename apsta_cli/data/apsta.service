@@ -1,0 +1,28 @@
+# apsta hotspot service. `apsta run` starts the hotspot and then supervises it:
+# it restarts the hotspot after suspend/resume or a driver reset, and moves it
+# when the WiFi connection changes channel on single-channel cards.
+[Unit]
+Description=apsta WiFi hotspot (AP+STA)
+Documentation=https://github.com/krotrn/apsta
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+# --wait-sta: give the WiFi connection time to associate so the hotspot can
+# share its channel instead of guessing one and blocking the reconnect.
+ExecStart=/usr/bin/apsta run --wait-sta 30
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+# Hardening that leaves what apsta needs: network admin, /etc/apsta (password
+# generation), /run, and starting transient units over D-Bus.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+ReadWritePaths=-/etc/apsta
+
+[Install]
+WantedBy=multi-user.target

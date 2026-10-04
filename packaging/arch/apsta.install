@@ -1,6 +1,11 @@
 post_install() {
   echo "==> Run 'apsta detect' to check your card, then 'sudo apsta start'."
-  echo "==> Auto-start on boot + sleep/wake: sudo systemctl enable --now apsta"
+  echo "==> Start at boot and recover after sleep: sudo apsta enable"
+}
+
+pre_upgrade() {
+  # Stop a hotspot started by the old version while its code is still installed.
+  apsta stop >/dev/null 2>&1 || true
 }
 
 post_upgrade() {

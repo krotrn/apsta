@@ -84,6 +84,8 @@ jobs:
         run: |
           DEBIAN_FRONTEND=noninteractive apt-get install -y ./packaging/deb/out/*.deb
           apsta --version
+          apsta completion bash > /dev/null
+          test -f /usr/share/polkit-1/actions/com.github.apsta.policy
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
