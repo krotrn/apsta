@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=84.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -27,12 +27,12 @@ dependencies = []
 
 [project.optional-dependencies]
 # The GUI also needs PyGObject + GTK4 + libadwaita from the distribution.
-gui = ["qrcode[pil]>=7.4"]  # distro packages: Ubuntu 22.04 ships 7.3
+gui = ["qrcode[pil]>=8.2"]  # distro packages: Ubuntu 22.04 ships 7.3
 
 # Development tools (PEP 735): `uv sync` installs them automatically;
 # with pip >= 25.1: `pip install -e . --group dev`. Or just `make dev`.
 [dependency-groups]
-dev = ["coverage[toml]>=7.16", "ruff>=0.16"]
+dev = ["coverage[toml]>=7.16.2", "ruff>=0.16"]
 
 [project.urls]
 Homepage = "https://github.com/krotrn/apsta"
