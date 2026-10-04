@@ -57,6 +57,8 @@ def parse_iw_dev(text: str) -> List[WifiInterface]:
         elif stripped.startswith("Interface "):
             current = WifiInterface(stripped.split()[1], "unknown", phy, "unknown", "DOWN", None)
             ifaces.append(current)
+        elif stripped.startswith("Unnamed/non-netdev interface"):
+            current = None  # e.g. the P2P-device wdev; its lines belong to no interface
         elif current is not None:
             key, _, value = stripped.partition(" ")
             if key == "addr":
@@ -75,6 +77,8 @@ def list_wifi_interfaces() -> List[WifiInterface]:
         if iface.iftype == "managed":
             link = sta_link(iface.name)
             iface.connected_ssid = link.ssid if link else None
+        else:
+            iface.connected_ssid = None  # an AP's own SSID isn't a connection
         # Prefer the stable phy name from sysfs (iw dev prints phy#N).
         iface.phy = phy_of(iface.name) or iface.phy
     return ifaces
@@ -121,13 +125,34 @@ def iface_type(iface: str) -> Optional[str]:
     return match.group(1).strip() if match else None
 
 
-def parse_reg_country(text: str) -> Optional[str]:
-    """Country of the global regulatory domain from ``iw reg get``, or None for world (00)."""
-    match = re.search(r"^country\s+([A-Z0-9]{2}):", text, re.MULTILINE)
-    if not match or match.group(1) in ("00", "99"):
-        return None
-    return match.group(1)
+def parse_reg_country(text: str, phy: Optional[str] = None) -> Optional[str]:
+    """Regulatory country for ``phy`` from ``iw reg get``, or None if only the world domain is known.
+
+    Cards with a self-managed regulatory domain (Intel LAR, many MediaTek)
+    report their real country in a ``phy#N (self-managed)`` section while the
+    global domain stays ``00``; that section wins for its phy.
+    """
+    sections = {}
+    current = "global"
+    for line in text.splitlines():
+        header = re.match(r"^(global|phy#\d+)", line)
+        if header:
+            current = header.group(1)
+            continue
+        country = re.match(r"^country\s+([A-Z0-9]{2}):", line)
+        if country and current not in sections:
+            sections[current] = country.group(1)
+
+    candidates = []
+    if phy and phy.startswith("phy"):
+        candidates.append("phy#" + phy[3:])
+    candidates.append("global")
+    for key in candidates:
+        code = sections.get(key)
+        if code and code not in ("00", "99"):
+            return code
+    return None
 
 
-def reg_country() -> Optional[str]:
-    return parse_reg_country(shell.out(["iw", "reg", "get"]))
+def reg_country(phy: Optional[str] = None) -> Optional[str]:
+    return parse_reg_country(shell.out(["iw", "reg", "get"]), phy)

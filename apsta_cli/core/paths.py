@@ -39,6 +39,7 @@ DNSMASQ_LEASES = RUN_DIR / "dnsmasq.leases"
 # NetworkManager reads volatile keyfiles from /run too, so nmcli-mode
 # connections disappear on reboot instead of accumulating in /etc.
 NM_RUNTIME_KEYFILE_DIR = _env("APSTA_NM_KEYFILE_DIR", "/run/NetworkManager/system-connections")
+NM_RUNTIME_CONF_DIR = _env("APSTA_NM_CONF_DIR", "/run/NetworkManager/conf.d")
 
 LOG_PATH = _env("APSTA_LOG_PATH", "/var/log/apsta.log")
 

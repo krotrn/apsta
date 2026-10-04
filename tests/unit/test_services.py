@@ -164,12 +164,12 @@ class StopStatusTests(ServiceTestCase):
         self.assertFalse(hotspot.is_alive(st))
         (paths.SYSFS_NET / "wlo1_ap").mkdir()
         with (
-            mock.patch("apsta_cli.services.hotspot.interfaces.iface_type", return_value="AP"),
+            mock.patch("apsta_cli.services.hotspot.iface.is_broadcasting", return_value=True),
             mock.patch("apsta_cli.net.strategies.HostapdStrategy.daemons_running", return_value=True),
         ):
             self.assertTrue(hotspot.is_alive(st))
             self.assertTrue(hotspot.is_alive(make_state(method="nmcli")))
-        with mock.patch("apsta_cli.services.hotspot.interfaces.iface_type", return_value="managed"):
+        with mock.patch("apsta_cli.services.hotspot.iface.is_broadcasting", return_value=False):
             self.assertFalse(hotspot.is_alive(st))
 
     def test_status_payload(self):

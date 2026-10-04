@@ -91,17 +91,36 @@ class SupervisorEscalationTests(unittest.TestCase):
 
 
 class InterfaceTests(unittest.TestCase):
-    def test_wait_for_ap_mode_polls_until_ap(self):
-        types = iter(["managed", "managed", "AP"])
+    def test_type_ap_without_ssid_is_not_broadcasting(self):
+        # Real iwlwifi: a vif created with `type __ap` is "type AP" before anything runs on it.
+        FakeShell().on("iw", "dev", "wlo1_ap", "info", stdout="Interface wlo1_ap\n\ttype AP\n").install(self)
+        self.assertFalse(iface.is_broadcasting("wlo1_ap"))
+
+    def test_broadcasting_needs_ssid_and_ap_type(self):
+        FakeShell().on(
+            "iw", "dev", "wlo1_ap", "info", stdout="Interface wlo1_ap\n\tifindex 9\n\tssid Cafe\n\ttype AP\n"
+        ).install(self)
+        self.assertTrue(iface.is_broadcasting("wlo1_ap"))
+
+    def test_wait_for_broadcast(self):
+        answers = iter([False, False, True])
         with (
-            mock.patch.object(iface, "iface_type", side_effect=lambda _n: next(types)),
+            mock.patch.object(iface, "is_broadcasting", side_effect=lambda _n: next(answers)),
             mock.patch.object(iface.time, "sleep"),
         ):
-            self.assertTrue(iface.wait_for_ap_mode("wlo1_ap", timeout=5))
+            self.assertTrue(iface.wait_for_broadcast("wlo1_ap", timeout=5))
+        with mock.patch.object(iface, "is_broadcasting", return_value=False):
+            self.assertFalse(iface.wait_for_broadcast("wlo1_ap", timeout=0.01))
 
-    def test_wait_for_ap_mode_times_out(self):
-        with mock.patch.object(iface, "iface_type", return_value="managed"):
-            self.assertFalse(iface.wait_for_ap_mode("wlo1_ap", timeout=0.01))
+    def test_hostapd_wait_enabled(self):
+        from apsta_cli.net import hostapd
+
+        self.assertEqual(hostapd.parse_state("phy=phy0\nstate=ENABLED\nfreq=2462"), "ENABLED")
+        self.assertIsNone(hostapd.parse_state("Failed to connect to hostapd"))
+        sh = FakeShell().on("hostapd_cli", stdout="state=DISABLED").install(self)
+        self.assertFalse(hostapd.wait_enabled("wlo1_ap", timeout=0.01))
+        sh.on("hostapd_cli", stdout="state=ENABLED")
+        self.assertTrue(hostapd.wait_enabled("wlo1_ap", timeout=0.01))
 
     def test_create_replaces_leftover_and_warns_on_mac_failure(self):
         root = isolate_paths(self)

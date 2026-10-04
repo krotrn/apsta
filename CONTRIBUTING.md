@@ -14,6 +14,10 @@ Please include:
 If `apsta detect` gets your card wrong, the `iw phy` output is enough for us to
 add a regression test (`tests/fixtures/iw/`).
 
+To test a checkout on real hardware, `sudo scripts/hardware_check.sh` starts
+the hotspot, keeps it up while you join from a phone, stops it, checks the
+system was restored, and writes `/tmp/apsta-hardware-report.txt` to attach.
+
 ## Development setup
 
 ```bash

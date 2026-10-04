@@ -113,6 +113,8 @@ class HostapdStrategy(Strategy):
         paths.ensure_run_dir()
         sup = supervisor.get()
 
+        nm.keep_away(iface.ap_name(ctx.base.name))
+        tx.on_rollback("let NetworkManager manage the interface again", nm.release)
         ap, _mac = iface.create_virtual_ap(ctx.base.name)
         tx.on_rollback(f"delete {ap}", lambda: iface.delete(ap))
         nm.set_managed(ap, False)
@@ -132,10 +134,10 @@ class HostapdStrategy(Strategy):
         hostapd_d = hostapd_daemon()
         sup.start(hostapd_d)
         tx.on_rollback("stop hostapd", lambda: sup.stop(hostapd_d))
-        if not iface.wait_for_ap_mode(ap):
+        if not hostapd.wait_enabled(ap):
             logs = sup.logs(hostapd_d)
             raise SetupError(
-                f"hostapd did not bring {ap} up in AP mode.",
+                f"hostapd did not start broadcasting on {ap}.",
                 hints=logs.splitlines()[-4:] if logs else ["Run with APSTA_DEBUG=1 for details."],
             )
 
@@ -171,6 +173,7 @@ class HostapdStrategy(Strategy):
             iface.delete(state.ap_interface)
         for path in (paths.HOSTAPD_CONF, paths.DNSMASQ_CONF, paths.DNSMASQ_LEASES):
             fsutil.remove(path)
+        nm.release()
 
     @staticmethod
     def daemons_running(state: HotspotState) -> bool:
@@ -197,8 +200,8 @@ class _NmStrategy(Strategy):
         tx.on_rollback("delete NM connection", nm.remove_connection)
         nm.up()
         tx.on_rollback("deactivate NM connection", nm.down)
-        if not iface.wait_for_ap_mode(ap, timeout=5):
-            raise SetupError(f"NetworkManager reported success but {ap} is not in AP mode.")
+        if not iface.wait_for_broadcast(ap, timeout=10):
+            raise SetupError(f"NetworkManager reported success but {ap} is not broadcasting.")
 
         state = self._base_state(ctx, ap)
         state.connection_id = nm.CONNECTION_ID

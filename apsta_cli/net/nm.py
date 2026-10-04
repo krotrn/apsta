@@ -101,6 +101,35 @@ def down() -> shell.Result:
     return shell.run(["nmcli", "connection", "down", "id", CONNECTION_ID])
 
 
+def unmanaged_conf_path() -> Path:
+    return paths.NM_RUNTIME_CONF_DIR / "90-apsta-unmanaged.conf"
+
+
+def render_unmanaged_conf(iface: str) -> str:
+    # "+=" appends to the user's own unmanaged-devices instead of replacing it.
+    return (
+        "# Written by apsta while a hotspot runs; removed on stop.\n"
+        f"[keyfile]\nunmanaged-devices+=interface-name:{iface}\n"
+    )
+
+
+def keep_away(iface: str) -> None:
+    """Stop NetworkManager (and its wpa_supplicant) from touching ``iface``.
+
+    Must run before the interface exists. ``nmcli device set X managed no``
+    alone isn't enough: NetworkManager may adopt a new interface first and
+    attach wpa_supplicant, which then blocks hostapd ("Match already configured").
+    """
+    fsutil.atomic_write(unmanaged_conf_path(), render_unmanaged_conf(iface), mode=0o644)
+    shell.run(["nmcli", "general", "reload", "conf"])
+
+
+def release(iface: Optional[str] = None) -> None:
+    if unmanaged_conf_path().exists():
+        fsutil.remove(unmanaged_conf_path())
+        shell.run(["nmcli", "general", "reload", "conf"])
+
+
 def set_managed(iface: str, managed: bool) -> shell.Result:
     return shell.run(["nmcli", "device", "set", iface, "managed", "yes" if managed else "no"])
 

@@ -46,8 +46,11 @@ class FakeSup:
 
 def ap_mode_shell(testcase, tools=("hostapd", "dnsmasq", "nmcli", "iptables"), ap_up=True):
     sh = FakeShell(tools)
-    sh.on("iw", "dev", "wlo1_ap", "info", stdout="type AP" if ap_up else "type managed")
-    sh.on("iw", "dev", "wlo1", "info", stdout="type AP")
+    # A freshly created AP vif is "type AP" either way; only a running AP has an SSID.
+    up_info = "Interface x\n\tssid Cafe\n\ttype AP\n"
+    sh.on("iw", "dev", "wlo1_ap", "info", stdout=up_info if ap_up else "Interface x\n\ttype AP\n")
+    sh.on("iw", "dev", "wlo1", "info", stdout=up_info)
+    sh.on("hostapd_cli", stdout="state=ENABLED\n" if ap_up else "state=DISABLED\n")
     sh.on("ip", "-4", "-o", "addr", "show", stdout="3: wlo1 inet 192.168.42.7/24 brd x")
 
     def add_iface(argv):
@@ -115,17 +118,24 @@ class HostapdStrategyTests(unittest.TestCase):
         self.assertEqual(oct(paths.HOSTAPD_CONF.stat().st_mode & 0o777), "0o600")
         self.assertIn("listen-address=10.42.42.1", paths.DNSMASQ_CONF.read_text())
         self.assertTrue(sh.called("nmcli", "device", "set", "wlo1_ap", "managed", "no"))
+        nm_conf = paths.NM_RUNTIME_CONF_DIR / "90-apsta-unmanaged.conf"
+        self.assertIn("interface-name:wlo1_ap", nm_conf.read_text())
+        self.assertLess(
+            sh.calls.index(["nmcli", "general", "reload", "conf"]),
+            sh.calls.index(["iw", "dev", "wlo1", "interface", "add", "wlo1_ap", "type", "__ap"]),
+        )
         self.assertTrue(sh.called("ip", "addr", "add", "10.42.42.1/24", "dev", "wlo1_ap"))
 
         strategies.HostapdStrategy().stop(state)
         self.assertEqual(self.sup.stopped, ["dnsmasq", "hostapd"])
         self.assertFalse((paths.SYSFS_NET / "wlo1_ap").exists())
         self.assertFalse(paths.HOSTAPD_CONF.exists())
+        self.assertFalse(nm_conf.exists())
         self.assertEqual(paths.IP_FORWARD.read_text().strip(), "0")
 
     def test_hostapd_not_coming_up_rolls_back(self):
         ap_mode_shell(self, ap_up=False)
-        with mock.patch("apsta_cli.net.iface.wait_for_ap_mode", return_value=False):
+        with mock.patch("apsta_cli.net.hostapd.wait_enabled", return_value=False):
             with self.assertRaises(SetupError) as raised:
                 with Transaction() as tx:
                     strategies.HostapdStrategy().start(ctx(), tx)
@@ -181,7 +191,7 @@ class NmStrategyTests(unittest.TestCase):
 
     def test_not_ap_after_activation(self):
         ap_mode_shell(self, ap_up=False)
-        with mock.patch("apsta_cli.net.iface.wait_for_ap_mode", return_value=False):
+        with mock.patch("apsta_cli.net.iface.wait_for_broadcast", return_value=False):
             with self.assertRaises(SetupError):
                 with Transaction() as tx:
                     strategies.NmVirtualStrategy().start(ctx(), tx)

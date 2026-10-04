@@ -40,6 +40,12 @@ class HostapdLifecycleTests(FakeWorldTestCase):
         self.assertEqual(len(world["iptables"]), 6)
         self.assertEqual(paths.IP_FORWARD.read_text().strip(), "1")
         self.assertTrue(alive(paths.HOSTAPD_PID) and alive(paths.DNSMASQ_PID))
+        nm_conf = paths.NM_RUNTIME_CONF_DIR / "90-apsta-unmanaged.conf"
+        self.assertIn("unmanaged-devices+=interface-name:wlo1_ap", nm_conf.read_text())
+        self.assertLess(
+            self.world["calls"].index(["nmcli", "general", "reload", "conf"]),
+            self.world["calls"].index(["iw", "dev", "wlo1", "interface", "add", "wlo1_ap", "type", "__ap"]),
+        )
 
         # A random password was generated and stored root-only.
         self.assertEqual(stat.S_IMODE(paths.SECRETS_PATH.stat().st_mode), 0o600)
@@ -62,6 +68,7 @@ class HostapdLifecycleTests(FakeWorldTestCase):
         self.assertEqual(paths.IP_FORWARD.read_text().strip(), "0")
         self.assertFalse(alive(paths.HOSTAPD_PID) if paths.HOSTAPD_PID.exists() else False)
         self.assertIsNone(self.state())
+        self.assertFalse(nm_conf.exists())
         self.assertEqual(self.apsta("status", "--check")[0], 3)
         self.assertIn("No hotspot is running", self.apsta("stop")[1])
 
@@ -140,6 +147,40 @@ class FallbackTests(FakeWorldTestCase):
         code, _, err = self.apsta("start", "--method", "hostapd")
         self.assertEqual(code, 1)
         self.assertIn("Could not start", err)
+
+
+class HostapdNeverEnablesTests(FakeWorldTestCase):
+    """hostapd runs but can't bring the AP up (NetworkManager held the interface on a real
+    Intel card). apsta must not report success; it should fall back to NetworkManager."""
+
+    world_extra = {"hostapd_never_enables": True}
+
+    def test_not_reported_live_and_falls_back(self):
+        from unittest import mock
+
+        with (
+            mock.patch("apsta_cli.net.hostapd.time.sleep"),
+            mock.patch("apsta_cli.net.hostapd.time.monotonic", side_effect=[0, 0, 100, 100, 100]),
+        ):
+            code, out, err = self.apsta("start")
+        self.assertEqual(code, 0, err)
+        self.assertIn("did not start broadcasting", err)
+        self.assertEqual(self.state().method, "nmcli")
+        self.assertEqual(self.world["iptables"], [])
+        self.assertFalse((paths.NM_RUNTIME_CONF_DIR / "90-apsta-unmanaged.conf").exists())
+        self.apsta("stop")
+
+    def test_hostapd_only_fails_cleanly(self):
+        from unittest import mock
+
+        with (
+            mock.patch("apsta_cli.net.hostapd.time.sleep"),
+            mock.patch("apsta_cli.net.hostapd.time.monotonic", side_effect=[0, 0, 100, 100, 100]),
+        ):
+            code, _, err = self.apsta("start", "--method", "hostapd")
+        self.assertEqual(code, 1)
+        self.assertNotIn("wlo1_ap", self.world["ifaces"])
+        self.assertIsNone(self.state())
 
 
 class SingleRadioTests(FakeWorldTestCase):

@@ -11,3 +11,4 @@ Contributions welcome: if `apsta detect` gets your card wrong, add its
 | `either_or.txt` | AP and managed share a group limited to 1 | AP only, no AP+STA |
 | `no_combinations.txt` | single-interface radio | AP only, no AP+STA |
 | `no_ap.txt` | client-only radio | no AP |
+| `reg_self_managed.txt` | `iw reg get` on an Intel AX201 (global 00, card self-managed IN) | country IN for phy0 |
