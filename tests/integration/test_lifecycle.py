@@ -156,7 +156,7 @@ class HostapdNeverEnablesTests(FakeWorldTestCase):
     world_extra = {"hostapd_never_enables": True}
 
     def test_not_reported_live_and_falls_back(self):
-        from unittest import mock
+        import unittest.mock as mock
 
         with (
             mock.patch("apsta_cli.net.hostapd.time.sleep"),
@@ -171,7 +171,7 @@ class HostapdNeverEnablesTests(FakeWorldTestCase):
         self.apsta("stop")
 
     def test_hostapd_only_fails_cleanly(self):
-        from unittest import mock
+        import unittest.mock as mock
 
         with (
             mock.patch("apsta_cli.net.hostapd.time.sleep"),
