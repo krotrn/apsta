@@ -1,3 +1,9 @@
+apsta (0.7.0-1) noble; urgency=medium
+
+  * Release 0.7.0
+
+ -- Karan Kumar Sah <krotrn.ks@gmail.com>  Sun, 04 Oct 2026 20:20:28 +0000
+
 apsta (0.6.2-1) noble; urgency=medium
 
   * Fix maintainer scripts: debhelper snippets now run (were after exit 0)

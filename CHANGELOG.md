@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-04
+
 Rewrite of the internals around a layered architecture
 (see `docs/ARCHITECTURE.md`), fixing a series of correctness, reliability and
 security problems.
