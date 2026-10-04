@@ -209,6 +209,32 @@ class DfsTests(FakeWorldTestCase):
         self.assertNotIn("wlo1_ap", self.world["ifaces"])
 
 
+class NoIrChannelTests(FakeWorldTestCase):
+    """Real case: Intel card, WiFi (a phone hotspot) on 5 GHz channel 44, which the card marks no-IR."""
+
+    link = {"ssid": "Phone", "freq": 5220}
+
+    def test_refused_up_front_with_workaround(self):
+        code, _, err = self.apsta("start")
+        self.assertEqual(code, 1)
+        self.assertIn("5 GHz channel 44", err)
+        self.assertIn("2.4 GHz", err)
+        self.assertNotIn("wlo1_ap", self.world["ifaces"])  # nothing was touched
+        self.assertEqual(self.world["iptables"], [])
+
+    def test_detect_warns(self):
+        data = self.apsta_json("detect", "--json")
+        self.assertEqual(data["verdict"]["level"], "warn")
+
+    def test_allow_disconnect_hosts_on_an_allowed_channel(self):
+        code, _, err = self.apsta("start", "--allow-disconnect")
+        self.assertEqual(code, 0, err)
+        st = self.state()
+        self.assertEqual(st.method, "nmcli-single")
+        self.assertEqual((st.band, st.channel), ("bg", 6))  # config band, least congested allowed channel
+        self.apsta("stop")
+
+
 class OfflineTests(FakeWorldTestCase):
     link = None
 

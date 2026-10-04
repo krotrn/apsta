@@ -24,6 +24,7 @@ class HardwareCapability:
     combinations: List[str] = field(default_factory=list)
     driver: str = ""
     chipset: str = ""
+    ap_frequencies: List[int] = field(default_factory=list)  # MHz where an AP may be started
 
     def to_dict(self) -> dict:
         return dict(self.__dict__)
@@ -44,6 +45,7 @@ def from_iw_text(iface: str, phy: Optional[str], iw_text: str) -> HardwareCapabi
         max_channels=support.combination.channels if support.combination else 1,
         supported_modes=modes,
         combinations=[c.raw for c in parsed],
+        ap_frequencies=combos.parse_ap_frequencies(iw_text),
     )
 
 

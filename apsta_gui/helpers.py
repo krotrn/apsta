@@ -82,6 +82,9 @@ def capability_rows(detect: dict) -> list:
                 not cap.get("same_channel_required"),
             )
         )
+    if "ap_frequencies" in cap:
+        five_ghz = any(f >= 5000 for f in cap["ap_frequencies"])
+        rows.append(("Hotspot on 5 GHz", "Some 5 GHz channels allow starting a network", five_ghz))
     for name, state in (detect.get("methods") or {}).items():
         label = "hostapd (client management)" if name == "hostapd" else "NetworkManager"
         rows.append((label, "Ready" if state == "ready" else state.capitalize(), state == "ready"))

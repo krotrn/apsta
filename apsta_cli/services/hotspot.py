@@ -113,7 +113,21 @@ def build_context(config: dict, opts: StartOptions) -> StartContext:
     sta_channel = channels.from_freq(link.freq) if link else None
     pinned = sta_channel is not None and cap.same_channel_required
     scan = () if pinned else list(channels.parse_nmcli_scan(nm.scan(base.name)))
-    plan = channels.plan(sta_channel, cap.same_channel_required, config["band"], config.get("channel"), scan)
+    allowed = channels.allowed_channels(cap.ap_frequencies)
+    sta_channel_usable = True
+    try:
+        plan = channels.plan(
+            sta_channel, cap.same_channel_required, config["band"], config.get("channel"), scan, allowed
+        )
+    except HardwareError:
+        if not (opts.allow_disconnect and sta_channel is not None):
+            raise
+        # The WiFi's channel can't host an AP, but the user accepts dropping WiFi:
+        # only the single-interface method remains, on a channel the card allows.
+        sta_channel_usable = False
+        if not scan:
+            scan = list(channels.parse_nmcli_scan(nm.scan(base.name)))
+        plan = channels.plan(None, cap.same_channel_required, config["band"], config.get("channel"), scan, allowed)
     output.dbg("Channel plan", channel=plan.channel.number, band=plan.channel.band, reason=plan.reason)
     return StartContext(
         base=base,
@@ -124,6 +138,7 @@ def build_context(config: dict, opts: StartOptions) -> StartContext:
         country=interfaces.reg_country(cap.phy or base.phy),
         sta_ssid=link.ssid if link else None,
         allow_disconnect=opts.allow_disconnect,
+        sta_channel_usable=sta_channel_usable,
     )
 
 

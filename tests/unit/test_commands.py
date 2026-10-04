@@ -120,6 +120,16 @@ class InterfaceTests(unittest.TestCase):
         with mock.patch.object(iface, "is_broadcasting", return_value=False):
             self.assertFalse(iface.wait_for_broadcast("wlo1_ap", timeout=0.01))
 
+    def test_nm_wait_until_available(self):
+        from apsta_cli.net import nm
+
+        states = iter(["10 (unmanaged)", "20 (unavailable)", "30 (disconnected)"])
+        FakeShell().on("nmcli", fn=lambda argv: nm.shell.Result(argv, 0, next(states), "")).install(self)
+        with mock.patch.object(nm.time, "sleep"):
+            self.assertTrue(nm.wait_until_available("wlo1_ap", timeout=5))
+        FakeShell().on("nmcli", stdout="").install(self)
+        self.assertFalse(nm.wait_until_available("wlo1_ap", timeout=0.01))
+
     def test_hostapd_wait_enabled(self):
         from apsta_cli.net import hostapd
 

@@ -53,6 +53,9 @@ class HelperTests(unittest.TestCase):
         )
         self.assertEqual([r[2] for r in rows], [True, True, False, False, True])
         self.assertEqual(rows[3][1], "Needs hostapd")
+        five = helpers.capability_rows({"capability": {"supports_ap": True, "ap_frequencies": [2437, 5745]}})
+        self.assertEqual(five[-1][0], "Hotspot on 5 GHz")
+        self.assertTrue(five[-1][2])
         self.assertEqual(helpers.band_label("a"), "5 GHz")
 
 

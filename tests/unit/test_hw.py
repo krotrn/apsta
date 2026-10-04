@@ -110,6 +110,15 @@ class CapabilityTests(unittest.TestCase):
         self.assertFalse(sh.called("iw", "list"))
         self.assertEqual(cap.chipset, "")  # no device link in the fake sysfs
 
+    def test_ap_frequencies_skip_no_ir_radar_and_disabled(self):
+        # Real Intel AX201 output: 5 GHz 36-144 are "no IR" (some also radar), 149-165 allowed.
+        freqs = self.cap("intel_alderlake").ap_frequencies
+        self.assertIn(2437, freqs)
+        self.assertNotIn(2484, freqs)  # (disabled)
+        self.assertNotIn(5180, freqs)  # (no IR)
+        self.assertNotIn(5260, freqs)  # (no IR, radar detection)
+        self.assertIn(5745, freqs)  # channel 149
+
     def test_to_dict(self):
         self.assertEqual(self.cap("no_ap").to_dict()["interface"], "wlan0")
 

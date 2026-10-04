@@ -11,6 +11,7 @@ load``. Compared with ``nmcli device wifi hotspot ... password X`` this means:
 
 from __future__ import annotations
 
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -128,6 +129,27 @@ def release(iface: Optional[str] = None) -> None:
     if unmanaged_conf_path().exists():
         fsutil.remove(unmanaged_conf_path())
         shell.run(["nmcli", "general", "reload", "conf"])
+
+
+def device_state(iface: str) -> str:
+    """NetworkManager's state for ``iface`` (e.g. "30 (disconnected)"), "" if unknown."""
+    return shell.out(["nmcli", "-g", "GENERAL.STATE", "device", "show", iface])
+
+
+def wait_until_available(iface: str, timeout: float = 10.0) -> bool:
+    """Wait until NetworkManager manages ``iface`` and could activate a connection on it.
+
+    Right after the interface is created, NetworkManager may still list it as
+    unmanaged/unavailable and refuse with "No suitable device found".
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        state = device_state(iface)
+        if state and not any(word in state for word in ("unmanaged", "unavailable", "unknown")):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.5)
 
 
 def set_managed(iface: str, managed: bool) -> shell.Result:

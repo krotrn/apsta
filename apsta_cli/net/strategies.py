@@ -38,6 +38,7 @@ class StartContext:
     country: Optional[str]
     sta_ssid: Optional[str]
     allow_disconnect: bool
+    sta_channel_usable: bool = True  # False: the AP can't share the WiFi's channel
 
 
 def _now() -> str:
@@ -105,6 +106,8 @@ class HostapdStrategy(Strategy):
     def unavailable(self, ctx: StartContext) -> Optional[str]:
         if not ctx.capability.ap_sta:
             return "the radio cannot run an AP and a WiFi connection at the same time"
+        if not ctx.sta_channel_usable:
+            return "the WiFi connection's channel can't host a hotspot on this card"
         missing = [b for b in ("hostapd", "dnsmasq") if not shell.have(b)]
         if missing:
             return f"{' and '.join(missing)} not installed"
@@ -192,6 +195,8 @@ class _NmStrategy(Strategy):
             ap, mac = iface.create_virtual_ap(ctx.base.name)
             tx.on_rollback(f"delete {ap}", lambda: iface.delete(ap))
             nm.set_managed(ap, True)
+            if not nm.wait_until_available(ap):
+                output.warn(f"NetworkManager hasn't adopted {ap} yet; trying anyway.")
         else:
             ap, mac = ctx.base.name, None
 
@@ -222,6 +227,8 @@ class NmVirtualStrategy(_NmStrategy):
     def unavailable(self, ctx: StartContext) -> Optional[str]:
         if not ctx.capability.ap_sta:
             return "the radio cannot run an AP and a WiFi connection at the same time"
+        if not ctx.sta_channel_usable:
+            return "the WiFi connection's channel can't host a hotspot on this card"
         if not shell.have("nmcli"):
             return "NetworkManager (nmcli) not installed"
         return None

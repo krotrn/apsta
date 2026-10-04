@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, FrozenSet, Iterable, Optional, Tuple
 
 from ..core.errors import HardwareError
 
@@ -62,12 +62,19 @@ def least_congested(band: str, scan: Iterable[Tuple[int, int]]) -> Optional[int]
     return min(scores, key=lambda ch: (scores[ch], ch))
 
 
+def allowed_channels(frequencies: Iterable[int]) -> Optional[FrozenSet[Channel]]:
+    """Channels from the card's AP-capable frequencies; None when unknown (no data)."""
+    channels = frozenset(c for c in (from_freq(f) for f in frequencies) if c is not None)
+    return channels or None
+
+
 def plan(
     sta: Optional[Channel],
     same_channel_required: bool,
     band: str,
     configured_channel: Optional[str],
     scan: Iterable[Tuple[int, int]] = (),
+    allowed: Optional[FrozenSet[Channel]] = None,
 ) -> ChannelPlan:
     """Decide which channel the AP uses.
 
@@ -91,16 +98,34 @@ def plan(
                     "or ask the router admin to move off channels 52–144.",
                 ],
             )
+        if allowed is not None and sta not in allowed:
+            raise HardwareError(
+                f"Your WiFi is connected on {sta.label} channel {sta.number}, where this card isn't allowed "
+                'to start a network (marked "no IR" by its firmware/regulatory rules). It can only run '
+                "the hotspot on the same channel as your WiFi.",
+                hints=[
+                    "Switch the network you're connected to to 2.4 GHz (e.g. your phone's hotspot: AP band 2.4 GHz),",
+                    "or connect to a 2.4 GHz network,",
+                    "or run with --allow-disconnect to drop WiFi and host on an allowed channel.",
+                ],
+            )
         return ChannelPlan(sta, "matches the WiFi connection (single-channel radio)")
 
+    if allowed is not None and not any(c.band == band for c in allowed):
+        band = "bg"  # e.g. all of 5 GHz is "no IR" on this card
     default = 36 if band == "a" else 6
     try:
         fixed = int(configured_channel) if configured_channel else default
     except ValueError:
         fixed = default
-    picked = least_congested(band, scan)
+    usable = None if allowed is None else {c.number for c in allowed if c.band == band}
+    candidates = [(ch, sig) for ch, sig in scan if usable is None or ch in usable]
+    picked = least_congested(band, candidates)
     if picked is not None:
         return ChannelPlan(Channel(picked, band), "least congested nearby")
+    if usable is not None and fixed not in usable:
+        safe = [ch for ch in (SAFE_5G if band == "a" else SAFE_24G) if ch in usable] or sorted(usable)
+        return ChannelPlan(Channel(safe[0], band), "first channel this card may host on")
     return ChannelPlan(Channel(fixed, band), "configured default")
 
 

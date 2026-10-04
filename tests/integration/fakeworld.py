@@ -178,6 +178,8 @@ def nmcli(w, a):
         return ""
     if a[:3] == ["general", "reload", "conf"]:
         return ""
+    if a[:2] == ["-g", "GENERAL.STATE"]:
+        return "30 (disconnected)" if a[-1] in w["ifaces"] else ""
     if a[:1] == ["--wait"]:
         con = w["nm"].get(a[-1])
         if con is None:
