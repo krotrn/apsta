@@ -84,6 +84,7 @@ What the WiFi hardware can do and which method apsta would use.
     "ap_sta": true,
     "same_channel_required": true,
     "max_channels": 1,
+    "ap_frequencies": [2412, 2437, 2462, 5745, 5765],
     "supported_modes": ["managed", "AP", "monitor"],
     "combinations": ["#{ managed } <= 1, #{ AP, P2P-client, P2P-GO } <= 1, … total <= 3, #channels <= 1"],
     "driver": "iwlwifi",
@@ -104,7 +105,7 @@ What the WiFi hardware can do and which method apsta would use.
 | `capability.ap_sta` | The radio can run an access point and a WiFi connection at the same time. |
 | `capability.same_channel_required` | If so, the hotspot must use the WiFi connection's channel. |
 | `methods`      | `"ready"`, or what's missing (e.g. `"needs hostapd, dnsmasq"`). |
-| `verdict.mode` | `ap+sta` (keeps WiFi), `single` (hotspot drops WiFi) or `unsupported`. `level` is `ok`, `warn` or `error`. |
+| `verdict.mode` | `ap+sta` (keeps WiFi), `single` (hotspot drops WiFi) or `unsupported`. `level` is `ok`, `warn` or `error`. `warnings` (optional) explains a `warn`, e.g. the WiFi is on a channel this card can't host on. |
 
 ## `apsta config --json`
 

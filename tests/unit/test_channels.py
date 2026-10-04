@@ -66,6 +66,25 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(channels.least_congested("a", [(36, 50), (40, 50), (44, 50), (48, 50)]), 36)
         self.assertIsNone(channels.least_congested("bg", [(3, 50)]))
 
+    def test_sta_on_no_ir_channel_is_refused_with_workaround(self):
+        allowed = channels.allowed_channels([2437, 5745])
+        with self.assertRaises(HardwareError) as ctx:
+            channels.plan(Channel(44, "a"), True, "bg", "6", allowed=allowed)
+        self.assertIn("5 GHz channel 44", ctx.exception.message)
+        self.assertTrue(any("2.4 GHz" in hint for hint in ctx.exception.hints))
+        self.assertTrue(any("--allow-disconnect" in hint for hint in ctx.exception.hints))
+
+    def test_free_choice_uses_only_allowed_channels(self):
+        allowed = channels.allowed_channels([2412, 2437, 2462, 5745, 5765])
+        self.assertEqual(channels.plan(None, True, "a", "36", allowed=allowed).channel, Channel(149, "a"))
+        scan = [(1, 10), (6, 90), (11, 90), (36, 1)]
+        self.assertEqual(channels.plan(None, True, "bg", "6", scan, allowed).channel, Channel(1, "bg"))
+
+    def test_band_without_allowed_channels_falls_back_to_24ghz(self):
+        allowed = channels.allowed_channels([2412, 2437, 2462])
+        self.assertEqual(channels.plan(None, False, "a", "36", allowed=allowed).channel.band, "bg")
+        self.assertIsNone(channels.allowed_channels([]))
+
     def test_parse_nmcli_scan(self):
         self.assertEqual(list(channels.parse_nmcli_scan("1:80\n6:\nfoo:1\n11:30")), [(1, 80), (6, 40), (11, 30)])
 

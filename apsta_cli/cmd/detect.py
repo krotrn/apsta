@@ -3,18 +3,33 @@
 from __future__ import annotations
 
 import json
+from typing import Optional
 
 from ..core import output, shell
 from ..core.errors import HardwareError
 from ..core.output import C
 from ..hw import capability, interfaces, usb
+from ..net import channels
 
 
-def verdict(cap: capability.HardwareCapability) -> dict:
+def verdict(cap: capability.HardwareCapability, sta_freq: Optional[int] = None) -> dict:
     if cap.ap_sta:
         messages = ["Your card can run a hotspot while staying connected to WiFi."]
         if cap.same_channel_required:
             messages.append("The hotspot will use the same channel as your WiFi connection.")
+            sta = channels.from_freq(sta_freq) if sta_freq else None
+            allowed = channels.allowed_channels(cap.ap_frequencies)
+            if sta is not None and allowed is not None and sta not in allowed:
+                return {
+                    "level": "warn",
+                    "mode": "ap+sta",
+                    "messages": messages,
+                    "warnings": [
+                        f"Your WiFi is on {sta.label} channel {sta.number}, where this card can't host.",
+                        "Switch that network to 2.4 GHz, or connect to a 2.4 GHz network, then start.",
+                    ],
+                    "next": "sudo apsta start  (after switching to 2.4 GHz)",
+                }
         return {"level": "ok", "mode": "ap+sta", "messages": messages, "next": "sudo apsta start"}
     if cap.supports_ap:
         return {
@@ -50,7 +65,8 @@ def cmd_detect(args) -> int:
         (i for i in ifaces if i.state == "UP"), ifaces[0]
     )
     cap = capability.probe(target.name)
-    result = verdict(cap)
+    link = interfaces.sta_link(target.name)
+    result = verdict(cap, link.freq if link else None)
     available = methods()
 
     if args.json:
@@ -89,6 +105,7 @@ def cmd_detect(args) -> int:
     _row("AP + STA at the same time", cap.ap_sta)
     if cap.ap_sta:
         _row("AP on a different channel than STA", not cap.same_channel_required)
+    _row("Hotspot on 5 GHz", any(f >= 5000 for f in cap.ap_frequencies))
     if cap.combinations:
         output.blank()
         output.info("Interface combinations reported by the driver:")
@@ -101,8 +118,11 @@ def cmd_detect(args) -> int:
         output.detail(f"{name:<8} {colour}{status}{C.RESET}")
 
     output.head("Verdict")
+    say = output.ok if result["mode"] == "ap+sta" else {"warn": output.warn}.get(result["level"], output.err)
     for msg in result["messages"]:
-        {"ok": output.ok, "warn": output.warn}.get(result["level"], output.err)(msg)
+        say(msg)
+    for msg in result.get("warnings", []):
+        output.warn(msg)
     if result["mode"] == "single":
         capable = [d for d in usb.scan_usb_wifi() if d.chipset_db and d.chipset_db.ap_sta]
         if capable:

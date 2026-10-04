@@ -72,6 +72,14 @@ class DetectVerdictTests(unittest.TestCase):
             "wlo1", "phy0", ap, True, ap_sta, True, 1, ["managed"], ["#{ managed } <= 1"], "iwlwifi", "Intel"
         )
 
+    def test_verdict_warns_when_wifi_channel_cannot_host(self):
+        cap = self.cap(True, True)
+        cap.ap_frequencies = [2437, 5745]
+        result = detect.verdict(cap, sta_freq=5220)
+        self.assertEqual(result["level"], "warn")
+        self.assertIn("channel 44", " ".join(result["warnings"]))
+        self.assertEqual(detect.verdict(cap, sta_freq=2437)["level"], "ok")
+
     def test_verdicts(self):
         self.assertEqual(detect.verdict(self.cap(True, True))["mode"], "ap+sta")
         self.assertEqual(detect.verdict(self.cap(True, False))["mode"], "single")

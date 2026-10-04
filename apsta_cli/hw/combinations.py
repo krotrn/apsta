@@ -124,6 +124,27 @@ def parse_supported_modes(iw_text: str) -> List[str]:
     return modes
 
 
+_FREQ_LINE = re.compile(r"^\*\s+(\d+)(?:\.\d+)?\s+MHz\s+\[(\d+)\](.*)$")
+# Flags that forbid starting a network (AP) on a channel.
+_NO_AP_FLAGS = ("disabled", "no IR", "radar detection")
+
+
+def parse_ap_frequencies(iw_text: str) -> List[int]:
+    """Frequencies (MHz) the radio may *start* a network on.
+
+    ``iw phy info`` marks channels ``(no IR)`` ("no initiating radiation") when
+    the regulatory rules or the firmware only allow joining an existing network
+    there; Intel cards do this for all of 5 GHz unless they have learnt the
+    location from nearby APs.
+    """
+    allowed = []
+    for line in iw_text.splitlines():
+        match = _FREQ_LINE.match(line.strip())
+        if match and not any(flag in match.group(3) for flag in _NO_AP_FLAGS):
+            allowed.append(int(match.group(1)))
+    return allowed
+
+
 def evaluate(combinations: List[Combination]) -> ApStaSupport:
     """Pick the most capable combination that allows AP+STA, preferring multi-channel."""
     capable = [c for c in combinations if c.ap_sta]

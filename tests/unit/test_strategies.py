@@ -51,6 +51,7 @@ def ap_mode_shell(testcase, tools=("hostapd", "dnsmasq", "nmcli", "iptables"), a
     sh.on("iw", "dev", "wlo1_ap", "info", stdout=up_info if ap_up else "Interface x\n\ttype AP\n")
     sh.on("iw", "dev", "wlo1", "info", stdout=up_info)
     sh.on("hostapd_cli", stdout="state=ENABLED\n" if ap_up else "state=DISABLED\n")
+    sh.on("nmcli", "-g", "GENERAL.STATE", stdout="30 (disconnected)")
     sh.on("ip", "-4", "-o", "addr", "show", stdout="3: wlo1 inet 192.168.42.7/24 brd x")
 
     def add_iface(argv):
@@ -79,6 +80,14 @@ class AvailabilityTests(unittest.TestCase):
         self.assertIsNone(strategies.NmSingleStrategy().unavailable(ctx(allow=True)))
         self.assertIsNone(strategies.NmSingleStrategy().unavailable(ctx(sta_ssid=None)))
         self.assertIn("AP mode", strategies.NmSingleStrategy().unavailable(ctx(supports_ap=False)))
+
+    def test_unusable_wifi_channel_leaves_only_the_disconnecting_method(self):
+        FakeShell(["hostapd", "dnsmasq", "nmcli"]).install(self)
+        c = ctx(allow=True)
+        c.sta_channel_usable = False
+        self.assertIn("can't host", strategies.HostapdStrategy().unavailable(c))
+        self.assertIn("can't host", strategies.NmVirtualStrategy().unavailable(c))
+        self.assertIsNone(strategies.NmSingleStrategy().unavailable(c))
 
     def test_without_nmcli(self):
         FakeShell([]).install(self)

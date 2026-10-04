@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Hosting on a channel the WiFi card isn't allowed to start a network on.
+  Intel cards mark 5 GHz channels 36–144 "no IR"; when the card has to share
+  the WiFi connection's channel and that channel is one of them, `start` used
+  to try hostapd and NetworkManager and fail with driver errors. apsta now
+  reads which channels allow an AP, refuses up front with the fix (switch the
+  network to 2.4 GHz), and `--allow-disconnect` hosts on an allowed channel
+  instead. When free to choose, it only picks allowed channels (e.g. 5 GHz
+  149–165) and falls back to 2.4 GHz.
+- `detect` warns about this before you start, and shows "Hotspot on 5 GHz";
+  the desktop app's hardware report too. `detect --json` adds
+  `capability.ap_frequencies` and `verdict.warnings`.
+- NetworkManager fallback: wait until NetworkManager has adopted the new
+  interface instead of failing with "No suitable device found".
+
 ## [0.7.0] - 2026-10-04
 
 Rewrite of the internals around a layered architecture
