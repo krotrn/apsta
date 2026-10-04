@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-04
+
 ### Fixed
 
 - Hosting on a channel the WiFi card isn't allowed to start a network on.
