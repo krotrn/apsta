@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Turn a directory of built packages into a pacman repository named "apsta".
-# Used by .github/workflows/arch.yml before uploading to the arch-repo release.
+# Used by .github/workflows/release.yml before uploading to the arch-repo release.
 #
 #   ci-repo.sh <dir>
 #

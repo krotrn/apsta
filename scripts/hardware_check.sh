@@ -45,7 +45,11 @@ snapshot() {
     echo "-- NM connection apsta-hotspot: $(nmcli -t -f NAME connection show 2>/dev/null | grep -c '^apsta-hotspot$')"
     echo "-- transient units:"; systemctl list-units --no-legend 'apsta-*' 2>/dev/null || true
     echo "-- /run/apsta:";  ls /run/apsta 2>/dev/null || echo "(none)"
-    echo "-- NM runtime conf: $(ls /run/NetworkManager/conf.d 2>/dev/null | grep -c apsta)"
+    if [[ -e /run/NetworkManager/conf.d/90-apsta-unmanaged.conf ]]; then
+        echo "-- NM runtime conf: present"
+    else
+        echo "-- NM runtime conf: none"
+    fi
 }
 
 section "system"

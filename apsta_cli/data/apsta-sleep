@@ -11,8 +11,8 @@ APSTA="$(command -v apsta || echo /usr/bin/apsta)"
 MARKER="${APSTA_RUN_DIR:-/run/apsta}/resume-pending"
 
 case "$1" in
-    pre|suspend|hibernate) action=sleep ;;
-    post|resume|thaw)      action=wake ;;
+    pre|suspend|hibernate) action="sleep" ;;
+    post|resume|thaw)      action="wake" ;;
     *) exit 0 ;;
 esac
 

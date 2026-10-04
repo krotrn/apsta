@@ -14,6 +14,21 @@ TARGETS = [
 ]
 
 CHANGELOG = Path("debian/changelog")
+PROJECT_CHANGELOG = Path("CHANGELOG.md")
+
+
+def release_project_changelog(new_version: str) -> None:
+    """Turn ``## [Unreleased]`` into ``## [X.Y.Z] - DATE`` and open a fresh Unreleased section."""
+    text = PROJECT_CHANGELOG.read_text(encoding="utf-8")
+    if re.search(rf"^## \[{re.escape(new_version)}\]", text, re.MULTILINE):
+        return  # already released
+    if "## [Unreleased]" not in text:
+        raise ValueError(f"{PROJECT_CHANGELOG} has no '## [Unreleased]' section to release")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    PROJECT_CHANGELOG.write_text(
+        text.replace("## [Unreleased]", f"## [Unreleased]\n\n## [{new_version}] - {today}", 1),
+        encoding="utf-8",
+    )
 
 
 def bump_debian_changelog(new_version: str) -> None:
@@ -49,6 +64,7 @@ def bump_version(new_version: str) -> int:
         path.write_text(updated, encoding="utf-8")
 
     bump_debian_changelog(new_version)
+    release_project_changelog(new_version)
     print(f"Updated version to {new_version}")
     return 0
 

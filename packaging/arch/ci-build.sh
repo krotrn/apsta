@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the Arch package into packaging/arch/out/ (PKGBUILD, .SRCINFO, *.pkg.tar.zst).
-# Used by .github/workflows/arch.yml; also runs locally as a non-root user.
+# Used by .github/workflows/packages.yml; also runs locally as a non-root user.
 #
 #   ci-build.sh release   build from the GitHub tag tarball and pin its sha256
 #                         (the out/ PKGBUILD + .SRCINFO are what goes to the AUR)
