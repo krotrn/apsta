@@ -1,0 +1,42 @@
+#!/bin/sh
+# apsta sleep hook.
+#   systemd:  /usr/lib/systemd/system-sleep/apsta-sleep   ($1 = pre|post)
+#   pm-utils: /etc/pm/sleep.d/10_apsta                    ($1 = suspend|resume|...)
+#
+# When apsta.service is running, the service notices the hotspot is gone after
+# resume and restarts it once WiFi reconnects, so this hook does nothing.
+# It only handles hotspots started by hand with `sudo apsta start`.
+
+APSTA="$(command -v apsta || echo /usr/bin/apsta)"
+MARKER=/run/apsta/resume-pending
+
+case "$1" in
+    pre|suspend|hibernate) action=sleep ;;
+    post|resume|thaw)      action=wake ;;
+    *) exit 0 ;;
+esac
+
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet apsta.service; then
+    exit 0
+fi
+
+case "$action" in
+    sleep)
+        if "$APSTA" status --check; then
+            "$APSTA" stop >/dev/null 2>&1 && touch "$MARKER"
+        fi
+        ;;
+    wake)
+        [ -f "$MARKER" ] || exit 0
+        rm -f "$MARKER"
+        # Don't block resume. Wait for WiFi to reassociate (--wait-sta) so the
+        # hotspot shares its channel. systemd-run puts the start outside the
+        # sleep unit, which would otherwise kill it once this hook returns.
+        if command -v systemd-run >/dev/null 2>&1; then
+            systemd-run --no-block --collect --unit=apsta-resume "$APSTA" start --wait-sta 30 >/dev/null 2>&1
+        else
+            ("$APSTA" start --wait-sta 30 >/dev/null 2>&1 &)
+        fi
+        ;;
+esac
+exit 0

@@ -1,75 +1,94 @@
 #!/usr/bin/env bash
-# apsta installer
-set -e
+# Install apsta from a source checkout into /usr/local (for distros without a package).
+#
+#   sudo ./install.sh              install CLI, GUI, service files, polkit policy
+#   sudo ./install.sh --uninstall  remove everything this script installed
+#
+# Prefer your distribution's package (see README) when one exists.
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="/usr/local/bin/apsta"
-CLI_PACKAGE_DIR="/usr/local/bin/apsta_cli"
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PREFIX="${PREFIX:-/usr/local}"
+LIB="$PREFIX/lib/apsta"
+BIN="$PREFIX/bin"
 
-install_completion() {
-    local shell_name="$1"
-    local out_path=""
-
-    case "$shell_name" in
-        bash)
-            out_path="/etc/bash_completion.d/apsta"
-            mkdir -p "$(dirname "$out_path")"
-            python3 "$SCRIPT_DIR/apsta.py" completion bash > "$out_path"
-            ;;
-        zsh)
-            out_path="/usr/local/share/zsh/site-functions/_apsta"
-            mkdir -p "$(dirname "$out_path")"
-            python3 "$SCRIPT_DIR/apsta.py" completion zsh > "$out_path"
-            ;;
-        fish)
-            out_path="/etc/fish/completions/apsta.fish"
-            mkdir -p "$(dirname "$out_path")"
-            python3 "$SCRIPT_DIR/apsta.py" completion fish > "$out_path"
-            ;;
-        *)
-            echo "  →  Unsupported shell for completion install: $shell_name"
-            return 1
-            ;;
-    esac
-
-    echo "  ✔  $shell_name completion installed → $out_path"
-}
+say() { printf '  %s  %s\n' "$1" "$2"; }
 
 if [[ $EUID -ne 0 ]]; then
-    echo "Run with sudo: sudo ./install.sh"
+    echo "Run with sudo: sudo ./install.sh $*" >&2
     exit 1
 fi
 
-echo ""
-echo "Installing apsta..."
-cp "$SCRIPT_DIR/apsta.py" "$TARGET"
-chmod +x "$TARGET"
-echo "  ✔  apsta installed → $TARGET"
+render() {  # render <data file>: point packaged paths at this prefix
+    sed "s|/usr/bin/apsta|$BIN/apsta|g" "$1"
+}
 
-rm -rf "$CLI_PACKAGE_DIR"
-cp -r "$SCRIPT_DIR/apsta_cli" "$CLI_PACKAGE_DIR"
-find "$CLI_PACKAGE_DIR" -type f -name "*.py" -exec chmod 0644 {} \;
-echo "  ✔  CLI package installed → $CLI_PACKAGE_DIR"
+uninstall() {
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl disable --now apsta.service >/dev/null 2>&1 || true
+    fi
+    "$BIN/apsta" stop >/dev/null 2>&1 || true
+    rm -rf "$LIB"
+    rm -f "$BIN/apsta" "$BIN/apsta-gtk" \
+          /etc/systemd/system/apsta.service \
+          /usr/lib/systemd/system-sleep/apsta-sleep \
+          /usr/share/polkit-1/actions/com.github.apsta.policy \
+          /usr/share/applications/com.github.apsta.Gtk.desktop \
+          /etc/bash_completion.d/apsta \
+          /usr/local/share/zsh/site-functions/_apsta \
+          /etc/fish/completions/apsta.fish
+    command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
+    say "✔" "apsta removed (configuration kept in /etc/apsta)"
+}
 
-echo ""
-read -r -p "Install shell completion? [y/N] " completion_answer
-if [[ "$completion_answer" =~ ^[Yy]$ ]]; then
-    default_shell="${SHELL##*/}"
-    read -r -p "Choose shell (bash/zsh/fish) [${default_shell:-bash}]: " chosen_shell
-    chosen_shell="${chosen_shell:-$default_shell}"
-    chosen_shell="${chosen_shell:-bash}"
-    install_completion "$chosen_shell" || echo "  →  Skipped completion install"
-else
-    echo "  →  Skipped. Install later with: apsta completion <bash|zsh|fish>"
+if [[ "${1:-}" == "--uninstall" ]]; then
+    uninstall
+    exit 0
 fi
 
-echo ""
-read -r -p "Enable auto-start on boot and sleep/wake persistence? [y/N] " answer
-if [[ "$answer" =~ ^[Yy]$ ]]; then
-    python3 "$SCRIPT_DIR/apsta.py" enable
-else
-    echo "  →  Skipped. Enable later with:  sudo apsta enable"
+echo "Installing apsta into $PREFIX ..."
+
+# Python packages go to a private directory, not onto the system site-packages.
+rm -rf "$LIB"
+install -d "$LIB"
+cp -r "$SRC/apsta_cli" "$SRC/apsta_gui" "$LIB/"
+find "$LIB" -name '__pycache__' -prune -exec rm -rf {} +
+say "✔" "Python packages → $LIB"
+
+for tool in apsta:apsta_cli apsta-gtk:apsta_gui; do
+    name="${tool%%:*}" module="${tool##*:}"
+    cat > "$BIN/$name" <<SH
+#!/bin/sh
+PYTHONPATH="$LIB\${PYTHONPATH:+:\$PYTHONPATH}" exec python3 -m $module "\$@"
+SH
+    chmod 755 "$BIN/$name"
+    say "✔" "$BIN/$name"
+done
+
+if [[ -d /usr/lib/systemd ]]; then
+    render "$SRC/apsta_cli/data/apsta.service" > /etc/systemd/system/apsta.service
+    install -d /usr/lib/systemd/system-sleep
+    render "$SRC/apsta_cli/data/apsta-sleep" > /usr/lib/systemd/system-sleep/apsta-sleep
+    chmod 755 /usr/lib/systemd/system-sleep/apsta-sleep
+    systemctl daemon-reload || true
+    say "✔" "systemd service + sleep hook (enable with: sudo apsta enable)"
 fi
 
-echo ""
-echo "Done. Run: apsta detect"
+if [[ -d /usr/share/polkit-1/actions ]]; then
+    render "$SRC/apsta_cli/data/com.github.apsta.policy" > /usr/share/polkit-1/actions/com.github.apsta.policy
+    say "✔" "polkit policy"
+fi
+
+install -Dm644 "$SRC/apsta_gui/data/com.github.apsta.Gtk.desktop" /usr/share/applications/com.github.apsta.Gtk.desktop
+say "✔" "desktop entry"
+
+"$BIN/apsta" completion bash > /etc/bash_completion.d/apsta 2>/dev/null && say "✔" "bash completion" || true
+if [[ -d /usr/local/share/zsh/site-functions ]]; then
+    "$BIN/apsta" completion zsh > /usr/local/share/zsh/site-functions/_apsta && say "✔" "zsh completion"
+fi
+if [[ -d /etc/fish/completions ]]; then
+    "$BIN/apsta" completion fish > /etc/fish/completions/apsta.fish && say "✔" "fish completion"
+fi
+
+echo
+echo "Done. Next: apsta detect"

@@ -1,0 +1,8 @@
+Wiphy phy0
+	Supported interface modes:
+		 * managed
+		 * AP
+		 * monitor
+	valid interface combinations:
+		 * #{ managed, AP } <= 1, #{ monitor } <= 1,
+		   total <= 2, #channels <= 1

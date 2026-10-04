@@ -22,17 +22,20 @@ class ApstaWindowPagesMixin:
 
         self._stack.add_titled_with_icon(
             self._build_status_page(),
-            "status", "Status",
+            "status",
+            "Status",
             "network-wireless-symbolic",
         )
         self._stack.add_titled_with_icon(
             self._build_hardware_page(),
-            "hardware", "Hardware",
+            "hardware",
+            "Hardware",
             "computer-symbolic",
         )
         self._stack.add_titled_with_icon(
             self._build_settings_page(),
-            "settings", "Settings",
+            "settings",
+            "Settings",
             "preferences-system-symbolic",
         )
 
@@ -70,14 +73,12 @@ class ApstaWindowPagesMixin:
         control_group = Adw.PreferencesGroup(title="Control")
 
         self._ssid_entry = Adw.EntryRow(title="SSID")
-        self._ssid_entry.set_text("apsta-hotspot")
         control_group.add(self._ssid_entry)
 
         self._pass_entry = Adw.PasswordEntryRow(title="Password (blank = keep saved)")
         control_group.add(self._pass_entry)
 
         self._profile_entry = Adw.EntryRow(title="Active profile")
-        self._profile_entry.set_text("default")
         control_group.add(self._profile_entry)
 
         profile_row = Adw.ActionRow(
@@ -91,18 +92,17 @@ class ApstaWindowPagesMixin:
         profile_row.add_suffix(self._profile_apply_btn)
         control_group.add(profile_row)
 
-        # Force mode toggle — needed when AP+STA concurrent is not supported.
-        # When enabled, apsta start --force is passed, which disconnects the
-        # existing WiFi connection and uses the single interface as AP.
-        force_row = Adw.ActionRow(
-            title="Force start",
-            subtitle="Disconnect WiFi to run hotspot (single-radio cards)",
+        # Only matters when the card can't keep WiFi and run a hotspot together:
+        # it permits falling back to a mode that drops the WiFi connection.
+        allow_row = Adw.ActionRow(
+            title="Allow disconnecting WiFi",
+            subtitle="Fallback for cards that can't keep WiFi while hosting",
         )
-        self._force_switch = Gtk.Switch()
-        self._force_switch.set_valign(Gtk.Align.CENTER)
-        force_row.add_suffix(self._force_switch)
-        force_row.set_activatable_widget(self._force_switch)
-        control_group.add(force_row)
+        self._allow_disconnect_switch = Gtk.Switch()
+        self._allow_disconnect_switch.set_valign(Gtk.Align.CENTER)
+        allow_row.add_suffix(self._allow_disconnect_switch)
+        allow_row.set_activatable_widget(self._allow_disconnect_switch)
+        control_group.add(allow_row)
 
         # Start / Stop button row
         btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -174,7 +174,7 @@ class ApstaWindowPagesMixin:
         clients_group = Adw.PreferencesGroup(title="Connected Clients")
 
         self._clients_buf = Gtk.TextBuffer()
-        self._clients_buf.set_text("Client management is available in hostapd mode.")
+        self._clients_buf.set_text("Loading…")
 
         clients_tv = Gtk.TextView(buffer=self._clients_buf)
         clients_tv.set_editable(False)
@@ -195,8 +195,8 @@ class ApstaWindowPagesMixin:
         clients_row.set_child(clients_scroll)
         clients_group.add(clients_row)
 
-        self._disconnect_entry = Adw.EntryRow(title="Client (MAC/IP/hostname)")
-        clients_group.add(self._disconnect_entry)
+        self._client_entry = Adw.EntryRow(title="Client (MAC/IP/hostname)")
+        clients_group.add(self._client_entry)
 
         self._limit_kbps_entry = Adw.EntryRow(title="Limit (Kbps)")
         self._limit_kbps_entry.set_text("8000")
@@ -204,7 +204,7 @@ class ApstaWindowPagesMixin:
 
         disconnect_row = Adw.ActionRow(
             title="Disconnect client",
-            subtitle="Removes one active station from the hotspot",
+            subtitle="Kick a client; Block also stops it reconnecting (hostapd mode)",
         )
         self._disconnect_btn = Gtk.Button(label="Disconnect")
         self._disconnect_btn.add_css_class("pill")
@@ -212,11 +212,16 @@ class ApstaWindowPagesMixin:
         self._disconnect_btn.set_valign(Gtk.Align.CENTER)
         self._disconnect_btn.connect("clicked", self._on_disconnect_client_clicked)
         disconnect_row.add_suffix(self._disconnect_btn)
+        block_btn = Gtk.Button(label="Block")
+        block_btn.add_css_class("pill")
+        block_btn.set_valign(Gtk.Align.CENTER)
+        block_btn.connect("clicked", self._on_block_client_clicked)
+        disconnect_row.add_suffix(block_btn)
         clients_group.add(disconnect_row)
 
         limit_row = Adw.ActionRow(
             title="Apply bandwidth limit",
-            subtitle="Per-client ingress/egress policing in hostapd mode",
+            subtitle="Per-client upload and download limit",
         )
         self._limit_btn = Gtk.Button(label="Set Limit")
         self._limit_btn.add_css_class("pill")
@@ -346,8 +351,8 @@ class ApstaWindowPagesMixin:
 
         cfg_group = Adw.PreferencesGroup(title="Hotspot Configuration")
 
-        self._cfg_ssid  = Adw.EntryRow(title="SSID")
-        self._cfg_pass  = Adw.PasswordEntryRow(title="Password (blank = keep saved)")
+        self._cfg_ssid = Adw.EntryRow(title="SSID")
+        self._cfg_pass = Adw.PasswordEntryRow(title="Password (blank = keep saved)")
         self._cfg_iface = Adw.EntryRow(title="Interface (leave blank = auto)")
 
         cfg_group.add(self._cfg_ssid)
@@ -373,7 +378,7 @@ class ApstaWindowPagesMixin:
 
         enable_row = Adw.ActionRow(
             title="Enable auto-start",
-            subtitle="Installs systemd service + sleep hook",
+            subtitle="Start at boot and recover after sleep",
         )
         enable_btn = Gtk.Button(label="Enable")
         enable_btn.add_css_class("pill")
@@ -384,7 +389,7 @@ class ApstaWindowPagesMixin:
 
         disable_row = Adw.ActionRow(
             title="Disable auto-start",
-            subtitle="Removes systemd service + sleep hook",
+            subtitle="Stop starting the hotspot at boot",
         )
         disable_btn = Gtk.Button(label="Disable")
         disable_btn.add_css_class("pill")
@@ -396,8 +401,6 @@ class ApstaWindowPagesMixin:
 
         page.add(svc_group)
 
-        # Load current config into fields
-        self._load_config_into_settings()
         return page
 
     # ── Status helpers ─────────────────────────────────────────────────────────

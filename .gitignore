@@ -38,3 +38,7 @@ debian/files
 ../*.dsc
 ../*.buildinfo
 ../*.orig.tar.gz
+# Test / coverage output
+.coverage
+coverage.xml
+htmlcov/

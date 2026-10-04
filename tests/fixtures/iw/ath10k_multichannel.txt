@@ -1,0 +1,14 @@
+Wiphy phy0
+	Supported interface modes:
+		 * managed
+		 * AP
+		 * AP/VLAN
+		 * monitor
+		 * P2P-client
+		 * P2P-GO
+		 * P2P-device
+	valid interface combinations:
+		 * #{ managed } <= 2, #{ AP, P2P-client, P2P-GO } <= 2, #{ P2P-device } <= 1,
+		   total <= 4, #channels <= 2
+	HT Capability overrides:
+		 * MCS: ff ff ff ff ff ff ff ff ff ff

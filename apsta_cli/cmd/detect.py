@@ -1,165 +1,123 @@
-#!/usr/bin/env python3
-"""Hardware detect command implementation."""
+"""detect: what can this machine's WiFi hardware do, and which method will apsta use."""
+
+from __future__ import annotations
 
 import json
-import sys
 
-from ..common import C, err, head, info, ok, warn
-from ..hardware import get_hardware_capability, get_wifi_interfaces, scan_usb_wifi
-def cmd_detect(args):
-    ifaces = get_wifi_interfaces()
-    if not ifaces:
-        if getattr(args, "json", False):
-            print(json.dumps({"error": "No WiFi interfaces found."}))
-        err("No WiFi interfaces found.")
-        sys.exit(1)
+from ..core import output, shell
+from ..core.errors import HardwareError
+from ..core.output import C
+from ..hw import capability, interfaces, usb
 
-    target = next((i for i in ifaces if i.state == "UP"), ifaces[0])
-    cap = get_hardware_capability(target.name)
 
-    if cap.supports_ap_sta_concurrent:
-        verdict = {
-            "level": "ok",
-            "mode": "nmcli",
-            "messages": [
-                "Your hardware supports AP+STA simultaneously (nmcli mode).",
-                "apsta can create a hotspot without dropping your WiFi.",
-            ],
-            "next": "sudo apsta start",
-        }
-    elif cap.supports_ap_sta_split:
-        verdict = {
-            "level": "ok",
-            "mode": "hostapd",
-            "messages": [
-                "Your hardware supports AP+STA simultaneously (hostapd mode).",
-                "apsta will use hostapd + dnsmasq to share WiFi without disconnecting.",
-            ],
-            "next": "sudo apsta start",
-            "note": "requires hostapd and dnsmasq installed",
-        }
-    elif cap.supports_ap:
-        verdict = {
+def verdict(cap: capability.HardwareCapability) -> dict:
+    if cap.ap_sta:
+        messages = ["Your card can run a hotspot while staying connected to WiFi."]
+        if cap.same_channel_required:
+            messages.append("The hotspot will use the same channel as your WiFi connection.")
+        return {"level": "ok", "mode": "ap+sta", "messages": messages, "next": "sudo apsta start"}
+    if cap.supports_ap:
+        return {
             "level": "warn",
-            "mode": "force-only",
+            "mode": "single",
             "messages": [
-                "Your hardware supports AP mode but NOT concurrent AP+STA.",
-                "Starting a hotspot will disconnect your current WiFi.",
+                "Your card supports AP mode but not alongside a WiFi connection.",
+                "Starting a hotspot will disconnect your WiFi.",
             ],
-            "next": "sudo apsta start --force",
+            "next": "sudo apsta start --allow-disconnect",
         }
-    else:
-        verdict = {
-            "level": "error",
-            "mode": "unsupported",
-            "messages": [
-                "Your hardware does not support AP mode.",
-                "A USB WiFi adapter is required.",
-            ],
-            "next": "apsta recommend",
-        }
+    return {
+        "level": "error",
+        "mode": "unsupported",
+        "messages": ["Your card does not support AP mode.", "A USB WiFi adapter is required."],
+        "next": "apsta recommend",
+    }
 
-    if getattr(args, "json", False):
-        payload = {
-            "interfaces": [
+
+def methods() -> dict:
+    missing = [b for b in ("hostapd", "dnsmasq") if not shell.have(b)]
+    return {
+        "hostapd": "ready" if not missing else f"needs {', '.join(missing)}",
+        "nmcli": "ready" if shell.have("nmcli") else "needs NetworkManager",
+    }
+
+
+def cmd_detect(args) -> int:
+    ifaces = interfaces.client_interfaces()
+    if not ifaces:
+        raise HardwareError("No WiFi interfaces found.")
+    target = next((i for i in ifaces if i.connected_ssid), None) or next(
+        (i for i in ifaces if i.state == "UP"), ifaces[0]
+    )
+    cap = capability.probe(target.name)
+    result = verdict(cap)
+    available = methods()
+
+    if args.json:
+        print(
+            json.dumps(
                 {
-                    "name": i.name,
-                    "mac": i.mac,
-                    "state": i.state,
-                    "connected_ssid": i.connected_ssid,
-                }
-                for i in ifaces
-            ],
-            "target_interface": target.name,
-            "capability": {
-                "interface": cap.interface,
-                "supports_ap": cap.supports_ap,
-                "supports_sta": cap.supports_sta,
-                "supports_ap_sta_concurrent": cap.supports_ap_sta_concurrent,
-                "supports_ap_sta_split": cap.supports_ap_sta_split,
-                "max_interfaces": cap.max_interfaces,
-                "supported_modes": cap.supported_modes,
-                "combinations": cap.combinations,
-                "driver": cap.driver,
-                "chipset": cap.chipset,
-            },
-            "verdict": verdict,
-        }
-        print(json.dumps(payload, indent=2))
-        return
+                    "interfaces": [i.__dict__ for i in ifaces],
+                    "target_interface": target.name,
+                    "capability": cap.to_dict(),
+                    "methods": available,
+                    "verdict": result,
+                },
+                indent=2,
+            )
+        )
+        return 0
 
-    head("apsta — Hardware Detection")
-
-    print()
-    info(f"Found {len(ifaces)} WiFi interface(s):")
-    for iface in ifaces:
-        connected = f"connected to {C.GREEN}{iface.connected_ssid}{C.RESET}" if iface.connected_ssid else f"{C.DIM}not connected{C.RESET}"
-        print(f"     {C.BOLD}{iface.name}{C.RESET}  [{iface.mac}]  {connected}")
-
-    print()
-    info(f"Analysing {C.BOLD}{target.name}{C.RESET} ...")
-
-    head("Capability Report")
-
-    if cap.driver:
-        info(f"Driver:   {cap.driver}")
-    if cap.chipset:
-        info(f"Chipset:  {cap.chipset}")
-
-    print()
-    _print_cap("AP mode (hotspot)",             cap.supports_ap)
-    _print_cap("STA mode (WiFi client)",         cap.supports_sta)
-    _print_cap("AP+STA simultaneous (nmcli)",    cap.supports_ap_sta_concurrent)
-    _print_cap("AP+STA simultaneous (hostapd)",  cap.supports_ap_sta_split)
-
-    if cap.combinations:
-        print()
-        info("Interface combinations from driver:")
-        for combo in cap.combinations:
-            print(f"     {C.DIM}{combo}{C.RESET}")
-
-    print()
-    head("Verdict")
-    if verdict["mode"] == "nmcli":
-        ok("Your hardware supports AP+STA simultaneously (nmcli mode).")
-        ok("apsta can create a hotspot without dropping your WiFi.")
-        info("Run:  sudo apsta start")
-    elif verdict["mode"] == "hostapd":
-        ok("Your hardware supports AP+STA simultaneously (hostapd mode).")
-        ok("apsta will use hostapd + dnsmasq to share WiFi without disconnecting.")
-        info("Run:  sudo apsta start")
-        info("Note: requires hostapd and dnsmasq installed.")
-    elif verdict["mode"] == "force-only":
-        warn("Your hardware supports AP mode but NOT concurrent AP+STA.")
-        warn("Starting a hotspot will disconnect your current WiFi.")
-        print()
-        info("Options:")
-        print(f"     1. Plug ethernet into your wired port → hotspot freely on {target.name}")
-        print(f"     2. Use a USB WiFi dongle as the AP interface")
-        print(f"     3. Accept the tradeoff: disconnect WiFi, run hotspot")
-        print()
-        usb_devices = scan_usb_wifi()
-        capable = [d for d in usb_devices if d.chipset_db and d.chipset_db.ap_sta]
-        if capable:
-            ok("A compatible USB adapter is already plugged in:")
-            for dev in capable:
-                iface = dev.interface or "not yet assigned"
-                print(f"     {C.BOLD}{dev.chipset_db.chipset}{C.RESET}  [{dev.vid}:{dev.pid}]  iface: {iface}")
-            info("Configure it:  sudo apsta config --set interface=<iface>")
+    output.head("apsta — Hardware Detection")
+    output.blank()
+    output.info(f"Found {len(ifaces)} WiFi interface(s):")
+    for i in ifaces:
+        if i.connected_ssid:
+            link = f"connected to {C.GREEN}{i.connected_ssid}{C.RESET}"
         else:
-            info("Run:  apsta recommend   to see which USB dongle to buy")
-        info("Run:  sudo apsta start --force   to proceed without a dongle")
-    else:
-        err("Your hardware does not support AP mode.")
-        err("A USB WiFi adapter is required.")
-        print()
-        info("Run:  apsta recommend   to see which USB dongle to buy")
+            link = f"{C.DIM}not connected{C.RESET}"
+        output.detail(f"{C.BOLD}{i.name}{C.RESET}  [{i.mac}]  {link}")
 
-    print()
+    output.head(f"Capability report for {target.name}")
+    if cap.driver:
+        output.info(f"Driver:   {cap.driver}")
+    if cap.chipset:
+        output.info(f"Chipset:  {cap.chipset}")
+    output.blank()
+    _row("AP mode (hotspot)", cap.supports_ap)
+    _row("STA mode (WiFi client)", cap.supports_sta)
+    _row("AP + STA at the same time", cap.ap_sta)
+    if cap.ap_sta:
+        _row("AP on a different channel than STA", not cap.same_channel_required)
+    if cap.combinations:
+        output.blank()
+        output.info("Interface combinations reported by the driver:")
+        for combo in cap.combinations:
+            output.detail(f"{C.DIM}{combo}{C.RESET}")
 
-def _print_cap(label: str, value: bool):
+    output.head("Methods")
+    for name, status in available.items():
+        colour = C.GREEN if status == "ready" else C.YELLOW
+        output.detail(f"{name:<8} {colour}{status}{C.RESET}")
+
+    output.head("Verdict")
+    for msg in result["messages"]:
+        {"ok": output.ok, "warn": output.warn}.get(result["level"], output.err)(msg)
+    if result["mode"] == "single":
+        capable = [d for d in usb.scan_usb_wifi() if d.chipset_db and d.chipset_db.ap_sta]
+        if capable:
+            output.ok("A compatible USB adapter is plugged in:")
+            for dev in capable:
+                output.detail(f"{dev.chipset_db.chipset}  iface: {dev.interface or 'not yet assigned'}")
+            output.info("Use it: sudo apsta config --set interface=<iface>")
+        else:
+            output.info("Keep WiFi with a USB adapter: apsta recommend")
+    output.info(f"Next: {result['next']}")
+    output.blank()
+    return 0
+
+
+def _row(label: str, value: bool) -> None:
     icon = f"{C.GREEN}✔{C.RESET}" if value else f"{C.RED}✘{C.RESET}"
-    status = f"{C.GREEN}supported{C.RESET}" if value else f"{C.RED}not supported{C.RESET}"
-    print(f"     {icon}  {label:<38} {status}")
-
-
+    text = f"{C.GREEN}yes{C.RESET}" if value else f"{C.RED}no{C.RESET}"
+    output.detail(f"{icon}  {label:<36} {text}")

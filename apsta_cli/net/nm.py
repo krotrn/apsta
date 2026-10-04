@@ -1,0 +1,109 @@
+"""NetworkManager integration.
+
+Hotspot connections are written as *volatile keyfiles* under
+/run/NetworkManager/system-connections and loaded with ``nmcli connection
+load``. Compared with ``nmcli device wifi hotspot ... password X`` this means:
+
+* the password never appears on a command line (visible to every user in ps);
+* the connection has a fixed, known name so stop never has to guess;
+* nothing accumulates in /etc across reboots.
+"""
+
+from __future__ import annotations
+
+import uuid
+from pathlib import Path
+from typing import Optional
+
+from ..core import fsutil, paths, shell
+from .channels import Channel
+
+CONNECTION_ID = "apsta-hotspot"
+
+
+def _escape(value: str) -> str:
+    """Escape a GKeyFile string value."""
+    out = value.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+    if out.startswith(" "):
+        out = "\\s" + out[1:]
+    return out
+
+
+def render_keyfile(
+    *,
+    interface: str,
+    ssid: str,
+    password: str,
+    channel: Channel,
+    cloned_mac: Optional[str] = None,
+    connection_uuid: Optional[str] = None,
+) -> str:
+    # SSIDs are written as a byte list, the keyfile form that needs no escaping.
+    ssid_bytes = ";".join(str(b) for b in ssid.encode("utf-8")) + ";"
+    lines = [
+        "[connection]",
+        f"id={CONNECTION_ID}",
+        f"uuid={connection_uuid or uuid.uuid4()}",
+        "type=wifi",
+        f"interface-name={interface}",
+        "autoconnect=false",
+        "",
+        "[wifi]",
+        "mode=ap",
+        f"ssid={ssid_bytes}",
+        f"band={channel.band}",
+        f"channel={channel.number}",
+    ]
+    if cloned_mac:
+        lines.append(f"cloned-mac-address={cloned_mac}")
+    lines += [
+        "",
+        "[wifi-security]",
+        "key-mgmt=wpa-psk",
+        "proto=rsn;",
+        "pairwise=ccmp;",
+        "group=ccmp;",
+        f"psk={_escape(password)}",
+        "",
+        "[ipv4]",
+        "method=shared",
+        "",
+        "[ipv6]",
+        "method=ignore",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def keyfile_path() -> Path:
+    return paths.NM_RUNTIME_KEYFILE_DIR / f"{CONNECTION_ID}.nmconnection"
+
+
+def install_connection(keyfile: str) -> None:
+    path = keyfile_path()
+    path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    fsutil.atomic_write(path, keyfile, mode=0o600)  # NM refuses world-readable keyfiles
+    shell.run(["nmcli", "connection", "load", str(path)]).check("Loading the NetworkManager connection")
+
+
+def remove_connection() -> None:
+    shell.run(["nmcli", "connection", "delete", "id", CONNECTION_ID])
+    fsutil.remove(keyfile_path())
+
+
+def up(timeout: int = 30) -> None:
+    shell.run(["nmcli", "--wait", str(timeout), "connection", "up", "id", CONNECTION_ID], timeout=timeout + 5).check(
+        "Activating the hotspot connection"
+    )
+
+
+def down() -> shell.Result:
+    return shell.run(["nmcli", "connection", "down", "id", CONNECTION_ID])
+
+
+def set_managed(iface: str, managed: bool) -> shell.Result:
+    return shell.run(["nmcli", "device", "set", iface, "managed", "yes" if managed else "no"])
+
+
+def scan(iface: str) -> str:
+    return shell.out(["nmcli", "-t", "-f", "CHAN,SIGNAL", "device", "wifi", "list", "ifname", iface])

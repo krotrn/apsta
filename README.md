@@ -1,133 +1,62 @@
 # apsta
 
-**AP+STA WiFi hotspot manager for Linux.**
+**Run a WiFi hotspot on Linux while staying connected to WiFi.**
 
-Stay connected to your WiFi network and broadcast a hotspot simultaneously — without the manual `nmcli` / `hostapd` pain, without dropping your connection, and without touching a config file.
+[![CI](https://github.com/krotrn/apsta/actions/workflows/ci.yml/badge.svg)](https://github.com/krotrn/apsta/actions/workflows/ci.yml)
+
+`nmcli device wifi hotspot` takes over your WiFi card and drops your
+connection. Most modern cards can actually be a client and an access point at
+the same time ("AP+STA"). apsta finds out whether yours can, sets the hotspot
+up the right way for it, keeps it healthy, and cleans up completely when you
+stop it.
 
 ```
 $ apsta detect
 
-	apsta — Hardware Detection
+Capability report for wlo1
+  →  Driver:   iwlwifi
+  →  Chipset:  Intel Corporation Wi-Fi 6 AX200
 
-	→ Found 1 WiFi interface(s):
-			 wlo1  [e4:c7:67:e4:30:ae]  connected to HomeWiFi
+     ✔  AP mode (hotspot)                    yes
+     ✔  STA mode (WiFi client)               yes
+     ✔  AP + STA at the same time            yes
+     ✘  AP on a different channel than STA   no
 
-	Capability Report
-	→ Driver:   iwlwifi
-	→ Chipset:  Intel Wi-Fi 6 AX200
+Methods
+     hostapd  ready
+     nmcli    ready
 
-	✔  AP mode (hotspot)                      supported
-	✔  STA mode (WiFi client)                 supported
-	✘  AP+STA simultaneous (nmcli)            not supported
-	✔  AP+STA simultaneous (hostapd)          supported
-
-	Verdict
-	✔  Your hardware supports AP+STA simultaneously (hostapd mode).
-	✔  apsta will use hostapd + dnsmasq to share WiFi without disconnecting.
-	→  Run:  sudo apsta start
+Verdict
+  ✔  Your card can run a hotspot while staying connected to WiFi.
+  ✔  The hotspot will use the same channel as your WiFi connection.
+  →  Next: sudo apsta start
 ```
 
----
+## Features
 
-## The Problem
-
-On Linux, running a hotspot while staying connected to WiFi is harder than it should be:
-
-- `nmcli device wifi hotspot` **kills your existing WiFi connection** — it takes over the interface completely
-- Most WiFi cards don't support concurrent AP+STA mode in the way NetworkManager expects
-- Windows handles this transparently via a virtual WiFi layer — Linux doesn't have an equivalent
-- NetworkManager doesn't tell you _why_ it failed or _what your options are_
-- COSMIC DE has no hotspot UI at all
-
-`apsta` fixes all of this.
-
----
-
-## How It Works
-
-<img src="./public/apsta_start_strategy_flow.svg" alt="apsta flowchart" width="600">
-
-```
-apsta detect
-		↓
-Parse iw list → find "valid interface combinations"
-		↓
-Level 1: AP+managed in SAME #{ } block, total >= 2?
-	YES → nmcli virtual interface (Strategy 1)
-
-Level 2: AP and managed in SEPARATE #{ } blocks, #channels <= 1?
-	YES → hostapd virtual interface (Strategy 2) — Intel AX200, iwlwifi
-
-Neither → explain options → suggest ethernet / USB dongle / --force
-```
-
-**Strategy 1 — nmcli concurrent (true hardware AP+STA):**
-Creates a virtual `wlo1_ap` interface and runs `nmcli device wifi hotspot` on it.
-WiFi stays on `wlo1`. Requires the driver to expose AP+managed in the same
-interface combination block.
-
-**Strategy 2 — hostapd concurrent (split-block AP+STA):**
-Creates a virtual `wlo1_ap` interface, runs hostapd directly (bypassing nmcli),
-assigns IP `192.168.42.1/24`, starts dnsmasq for DHCP, and sets up NAT so
-hotspot clients get internet through `wlo1`'s connection. This is how Windows
-handles the Intel AX200 — apsta now does the same on Linux.
-
-1. Create virtual `wlo1_ap` on top of `wlo1` (`iw dev wlo1 interface add wlo1_ap type __ap`)
-2. Assign randomized locally-administered MAC to `wlo1_ap` — keeps `wlo1` MAC unchanged so NM holds its STA connection
-3. Tell NM to ignore `wlo1_ap` only — `wlo1` stays fully managed and connected
-4. Run hostapd on `wlo1_ap` with channel matching `wlo1`'s current channel
-5. Assign IP `192.168.42.1/24` to `wlo1_ap`
-6. Start dnsmasq for DHCP — clients get `192.168.42.10–192.168.42.100`
-7. Enable NAT via iptables MASQUERADE so `wlo1_ap` clients get internet through `wlo1`
-
-**Strategy 3 — nmcli --force (drops WiFi):**
-Uses the single interface as AP. WiFi disconnects. Only triggered with `--force`.
-
-Key technical decisions:
-
-- **Split-block detection**: parses multi-line `iw list` combinations by joining
-  continuation lines before processing — correctly identifies Intel AX200/iwlwifi
-  which exposes AP and managed in separate `#{ }` blocks with `#channels <= 1`
-- **Channel sync**: reads live STA frequency via `iw dev link` and forces the AP
-  to the same channel — prevents `Device or resource busy` on single-radio cards
-- **Band sync**: derives band (`a` or `bg`) from frequency — prevents `band bg channel 36` crash
-- **Auto channel (no STA link)**: scores nearby AP congestion and auto-picks
-  a safe channel (2.4 GHz: 1/6/11, 5 GHz: 36/40/44/48)
-- **DFS channels**: detects regulatory-blocked channels (52–144) and aborts with clear instructions
-- **Virtual interface MAC**: randomises the locally-administered MAC (`02:xx:xx:xx:xx:xx`)
-  on the AP interface only — base interface MAC stays unchanged so NM keeps its STA connection
-- **State persistence**: saves `ap_interface`, `base_interface`, `active_con_name`, and
-  `start_method` to `/etc/apsta/config.json` so teardown is exact and method-aware
-
----
-
-## Project Layout
-
-The codebase is organized into small folder-based packages for readability and
-scalability:
-
-- `apsta.py` — CLI launcher and argparse wiring
-- `apsta_cli/` — CLI implementation package
-- `apsta_cli/cmd/` — user-facing command handlers (detect, status/config, USB)
-- `apsta_cli/net/` — hotspot lifecycle internals (start, stop, support helpers)
-- `apsta_gui/` — GTK app package
-- `apsta_gui/mixins/` — UI page builders and action/polling logic
-- `apsta_gtk.py` — GTK launcher
-- `gtk-ui/apsta-gtk` — desktop launcher script used by installer/package
-
-This keeps entrypoints tiny and isolates domains so changes stay local.
-
----
+- **Reads the hardware properly**: parses the driver's interface combinations
+  to decide whether AP+STA is possible and whether the hotspot must share the
+  WiFi channel.
+- **Keeps your connection**: the hotspot runs on a virtual interface. A mode
+  that drops WiFi is used only if you allow it (`--allow-disconnect`).
+- **All-or-nothing setup**: every step registers its own undo, so a failure
+  part-way leaves nothing behind, and `stop` removes exactly what `start` added.
+- **Stays up**: `apsta run` (what the service runs) restarts the hotspot after
+  suspend/resume or a driver reset, and moves it when your WiFi changes channel.
+- **Works with your firewall**: firewalld, iptables (including ufw/docker
+  setups) and nftables. Picks a hotspot subnet that doesn't clash with your
+  networks. DNS goes through your normal resolver, so captive portals and VPN
+  DNS keep working.
+- **Fast**: 802.11n/ac + WMM, and the right regulatory country code.
+- **Client management** (hostapd mode): list, kick, block, and rate-limit clients.
+- **Safe by default**: a random password on first start (never a shared
+  default), passwords never on a command line, a scoped polkit action for the
+  GUI.
+- **GTK4/libadwaita GUI** with QR-code sharing.
 
 ## Install
 
-### For Users
-
-#### One command (recommended)
-
-### 1. Official PPA (Ubuntu / Pop!\_OS) — Recommended
-
-The easiest way to install `apsta` on Ubuntu-based distributions (22.04, 24.04, and Noble) is via the official Launchpad PPA. This ensures you get automatic updates and all system dependencies (like `hostapd` and `dnsmasq`) are handled for you.
+### Ubuntu / Pop!\_OS (PPA)
 
 ```bash
 sudo add-apt-repository ppa:krotrn/apsta
@@ -135,298 +64,131 @@ sudo apt update
 sudo apt install apsta
 ```
 
-### 2. Arch Linux / Manjaro / EndeavourOS
-
-Add the apsta pacman repository once, then install with `pacman` or `yay`
-(updates arrive with your normal `pacman -Syu`):
+### Arch Linux and derivatives
 
 ```bash
-sudo tee -a /etc/pacman.conf >/dev/null <<'EOF'
+sudo tee -a /etc/pacman.conf >/dev/null <<'CONF'
 
 [apsta]
 SigLevel = Optional TrustAll
 Server = https://github.com/krotrn/apsta/releases/download/arch-repo
-EOF
-sudo pacman -Sy apsta        # or: yay -S apsta
+CONF
+sudo pacman -Sy apsta          # or: yay -S apsta
+sudo pacman -S --needed hostapd dnsmasq   # recommended (hostapd mode)
 ```
 
-Optional extras for hostapd mode and the GUI:
+### From source (any distribution)
 
 ```bash
-sudo pacman -S --needed hostapd dnsmasq iptables python-gobject gtk4 libadwaita polkit
+git clone https://github.com/krotrn/apsta && cd apsta
+sudo ./install.sh              # installs into /usr/local
+sudo ./install.sh --uninstall  # removes it again
 ```
 
-Auto-start on boot: `sudo systemctl enable --now apsta`
+Runtime requirements: Python ≥ 3.9, NetworkManager, `iw`, `iproute2`.
+Recommended: `hostapd` + `dnsmasq` (needed for client management), and one of
+`iptables`/`nftables`/`firewalld`. GUI: PyGObject, GTK 4, libadwaita, polkit,
+and `python3-qrcode` for QR codes.
 
-Prefer building yourself? `cd packaging/arch && makepkg -si` from a clone of this repo.
+> **pipx/pip users:** `sudo` can't see `~/.local/bin`. Install system-wide
+> with `sudo pipx install --global apsta` (pipx ≥ 1.5), or use the packages above.
 
-### 3. Manual One-Liner (Python pipx)
-
-If you are on another Debian/Ubuntu-based distribution or prefer using `pipx`, use this one-liner to install the dependencies and the app:
-
-```bash
-sudo apt update && sudo apt install -y pipx network-manager iw iproute2 usbutils pciutils hostapd dnsmasq python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil && pipx ensurepath && pipx install git+https://github.com/krotrn/apsta.git
-```
-
-### 4. Development / Source Install
-
-If you want to contribute or build from source:
+## Usage
 
 ```bash
-git clone https://github.com/krotrn/apsta
-cd apsta
-# Install the CLI and GTK UI locally
-pipx install .
-# Or run the manual install script
-sudo ./install.sh
-```
-
-### For Maintainers
-
-#### Releasing
-
-Run the **Version Bump** workflow (Actions → Version Bump → enter `X.Y.Z`), or locally:
-
-```bash
-python scripts/bump_version.py X.Y.Z   # pyproject, setup.py, modules, PKGBUILD, debian/changelog
-git commit -am "chore: release X.Y.Z" && git tag vX.Y.Z && git push origin main vX.Y.Z
-```
-
-The `vX.Y.Z` tag then publishes everything:
-
-| Workflow       | Job            | Publishes                                                        | Needs                                                      |
-| -------------- | -------------- | ---------------------------------------------------------------- | ---------------------------------------------------------- |
-| `release.yml`  | publish-pypi   | PyPI                                                             | trusted publisher or `PYPI_API_TOKEN`                      |
-| `packages.yml` | github-release | GitHub release `vX.Y.Z` with the `.deb` and `.pkg.tar.zst`       | —                                                          |
-| `packages.yml` | arch-repo      | pacman repo on the `arch-repo` release (`pacman`/`yay -S apsta`) | — (`ARCH_GPG_PRIVATE_KEY` to sign)                         |
-| `packages.yml` | aur            | AUR package `apsta`                                              | `AUR_SSH_PRIVATE_KEY`                                      |
-| `packages.yml` | ppa            | Launchpad PPA (`vars.PPA`, default `ppa:krotrn/apsta`)           | `LAUNCHPAD_GPG_PRIVATE_KEY` (+ `LAUNCHPAD_GPG_PASSPHRASE`) |
-
-Jobs whose secret is missing are skipped with a notice, so they can be enabled one at a time.
-Every PR and push to `main` also builds and smoke-tests both packages.
-
-Secrets (Settings → Secrets and variables → Actions):
-
-- `AUR_SSH_PRIVATE_KEY` — private half of an SSH key registered on your aur.archlinux.org account.
-- `LAUNCHPAD_GPG_PRIVATE_KEY` — `gpg --armor --export-secret-keys <id>` of the key registered on Launchpad;
-  `LAUNCHPAD_GPG_PASSPHRASE` if it has one.
-- `ARCH_GPG_PRIVATE_KEY` — optional, passphrase-less key to sign the pacman repo. Once set, users can
-  import it (`apsta.asc` on the `arch-repo` release) with `pacman-key --add` + `--lsign-key` and drop
-  `TrustAll` from their `SigLevel`.
-
-#### Building packages locally
-
-```bash
-packaging/arch/ci-build.sh local   # Arch: packaging/arch/out/*.pkg.tar.zst
-packaging/deb/ci-build.sh binary   # Ubuntu (run on Ubuntu): packaging/deb/out/*.deb
-```
-
-#### CI
-
-- `.github/workflows/ci.yml` — lint (`ruff`), compile checks, and unit tests
-- `.github/workflows/packages.yml` — Arch + Ubuntu package builds and publishing (above)
-- `.github/workflows/version-bump.yml` — bumps versions, tags `vX.Y.Z`, starts the release workflows
-- `.github/workflows/release.yml` — verifies version sync/tag match and publishes to PyPI
-
-**Required dependencies** (all default on Ubuntu/Pop!\_OS/Fedora/Arch):
-`nmcli` · `iw` · `ip` · `lsusb` · `lspci`
-
-**For hostapd mode** (Intel AX200 and similar split-block cards):
-
-```bash
-sudo apt install hostapd dnsmasq         # Debian / Ubuntu
-sudo pacman -S --needed hostapd dnsmasq  # Arch
-```
-
-apsta will prompt if these are missing when hostapd mode is needed.
-
-**Python 3.8+** required.
-
----
-
-## CLI Usage
-
-```bash
-# Show version
-apsta --version
-
-# Detect hardware capability (shows both nmcli and hostapd support levels)
-apsta detect
-
-# Detect/status as machine-readable JSON
-apsta detect --json
-apsta status --json
-
-# Start hotspot (auto-detects best method — tries nmcli, then hostapd, then --force)
-sudo apsta start
-
-# Start even if AP+STA not supported (drops WiFi)
-sudo apsta start --force
-
-# Stop hotspot (method-aware: cleans up hostapd/dnsmasq/iptables if needed)
+apsta detect                         # what can my card do?
+sudo apsta start                     # start (keeps WiFi when the card allows it)
+sudo apsta start --allow-disconnect  # also allow a mode that drops WiFi
 sudo apsta stop
+apsta status                         # add --json for scripts, --check for exit code only
 
-# Show current state (shows connected clients in hostapd mode)
-apsta status
-
-# Show only connected hotspot clients (hostapd mode)
-apsta status --clients
-
-# Disconnect one client by MAC, IP, or hostname (hostapd mode)
-sudo apsta status --disconnect aa:bb:cc:dd:ee:ff
-
-# Apply per-client bandwidth limit in Kbps (hostapd mode)
-sudo apsta status --limit-client aa:bb:cc:dd:ee:ff --limit-kbps 8000
-
-# Quick profile switch from status command
-sudo apsta status --use-profile travel
-
-# Configure SSID and password
-sudo apsta config --set ssid=MyHotspot
-sudo apsta config --set password=secret123
-
-# Manage named profiles
-apsta profile list
-sudo apsta profile create travel
-sudo apsta profile use travel
-apsta profile show travel
-
-# Scan plugged-in USB WiFi adapters
-apsta scan-usb
-
-# Suggest a USB adapter to buy
-apsta recommend
-
-# Auto-start on boot + survive sleep/wake
-sudo apsta enable
+sudo apsta enable                    # start at boot, recover after sleep (systemd/OpenRC/runit)
 sudo apsta disable
 ```
 
-### Shell completion
-
-Generate completion scripts directly from apsta:
+### Configuration
 
 ```bash
-apsta completion bash
-apsta completion zsh
-apsta completion fish
+apsta config                              # show the active profile
+sudo apsta config --set ssid=MyHotspot --set band=a
+sudo apsta config --password-stdin        # prompts; nothing ends up in shell history
+sudo apsta config --generate-password
+sudo apsta config --show-password
+
+apsta profile list
+sudo apsta profile create travel
+sudo apsta profile use travel
 ```
 
-Install manually:
+Settings: `ssid`, `password`, `band` (`bg` = 2.4 GHz, `a` = 5 GHz), `channel`
+(used only when the hotspot doesn't have to follow your WiFi channel) and
+`interface` (`auto` by default).
+
+### Clients (hostapd mode)
 
 ```bash
-# bash
-apsta completion bash | sudo tee /etc/bash_completion.d/apsta >/dev/null
-
-# zsh
-apsta completion zsh | sudo tee /usr/local/share/zsh/site-functions/_apsta >/dev/null
-
-# fish
-apsta completion fish | sudo tee /etc/fish/completions/apsta.fish >/dev/null
+apsta clients                               # connected stations with IP/hostname
+sudo apsta clients disconnect phone         # by hostname, IP or MAC
+sudo apsta clients disconnect phone --block # and keep it out
+sudo apsta clients unblock aa:bb:cc:dd:ee:ff
+sudo apsta clients limit 192.168.42.17 8000 # Kbps, upload and download
+sudo apsta clients unlimit 192.168.42.17
 ```
 
----
-
-### GTK4 / Libadwaita (GNOME, KDE, Xfce, any desktop)
-
-Full three-page GUI: Status, Hardware, Settings. Includes force-start toggle,
-quick profile switch, QR sharing, and live client management (disconnect + bandwidth limit).
+### GUI
 
 ```bash
 apsta-gtk
 ```
 
-`apsta-gtk` is installed by the same one-command package install.
+It talks to the CLI, and privileged actions go through polkit
+(`com.github.apsta.manage`), so you authenticate once per few minutes, not
+once per click.
 
-Requires: `python3-gi`, `gir1.2-gtk-4.0`, `gir1.2-adw-1`, `python3-qrcode`, `python3-pil`
-
-```bash
-sudo apt install python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 python3-qrcode python3-pil   # Debian / Ubuntu
-sudo pacman -S --needed python-gobject gtk4 libadwaita python-qrcode python-pillow     # Arch
-```
-
----
-
-## Auto-start and Sleep/Wake Persistence
+### Shell completion
 
 ```bash
-sudo apsta enable
+apsta completion bash | sudo tee /etc/bash_completion.d/apsta >/dev/null
+apsta completion zsh  | sudo tee /usr/local/share/zsh/site-functions/_apsta >/dev/null
+apsta completion fish | sudo tee /etc/fish/completions/apsta.fish >/dev/null
 ```
 
-This installs:
+## How it works
 
-- **`/etc/systemd/system/apsta.service`** — starts hotspot after NetworkManager connects on boot (`nm-online -q` pre-condition, not a fragile `sleep 3`)
-- **`/usr/lib/systemd/system-sleep/apsta-sleep`** — tears down hotspot before suspend, restores it after resume (works for both nmcli and hostapd modes)
+`apsta start` picks the first method that works on your machine:
 
-Works on **systemd**, **OpenRC**, and **runit**. Non-systemd users get exact manual instructions and pm-utils hook installation if available.
+| Method         | When                                    | WiFi stays up | Client management |
+| -------------- | --------------------------------------- | ------------- | ----------------- |
+| `hostapd`      | card supports AP+STA, hostapd installed | yes           | yes               |
+| `nmcli`        | card supports AP+STA                    | yes           | list/kick         |
+| `nmcli-single` | card supports AP only                   | **no**        | list/kick         |
 
----
+On single-channel cards (most laptop chips) the hotspot has to use the same
+channel as your WiFi. apsta reads it from the live connection and refuses
+cases that can't work, such as DFS or 6 GHz channels, with an explanation.
+Under `apsta run`/the service, the hotspot follows the connection when it
+changes channel.
 
-## USB Dongle Support
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
-If your built-in card doesn't support either AP+STA mode:
+## Troubleshooting
 
-```bash
-# See what's plugged in
-apsta scan-usb
+- `APSTA_DEBUG=1 sudo apsta start` prints every step; privileged runs also log
+  JSON lines to `/var/log/apsta.log`.
+- In hostapd mode, `journalctl -u apsta-hostapd -u apsta-dnsmasq` shows the
+  daemons' own logs.
+- Wrong verdict from `apsta detect`? Please open an issue with
+  `apsta detect --json` and `iw phy phy0 info`.
 
-# See what to buy
-apsta recommend
-```
-
-Recommended chipsets (in-kernel drivers, plug and play):
-
-| Chipset  | WiFi Gen | Driver  | Notes                         |
-| -------- | -------- | ------- | ----------------------------- |
-| mt7921au | WiFi 6   | mt7921u | Best overall. Kernel 5.19+    |
-| mt7612u  | WiFi 5   | mt76x2u | Rock-solid, works everywhere  |
-| mt7610u  | WiFi 5   | mt76x0u | AC600, great for hotspot-only |
-| mt7925u  | WiFi 7   | mt7925u | Newest. Kernel 6.7+           |
-
-Realtek chipsets are intentionally excluded — out-of-kernel drivers, unreliable AP+STA.
-
----
-
-## Compatibility
-
-| Distro               | CLI | GTK UI |
-| -------------------- | --- | ------ |
-| Pop!\_OS 22.04       | ✅  | ✅     |
-| Pop!\_OS COSMIC      | ✅  | ✅     |
-| Ubuntu 22.04 / 24.04 | ✅  | ✅     |
-| Fedora 39+           | ✅  | ✅     |
-| Arch Linux           | ✅  | ✅     |
-| Alpine (OpenRC)      | ✅  | ✅     |
-| Artix (runit)        | ✅  | ✅     |
-
-**Tested hardware:**
-
-- Intel Wi-Fi 6 AX200 (iwlwifi) — hostapd mode ✅
-- MediaTek mt7921au USB — nmcli mode ✅
-
----
-
-## Why This Exists
-
-Built out of frustration with Pop!\_OS COSMIC's missing hotspot UI and the silent WiFi-disconnection behaviour of `nmcli hotspot`. The deeper problem: Windows implements a virtual WiFi multiplexing layer that makes AP+STA work on almost any card. Linux exposes raw hardware capability honestly — and for cards like the Intel AX200, that capability exists but nmcli can't use it. apsta bridges the gap using hostapd directly.
-
-If you've ever typed:
-
-```bash
-nmcli device wifi hotspot ifname wlan0 ssid foo password bar
-```
-
-...and watched your SSH session drop — this is for you.
-
----
+If your card can't do AP+STA, `apsta recommend` suggests USB adapters with
+in-kernel drivers that can (MediaTek mt7921au, mt7612u, mt7610u, mt7925u).
 
 ## Contributing
 
-PRs welcome. The Python CLI has no dependencies beyond stdlib (plus optional hostapd/dnsmasq). The GTK UI requires PyGObject.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). The test
+suite runs without root or WiFi hardware.
 
-If you've tested on a distro or hardware not in the tables above, open an issue with your `apsta detect` output.
-
----
+Security issues: see [SECURITY.md](SECURITY.md).
 
 ## License
 

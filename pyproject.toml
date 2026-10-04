@@ -5,33 +5,79 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "apsta"
 version = "0.6.2"
-description = "Smart AP+STA WiFi hotspot manager for Linux"
+description = "Run a WiFi hotspot on Linux while staying connected to WiFi (AP+STA)"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [{ name = "apsta contributors" }]
 maintainers = [{ name = "krotrn" }]
-keywords = ["wifi", "hotspot", "ap", "sta", "networkmanager", "linux"]
+keywords = ["wifi", "hotspot", "ap", "sta", "networkmanager", "hostapd", "linux"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
+  "Environment :: X11 Applications :: GTK",
+  "Intended Audience :: End Users/Desktop",
   "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: MIT License",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Topic :: System :: Networking",
 ]
-dependencies = ["qrcode[pil]>=7.4"]
+dependencies = []
+
+[project.optional-dependencies]
+# The GUI also needs PyGObject + GTK4 + libadwaita from the distribution.
+gui = ["qrcode[pil]>=7.4"]
+dev = ["coverage[toml]>=7", "ruff>=0.5"]
 
 [project.urls]
 Homepage = "https://github.com/krotrn/apsta"
+Issues = "https://github.com/krotrn/apsta/issues"
+Changelog = "https://github.com/krotrn/apsta/blob/main/CHANGELOG.md"
 
 [project.scripts]
-apsta = "apsta:main"
-apsta-gtk = "apsta_gtk:main"
+apsta = "apsta_cli.cli:run"
 
-[tool.setuptools]
-py-modules = ["apsta", "apsta_gtk"]
-include-package-data = true
+[project.gui-scripts]
+apsta-gtk = "apsta_gui.app:main"
 
 [tool.setuptools.packages.find]
 include = ["apsta_cli*", "apsta_gui*"]
+
+[tool.setuptools.package-data]
+apsta_cli = ["data/*"]
+apsta_gui = ["data/*"]
+
+# ── Tooling ───────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-exclude = ["packaging/*/out"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+  "UP006", "UP007", "UP035", "UP045",  # typing.List/Optional read fine and work on 3.9
+  "SIM105",                   # explicit try/except/pass reads clearer here
+  "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501", "SIM117"]
+
+[tool.coverage.run]
+branch = true
+source = ["apsta_cli", "apsta_gui"]
+# GTK widget code needs a display; it is kept thin and checked by hand.
+omit = ["*/__main__.py", "apsta_gui/app.py", "apsta_gui/mixins/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 90
+exclude_also = [
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+  "pragma: no cover",
+]

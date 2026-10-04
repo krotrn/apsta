@@ -33,17 +33,17 @@ jobs:
 
           root = pathlib.Path('.')
           pyproject = root.joinpath('pyproject.toml').read_text(encoding='utf-8')
-          setup_py = root.joinpath('setup.py').read_text(encoding='utf-8')
+          init_py = root.joinpath('apsta_cli/__init__.py').read_text(encoding='utf-8')
 
           m1 = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.MULTILINE)
-          m2 = re.search(r'version\s*=\s*"([^"]+)"', setup_py)
+          m2 = re.search(r'__version__\s*=\s*"([^"]+)"', init_py)
           if not m1 or not m2:
-              raise SystemExit('Could not extract version from pyproject.toml or setup.py')
+              raise SystemExit('Could not extract version from pyproject.toml or apsta_cli/__init__.py')
 
           pyproject_version = m1.group(1)
-          setup_version = m2.group(1)
-          if pyproject_version != setup_version:
-              raise SystemExit(f'Version mismatch: pyproject={pyproject_version} setup.py={setup_version}')
+          module_version = m2.group(1)
+          if pyproject_version != module_version:
+              raise SystemExit(f'Version mismatch: pyproject={pyproject_version} apsta_cli={module_version}')
 
           tag_ref = '${{ github.ref_name }}'
           tag_version = tag_ref[1:] if tag_ref.startswith('v') else tag_ref
