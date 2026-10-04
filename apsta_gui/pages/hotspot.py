@@ -104,6 +104,8 @@ class HotspotPage:
 
         cap = (detect or {}).get("capability") or {}
         self.allow_row.set_visible(not cap or not cap.get("ap_sta"))
+        has_options = self.profile_row.get_visible() or self.allow_row.get_visible()
+        self.options.set_visible(bool(data) and not hotspot and has_options)
 
     def _update_note(self, data: dict, detect: dict) -> None:
         for cls in ("success", "warning", "dim-label"):
@@ -133,7 +135,7 @@ class HotspotPage:
                 self._profiles = list(names)
             if active in names:
                 self.profile_row.set_selected(names.index(active))
-            self.profile_row.set_sensitive(len(names) > 1)
+            self.profile_row.set_visible(len(names) > 1)
         finally:
             self._updating = False
 

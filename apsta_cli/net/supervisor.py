@@ -49,6 +49,11 @@ class SystemdSupervisor:
                 "Restart=on-failure",
                 "-p",
                 "RestartSec=2",
+                # Give up after 5 failures a minute instead of restarting forever.
+                "-p",
+                "StartLimitIntervalSec=60",
+                "-p",
+                "StartLimitBurst=5",
                 "--",
                 *d.foreground,
             ]

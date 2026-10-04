@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -60,6 +61,24 @@ def _cli(ap_iface: str, *args: str) -> shell.Result:
 
 def _ok(result: shell.Result) -> bool:
     return result.ok and "FAIL" not in result.stdout.upper()
+
+
+def parse_state(text: str) -> Optional[str]:
+    for line in text.splitlines():
+        if line.startswith("state="):
+            return line.split("=", 1)[1].strip()
+    return None
+
+
+def wait_enabled(ap_iface: str, timeout: float = 10.0) -> bool:
+    """Wait until hostapd reports ``state=ENABLED`` (it is beaconing)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        if parse_state(_cli(ap_iface, "status").stdout) == "ENABLED":
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.5)
 
 
 def parse_all_sta(text: str) -> List[str]:

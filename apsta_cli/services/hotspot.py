@@ -16,7 +16,7 @@ from ..config import model, store
 from ..core import lock, output
 from ..core.errors import AlreadyRunning, ApstaError, HardwareError, PermissionDenied, SetupError, UsageError
 from ..hw import capability, interfaces
-from ..net import channels, clients, nm, strategies
+from ..net import channels, clients, iface, nm, strategies
 from ..net.strategies import StartContext, Strategy
 from ..net.transaction import Transaction
 from ..state import HotspotState
@@ -50,7 +50,7 @@ class StartResult:
 def is_alive(st: HotspotState) -> bool:
     if not state_store.interface_exists(st.ap_interface):
         return False
-    if interfaces.iface_type(st.ap_interface) != "AP":
+    if not iface.is_broadcasting(st.ap_interface):
         return False
     if st.method == "hostapd":
         return strategies.HostapdStrategy.daemons_running(st)
@@ -121,7 +121,7 @@ def build_context(config: dict, opts: StartOptions) -> StartContext:
         ssid=config["ssid"],
         password=config["password"],
         channel=plan.channel,
-        country=interfaces.reg_country(),
+        country=interfaces.reg_country(cap.phy or base.phy),
         sta_ssid=link.ssid if link else None,
         allow_disconnect=opts.allow_disconnect,
     )

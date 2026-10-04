@@ -38,6 +38,7 @@ def isolate_paths(testcase, root: Optional[Path] = None) -> Path:
         "DNSMASQ_PID": run / "dnsmasq.pid",
         "DNSMASQ_LEASES": run / "dnsmasq.leases",
         "NM_RUNTIME_KEYFILE_DIR": run / "NetworkManager",
+        "NM_RUNTIME_CONF_DIR": run / "NetworkManager-conf.d",
         "LOG_PATH": root / "apsta.log",
         "SYSFS_NET": root / "sys" / "class" / "net",
         "IP_FORWARD": root / "ip_forward",

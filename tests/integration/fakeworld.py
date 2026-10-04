@@ -128,14 +128,17 @@ def iw(w, a):
         if iface is None:
             fail("command failed: No such device (-19)", 237)
         if cmd == ["info"]:
-            return f"Interface {name}\n\ttype {iface['type']}\n"
+            ssid = f"\tssid {iface['ssid']}\n" if iface.get("ssid") else ""
+            return f"Interface {name}\n{ssid}\ttype {iface['type']}\n"
         if cmd == ["link"]:
             link = iface.get("link")
             if not link or iface["type"] != "managed":
                 return "Not connected."
             return f"Connected to aa:bb:cc:dd:ee:ff (on {name})\n\tSSID: {link['ssid']}\n\tfreq: {link['freq']}.0\n"
         if cmd[:2] == ["interface", "add"]:
-            add_iface(w, cmd[2], "managed")  # becomes AP once hostapd/NM bring it up
+            # Like real drivers: "type AP" right away, but no SSID until something
+            # actually brings the AP up.
+            add_iface(w, cmd[2], "AP" if cmd[-1] == "__ap" else "managed")
             return ""
         if cmd == ["del"]:
             del_iface(w, name)
@@ -169,14 +172,18 @@ def nmcli(w, a):
     if a[:2] == ["connection", "load"]:
         text = Path(a[2]).read_text()
         con_id = re.search(r"^id=(.+)$", text, re.M).group(1)
-        w["nm"][con_id] = {"iface": re.search(r"^interface-name=(.+)$", text, re.M).group(1), "active": False}
+        ssid = bytes(int(b) for b in re.search(r"^ssid=(.+)$", text, re.M).group(1).strip(";").split(";")).decode()
+        iface = re.search(r"^interface-name=(.+)$", text, re.M).group(1)
+        w["nm"][con_id] = {"iface": iface, "ssid": ssid, "active": False}
+        return ""
+    if a[:3] == ["general", "reload", "conf"]:
         return ""
     if a[:1] == ["--wait"]:
         con = w["nm"].get(a[-1])
         if con is None:
             fail("Error: unknown connection", 10)
         con["active"] = True
-        w["ifaces"][con["iface"]]["type"] = "AP"
+        w["ifaces"][con["iface"]].update(type="AP", ssid=con["ssid"])
         return "Connection successfully activated"
     if a[:2] == ["connection", "down"]:
         con = w["nm"].get(a[-1])
@@ -184,7 +191,7 @@ def nmcli(w, a):
             fail("Error: not active", 10)
         con["active"] = False
         if con["iface"] in w["ifaces"]:
-            w["ifaces"][con["iface"]]["type"] = "managed"
+            w["ifaces"][con["iface"]].update(type="managed", ssid=None)
         return ""
     if a[:2] == ["connection", "delete"]:
         w["nm"].pop(a[-1], None)
@@ -199,8 +206,9 @@ def hostapd(w, a):
         fail("nl80211: Could not configure driver mode", 1)
     conf = Path(a[-1]).read_text()
     iface = re.search(r"^interface=(.+)$", conf, re.M).group(1)
-    w["ifaces"][iface]["type"] = "AP"
     w["hostapd_conf"] = conf
+    if not w.get("hostapd_never_enables"):  # e.g. NetworkManager holding the interface
+        w["ifaces"][iface]["ssid"] = bytes.fromhex(re.search(r"^ssid2=(.+)$", conf, re.M).group(1)).decode()
     return ("daemon", a[a.index("-P") + 1])
 
 
@@ -210,7 +218,11 @@ def dnsmasq(w, a):
 
 
 def hostapd_cli(w, a):
+    iface = a[a.index("-i") + 1]
     cmd = a[a.index("-i") + 2 :]
+    if cmd == ["status"]:
+        enabled = w["ifaces"].get(iface, {}).get("ssid")
+        return f"state={'ENABLED' if enabled else 'DISABLED'}\nphy=phy0"
     if cmd == ["all_sta"]:
         return "\n".join(f"{s['mac']}\nflags=[AUTH][ASSOC]" for s in w["stations"])
     if cmd[0] == "deauthenticate":

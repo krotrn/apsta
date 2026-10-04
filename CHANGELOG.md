@@ -46,6 +46,18 @@ security problems.
 - config.json is written atomically. A corrupt file is backed up instead of
   silently replaced by defaults.
 - GUI no longer overwrites fields while you type.
+- Found on real hardware (Intel AX201, NetworkManager 1.58):
+  - NetworkManager adopted the new AP interface and its wpa_supplicant blocked
+    hostapd ("Match already configured"). apsta now marks the interface
+    unmanaged through a runtime NetworkManager config before creating it.
+  - A hotspot was reported live although hostapd had failed: a `__ap`
+    interface reports type AP immediately. apsta now waits for hostapd's
+    `state=ENABLED`, and status checks look for an actual broadcasting SSID.
+  - Failing hostapd/dnsmasq units restarted forever; now at most 5 times a minute.
+  - The regulatory country now comes from the card's self-managed domain (e.g.
+    `IN`) when the global one is the world domain `00`.
+  - The P2P-device entry in `iw dev` no longer corrupts the interface list.
+- Added `scripts/hardware_check.sh` for real-hardware testing.
 - `--json` output is clean JSON: progress messages go to stderr (`start --json`
   mixed them into stdout).
 - `status --limit-kbps` without `--limit-client` is a usage error instead of a crash.

@@ -136,6 +136,20 @@ class InterfaceTests(unittest.TestCase):
         self.assertEqual(ifaces[1].phy, "phy0")
         self.assertEqual(ifaces[1].connected_ssid, "Home")
 
+    def test_parse_iw_dev_skips_non_netdev_blocks(self):
+        # Real Intel AX201 output: the P2P-device wdev follows the AP vif and must not
+        # overwrite its type or MAC.
+        text = (
+            "phy#0\n\tInterface wlo1_ap\n\t\taddr 02:aa:bb:cc:dd:ee\n\t\ttype AP\n"
+            "\tUnnamed/non-netdev interface\n\t\twdev 0x2\n\t\taddr e4:c7:67:e4:30:ae\n\t\ttype P2P-device\n"
+            "\tInterface wlo1\n\t\taddr e4:c7:67:e4:30:ae\n\t\tssid kk_spot\n\t\ttype managed\n"
+        )
+        ifaces = interfaces.parse_iw_dev(text)
+        self.assertEqual(
+            [(i.name, i.iftype, i.mac) for i in ifaces],
+            [("wlo1_ap", "AP", "02:aa:bb:cc:dd:ee"), ("wlo1", "managed", "e4:c7:67:e4:30:ae")],
+        )
+
     def test_parse_link_new_iw_float_freq(self):
         link = interfaces.parse_link("Connected to aa:bb:cc:dd:ee:ff (on wlo1)\n\tSSID: My Net\n\tfreq: 5180.0\n")
         self.assertEqual(link.freq, 5180)
@@ -150,6 +164,17 @@ class InterfaceTests(unittest.TestCase):
         self.assertIsNone(interfaces.parse_reg_country("global\ncountry 00: DFS-UNSET\n"))
         self.assertIsNone(interfaces.parse_reg_country(""))
 
+    def test_reg_country_prefers_self_managed_phy(self):
+        # Real output from an Intel AX201: global domain is world (00), the card reports IN.
+        text = fixture("iw/reg_self_managed.txt")
+        self.assertEqual(interfaces.parse_reg_country(text, "phy0"), "IN")
+        self.assertIsNone(interfaces.parse_reg_country(text))  # global is 00
+        self.assertIsNone(interfaces.parse_reg_country(text, "phy1"))
+        self.assertEqual(
+            interfaces.parse_reg_country("global\ncountry DE: DFS-ETSI\nphy#0 (self-managed)\ncountry 00: x\n", "phy0"),
+            "DE",
+        )
+
     def test_client_interfaces_exclude_ap_vifs(self):
         root = isolate_paths(self)
         (root / "sys/class/net/wlo1").mkdir(parents=True)
@@ -157,6 +182,8 @@ class InterfaceTests(unittest.TestCase):
         FakeShell().on("iw", "dev", stdout=IW_DEV).on(
             "iw", "dev", "wlo1", "link", stdout="Connected to x\n\tSSID: Home\n\tfreq: 2437\n"
         ).install(self)
+        everything = interfaces.list_wifi_interfaces()
+        self.assertIsNone(next(i for i in everything if i.name == "wlo1_ap").connected_ssid)
         ifaces = interfaces.client_interfaces()
         self.assertEqual([i.name for i in ifaces], ["wlo1"])
         self.assertEqual(ifaces[0].state, "UP")

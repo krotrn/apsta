@@ -7,7 +7,6 @@ import time
 from typing import Tuple
 
 from ..core import output, paths, shell
-from ..hw.interfaces import iface_type
 
 
 def ap_name(base_iface: str) -> str:
@@ -44,13 +43,24 @@ def create_virtual_ap(base_iface: str) -> Tuple[str, str]:
     return name, mac
 
 
-def wait_for_ap_mode(name: str, timeout: float = 8.0) -> bool:
+def is_broadcasting(name: str) -> bool:
+    """True when ``name`` is an AP that is actually up (it has an SSID).
+
+    A virtual interface created with ``type __ap`` reports "type AP" right away,
+    before anything runs on it, so the type alone proves nothing.
+    """
+    info = shell.out(["iw", "dev", name, "info"])
+    return "type AP" in info and "\tssid " in info.replace("    ", "\t")
+
+
+def wait_for_broadcast(name: str, timeout: float = 10.0) -> bool:
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if iface_type(name) == "AP":
+    while True:
+        if is_broadcasting(name):
             return True
+        if time.monotonic() >= deadline:
+            return False
         time.sleep(0.5)
-    return iface_type(name) == "AP"
 
 
 def assign_address(name: str, cidr: str) -> None:

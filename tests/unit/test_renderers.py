@@ -87,6 +87,12 @@ class KeyfileTests(unittest.TestCase):
         self.assertNotIn("cloned-mac-address", text)
 
 
+class UnmanagedConfTests(unittest.TestCase):
+    def test_appends_instead_of_replacing_user_settings(self):
+        text = nm.render_unmanaged_conf("wlo1_ap")
+        self.assertIn("[keyfile]\nunmanaged-devices+=interface-name:wlo1_ap\n", text)
+
+
 class SubnetTests(unittest.TestCase):
     def test_first_candidate_when_free(self):
         self.assertEqual(str(subnet.pick([])), "192.168.42.0/24")
