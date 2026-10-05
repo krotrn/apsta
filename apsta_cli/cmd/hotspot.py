@@ -7,7 +7,8 @@ import json
 from ..core import output
 from ..core.output import C
 from ..hw import interfaces
-from ..services import hotspot, watch
+from ..services import guard, hotspot, watch
+from .service import apsta_binary
 
 
 def _options(args) -> hotspot.StartOptions:
@@ -38,8 +39,12 @@ def cmd_start(args) -> int:
     _apply_overrides(args)
     if not args.json:
         output.head("apsta — Starting hotspot")
-    result = hotspot.start(_options(args))
+    opts = _options(args)
+    if hotspot.current() is None:
+        guard.stop()  # a watcher still retrying an earlier hotspot would race this start
+    result = hotspot.start(opts)
     st = result.state
+    watching = guard.launch(apsta_binary(), opts)
 
     if args.json:
         print(json.dumps({"hotspot": st.to_dict(), "method": result.strategy.name}, indent=2))
@@ -63,6 +68,8 @@ def cmd_start(args) -> int:
         output.reveal_secret("Password", store.load()["password"])
     else:
         output.info("Show the password with: sudo apsta config --show-password")
+    if watching and st.same_channel_required:
+        output.info("If your WiFi network changes channel, the hotspot steps aside and comes back when it can.")
     output.info("Stop with: sudo apsta stop")
     output.blank()
     return 0
@@ -71,9 +78,11 @@ def cmd_start(args) -> int:
 def cmd_stop(args) -> int:
     hotspot.require_root("Stopping the hotspot")
     output.head("apsta — Stopping hotspot")
-    st = hotspot.stop()
+    before = hotspot.current()
+    watched = guard.stop()  # first, so it can't restart what is being stopped
+    st = hotspot.stop() or before
     if st is None:
-        output.info("No hotspot is running.")
+        output.info("Stopped waiting to restart the hotspot." if watched else "No hotspot is running.")
     else:
         output.ok(f"Hotspot '{st.ssid}' on {st.ap_interface} stopped.")
     output.blank()

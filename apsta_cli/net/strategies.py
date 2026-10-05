@@ -71,7 +71,8 @@ class Strategy(ABC):
             channel=ctx.channel.number,
             band=ctx.channel.band,
             same_channel_required=ctx.capability.same_channel_required,
-            sta_ssid_at_start=ctx.sta_ssid,
+            # Only a hotspot that keeps WiFi up has a connection for the watcher to follow.
+            sta_ssid_at_start=ctx.sta_ssid if self.keeps_wifi else None,
             started_at=_now(),
         )
 

@@ -93,39 +93,45 @@ wlo1: AP aa:bb:cc:dd:ee:ff switches to different band (5220 MHz, ...), disconnec
 ```
 
 If it moves to a channel your card can't host on, the hotspot can't keep
-running there. What happens next depends on how you started it:
+running there. Worse, while the hotspot holds the old channel your laptop
+can't follow the phone either, so you'd have no internet at all. apsta
+watches for this and steps aside:
 
 ```mermaid
 sequenceDiagram
     participant P as Phone hotspot
     participant L as Laptop WiFi
-    participant S as apsta service
+    participant W as apsta watcher
     Note over P,L: both on 2.4 GHz channel 11, hotspot running
     P->>L: "Moving to 5 GHz channel 44"
     L--xP: disconnects (the hotspot holds channel 11)
-    S->>S: notices within seconds: WiFi lost or moved
-    S->>L: stops the hotspot
-    L->>P: reconnects on channel 44
+    W->>W: notices within ~20 s: WiFi lost or moved
+    W->>L: stops the hotspot
+    L->>P: reconnects on channel 44, internet is back
     loop every 10 s, then less often (up to 5 min)
-        S--xS: try to start: channel 44 is "no IR"
+        W--xW: try to start: channel 44 is "no IR"
     end
     P->>L: later: "Moving to 2.4 GHz channel 6"
-    S->>S: next try succeeds: hotspot on channel 6
+    W->>W: next try succeeds: hotspot on channel 6
 ```
 
-- **`sudo apsta start`** (one-off): nothing watches the hotspot. Your laptop
-  usually loses its connection to the phone, because the hotspot still holds
-  the old channel, so devices on your hotspot lose internet. Run
-  `sudo apsta stop`; start again once the network is back on 2.4 GHz.
-- **As a service** (`sudo apsta enable`, or `sudo apsta run` in a terminal):
-  apsta notices within seconds, stops the hotspot so your WiFi can reconnect,
-  and keeps trying to start it again, at first every 10 seconds, then less
-  often, up to every 5 minutes. When the network is back on 2.4 GHz, the
-  hotspot comes back by itself. `journalctl -u apsta` shows what it's doing.
+The watcher runs however you start the hotspot: with `sudo apsta start` or
+the GUI it runs in the background as `apsta-watch.service`; with
+`sudo apsta enable` (or `sudo apsta run` in a terminal) the service itself
+does it. `sudo apsta stop` stops the watcher too. To see what it's doing:
 
-Neither can keep the hotspot up while the network is on such a channel. The
-lasting fix is to stop the network from switching: set its band to 2.4 GHz
-explicitly (below).
+```sh
+journalctl -u apsta-watch    # started with apsta start or the GUI
+journalctl -u apsta          # started with apsta enable
+```
+
+While the network stays on such a channel you get internet but no hotspot.
+The lasting fix is to stop the network from switching: set its band to
+2.4 GHz explicitly (below).
+
+On systems without systemd, a hotspot started with `apsta start` isn't
+watched: run `sudo apsta stop` to get your WiFi back, or use
+`sudo apsta enable`.
 
 ## Fixes
 

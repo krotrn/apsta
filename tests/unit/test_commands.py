@@ -31,6 +31,33 @@ class RunCommandTests(unittest.TestCase):
         watcher_cls.return_value.install_signal_handlers.assert_called_once()
 
 
+class WatcherLifecycleTests(unittest.TestCase):
+    def setUp(self):
+        as_root(self)
+        mock.patch("sys.stdout").start()
+        mock.patch("sys.stderr").start()
+        self.addCleanup(mock.patch.stopall)
+        self.guard = mock.patch.object(hotspot_cmd, "guard").start()
+        self.hotspot = mock.patch.object(hotspot_cmd, "hotspot").start()
+
+    def test_start_launches_the_watcher_after_the_hotspot(self):
+        self.hotspot.current.return_value = None
+        self.hotspot.start.return_value.state.subnet = None
+        args = SimpleNamespace(method="auto", allow_disconnect=False, wait_sta=0, interface=None, json=True)
+        with mock.patch.object(hotspot_cmd, "_apply_overrides"), mock.patch.object(hotspot_cmd, "json"):
+            self.assertEqual(hotspot_cmd.cmd_start(args), 0)
+        self.guard.stop.assert_called_once()  # a leftover watcher would race the start
+        self.guard.launch.assert_called_once()
+
+    def test_stop_stops_the_watcher_first(self):
+        order = []
+        self.hotspot.current.return_value = None
+        self.guard.stop.side_effect = lambda: order.append("guard") or True
+        self.hotspot.stop.side_effect = lambda: order.append("hotspot")
+        self.assertEqual(hotspot_cmd.cmd_stop(SimpleNamespace()), 0)
+        self.assertEqual(order, ["guard", "hotspot"])
+
+
 class PasswordPromptTests(unittest.TestCase):
     def test_interactive_prompt_asks_twice(self):
         with (

@@ -10,7 +10,7 @@ flowchart TD
     CLI["<b>apsta_cli/cli.py</b><br/>argparse, errors → exit codes"]
     GUI["<b>apsta_gui</b> (GTK 4 / libadwaita)<br/>a client of the CLI:<br/>--json reads, pkexec writes"]
     CMD["<b>cmd/*</b> · present<br/>thin: print results"]
-    SVC["<b>services/</b> · use cases<br/>hotspot.py: start / stop / status, strategy selection<br/>watch.py: apsta run keeps the hotspot healthy"]
+    SVC["<b>services/</b> · use cases<br/>hotspot.py: start / stop / status, strategy selection<br/>watch.py: apsta run keeps the hotspot healthy<br/>guard.py: runs it behind apsta start"]
     CFG["<b>config/</b><br/>model, store, validate<br/>state.py"]
     NET["<b>net/</b><br/>strategies, transaction<br/>hostapd, dnsmasq, nm<br/>firewall, supervisor<br/>iface, subnet, channels, clients"]
     HW["<b>hw/</b><br/>combinations, capability<br/>interfaces, usb"]
@@ -83,8 +83,12 @@ checks a pid against `/proc/<pid>/cmdline` before signalling it.
 
 ### The service watches, not just starts
 
-`apsta.service` runs `apsta run --wait-sta 30`. `services/watch.py` polls
-every 5 s and `decide()` (a pure function) restarts the hotspot when:
+`apsta.service` runs `apsta run --wait-sta 30`. A one-off `apsta start`
+(and so the GUI) launches the same watcher as the transient unit
+`apsta-watch.service` (`services/guard.py`, systemd only), which adopts the
+hotspot that is already up; `apsta stop` stops the watcher before the
+hotspot. `services/watch.py` polls every 5 s and `decide()` (a pure function)
+restarts the hotspot when:
 
 - it went down (resume from suspend, driver reset, hostapd gave up);
 - on single-channel radios, the WiFi connection moved to another channel;

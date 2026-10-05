@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A hotspot started with `apsta start` or the GUI no longer cuts off your
+  internet when the WiFi network changes channel (for example a phone hotspot
+  switching to 5 GHz). `start` now runs the watcher in the background
+  (`apsta-watch.service`, systemd only): it stops the hotspot so the WiFi can
+  reconnect, and brings it back once the network is on a channel the card can
+  host on. Before, the laptop stayed disconnected until `apsta stop`.
+- The watcher no longer holds the command lock while waiting for WiFi to
+  reconnect, so `apsta stop` and the GUI aren't blocked meanwhile.
+- The service's and the watcher's messages reach the journal as they happen,
+  not in blocks when Python's output buffer fills.
+- `--allow-disconnect` hotspots are no longer restarted every 20 s by the
+  service because the WiFi they dropped on purpose was "lost".
+
 ### Documentation
 
 - `docs/5ghz-wifi.md`: what happens when the network switches band while the

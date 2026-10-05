@@ -173,6 +173,7 @@ class NmStrategyTests(unittest.TestCase):
         self.assertEqual(oct(keyfile.stat().st_mode & 0o777), "0o600")
         self.assertFalse(any("secret123" in " ".join(c) for c in sh.calls))  # never on a command line
         self.assertEqual(state.connection_id, "apsta-hotspot")
+        self.assertEqual(state.sta_ssid_at_start, "Home")
 
         strategies.NmVirtualStrategy().stop(state)
         self.assertTrue(sh.called("nmcli", "connection", "delete", "id", "apsta-hotspot"))
@@ -195,6 +196,7 @@ class NmStrategyTests(unittest.TestCase):
             tx.commit()
         self.assertEqual(state.ap_interface, "wlo1")
         self.assertFalse(sh.called("iw", "dev", "wlo1", "interface", "add"))
+        self.assertIsNone(state.sta_ssid_at_start)  # WiFi is dropped on purpose: nothing for the watcher to follow
         strategies.NmSingleStrategy().stop(state)
         self.assertFalse(sh.called("iw", "dev", "wlo1", "del"))
 

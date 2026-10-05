@@ -12,6 +12,8 @@ Type=simple
 # --wait-sta: give the WiFi connection time to associate so the hotspot can
 # share its channel instead of guessing one and blocking the reconnect.
 ExecStart=/usr/bin/apsta run --wait-sta 30
+# Log line by line, not in blocks when Python's output buffer fills.
+Environment=PYTHONUNBUFFERED=1
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=30

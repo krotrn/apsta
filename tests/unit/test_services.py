@@ -9,9 +9,9 @@ from apsta_cli.core.errors import AlreadyRunning, ApstaError, HardwareError, Per
 from apsta_cli.hw.capability import HardwareCapability
 from apsta_cli.hw.interfaces import StaLink, WifiInterface
 from apsta_cli.net.channels import Channel
-from apsta_cli.services import hotspot, watch
+from apsta_cli.services import guard, hotspot, watch
 from apsta_cli.state import HotspotState
-from tests.support import as_root, isolate_paths
+from tests.support import FakeShell, as_root, isolate_paths
 
 
 def make_state(**kw):
@@ -291,6 +291,33 @@ class WatcherTests(unittest.TestCase):
             self.assertEqual(watcher.run(), 0)
         self.assertEqual(len(calls), 2)
 
+    def test_waits_for_wifi_without_holding_the_lock(self):
+        watcher = watch.Watcher(hotspot.StartOptions(wait_sta=30))
+        links = iter([None, None, StaLink("Home", 2437)])
+        result = mock.Mock(state=make_state())
+        with (
+            mock.patch.object(watch.store, "load", return_value={}),
+            mock.patch.object(watch.hotspot, "select_interface", return_value=IFACE),
+            mock.patch.object(watch.interfaces, "sta_link", side_effect=lambda name: next(links)),
+            mock.patch.object(watcher.stop_event, "wait", return_value=False) as wait,
+            mock.patch.object(watch.hotspot, "start", return_value=result) as start,
+        ):
+            self.assertTrue(watcher._start())
+        self.assertEqual(wait.call_count, 2)
+        self.assertEqual(start.call_args[0][0].wait_sta, 0)  # the wait already happened
+
+    def test_stop_during_wifi_wait_skips_start(self):
+        watcher = watch.Watcher(hotspot.StartOptions(wait_sta=30))
+        watcher.stop_event.set()
+        with (
+            mock.patch.object(watch.store, "load", return_value={}),
+            mock.patch.object(watch.hotspot, "select_interface", return_value=IFACE),
+            mock.patch.object(watch.interfaces, "sta_link", return_value=None),
+            mock.patch.object(watch.hotspot, "start") as start,
+        ):
+            self.assertEqual(watcher.run(), 0)
+        start.assert_not_called()
+
     def test_signal_handlers(self):
         watcher = watch.Watcher(hotspot.StartOptions())
         with mock.patch("signal.signal") as sig:
@@ -312,6 +339,57 @@ class WatcherTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GuardTests(unittest.TestCase):
+    def setUp(self):
+        self.sh = FakeShell()
+        mock.patch("apsta_cli.core.shell.run", self.sh).start()
+        mock.patch.object(guard.supervisor, "get", return_value=mock.Mock(kind="systemd")).start()
+        self.addCleanup(mock.patch.stopall)
+
+    def test_launch_runs_the_watcher_as_a_transient_unit(self):
+        self.sh.on("systemctl", "is-active", "--quiet", "apsta.service", rc=3)
+        opts = hotspot.StartOptions(method="hostapd", allow_disconnect=True, interface="wlo1")
+        self.assertTrue(guard.launch("/usr/bin/apsta", opts))
+        run = next(c for c in self.sh.calls if c[0] == "systemd-run")
+        self.assertIn("--unit=apsta-watch.service", run)
+        self.assertIn("--setenv=PYTHONUNBUFFERED=1", run)
+        self.assertEqual(
+            run[run.index("--") + 1 :],
+            [
+                "/usr/bin/apsta",
+                "run",
+                "--wait-sta",
+                "30",
+                "--method",
+                "hostapd",
+                "--interface",
+                "wlo1",
+                "--allow-disconnect",
+            ],
+        )
+        self.assertFalse(self.sh.called("systemctl", "stop"))  # would take the new hotspot down
+
+    def test_not_launched_when_the_service_watches(self):
+        self.assertFalse(guard.launch("/usr/bin/apsta", hotspot.StartOptions()))
+        self.assertFalse(self.sh.called("systemd-run"))
+
+    def test_not_launched_without_systemd(self):
+        guard.supervisor.get.return_value = mock.Mock(kind="pidfile")
+        self.assertFalse(guard.launch("/usr/bin/apsta", hotspot.StartOptions()))
+        self.assertFalse(guard.stop())
+        self.assertEqual(self.sh.calls, [])
+
+    def test_launch_failure_is_not_fatal(self):
+        self.sh.on("systemctl", "is-active", rc=3).on("systemd-run", rc=1, stderr="no bus")
+        self.assertFalse(guard.launch("/usr/bin/apsta", hotspot.StartOptions()))
+
+    def test_stop(self):
+        self.assertTrue(guard.stop())
+        self.assertTrue(self.sh.called("systemctl", "stop", "apsta-watch.service"))
+        self.sh.on("systemctl", "is-active", rc=3)
+        self.assertFalse(guard.stop())
 
 
 class AutostartTests(unittest.TestCase):

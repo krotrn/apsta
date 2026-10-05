@@ -41,8 +41,9 @@ Verdict
   that drops WiFi is used only if you allow it (`--allow-disconnect`).
 - **All-or-nothing setup**: every step registers its own undo, so a failure
   part-way leaves nothing behind, and `stop` removes exactly what `start` added.
-- **Stays up**: `apsta run` (what the service runs) restarts the hotspot after
-  suspend/resume or a driver reset, and moves it when your WiFi changes channel.
+- **Stays up**: a watcher restarts the hotspot after suspend/resume or a
+  driver reset, moves it when your WiFi changes channel, and steps aside when
+  it would keep your WiFi from reconnecting.
 - **Works with your firewall**: firewalld, iptables (including ufw/docker
   setups) and nftables. Picks a hotspot subnet that doesn't clash with your
   networks. DNS goes through your normal resolver, so captive portals and VPN
@@ -224,8 +225,8 @@ cases that can't work, such as DFS or 6 GHz channels, with an explanation.
 Many cards also can't host on some 5 GHz channels at all, so a hotspot can't
 start while your WiFi is on one of them; see
 [docs/5ghz-wifi.md](docs/5ghz-wifi.md).
-Under `apsta run`/the service, the hotspot follows the connection when it
-changes channel.
+The hotspot follows the connection when it changes channel (on systemd,
+also when started with `apsta start` or the GUI).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 

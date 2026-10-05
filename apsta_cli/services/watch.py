@@ -10,11 +10,13 @@ Every few seconds the watcher checks that:
   the AP may be what blocks NetworkManager from reconnecting elsewhere.
 
 If any check fails it tears the hotspot down, lets the WiFi settle and starts
-it again. The decision logic is the pure function :func:`decide`.
+it again. ``apsta start`` runs the same watcher in the background (see
+:mod:`.guard`). The decision logic is the pure function :func:`decide`.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import signal
 import threading
 import time
@@ -22,6 +24,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .. import state as state_store
+from ..config import store
 from ..core import output
 from ..core.errors import AlreadyRunning, ApstaError
 from ..hw import interfaces
@@ -85,9 +88,28 @@ class Watcher:
         for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
             signal.signal(sig, lambda *_: self.stop_event.set())
 
-    def _start(self) -> bool:
+    def _wait_for_wifi(self) -> None:
+        """Give the WiFi time to (re)connect so the hotspot can share its channel.
+
+        Done here rather than through ``StartOptions.wait_sta`` so the command
+        lock isn't held meanwhile: ``apsta stop`` must not have to wait.
+        """
+        deadline = time.monotonic() + self.opts.wait_sta
         try:
-            result = hotspot.start(self.opts)
+            name = hotspot.select_interface(store.load(), self.opts.interface).name
+        except ApstaError:
+            return
+        while time.monotonic() < deadline and interfaces.sta_link(name) is None:
+            if self.stop_event.wait(1.0):
+                return
+
+    def _start(self) -> bool:
+        if self.opts.wait_sta:
+            self._wait_for_wifi()
+            if self.stop_event.is_set():
+                return False
+        try:
+            result = hotspot.start(dataclasses.replace(self.opts, wait_sta=0.0))
         except AlreadyRunning:
             output.info("Adopting the hotspot that is already running.")
             return True
@@ -104,6 +126,8 @@ class Watcher:
         while not self.stop_event.is_set():
             if self._start():
                 return True
+            if self.stop_event.is_set():
+                break
             output.info(f"Retrying in {delay:.0f}s")
             if self.stop_event.wait(delay):
                 return False
