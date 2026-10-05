@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or help
+    url: https://github.com/krotrn/apsta/discussions/categories/q-a
+    about: Ask how to set something up or why the hotspot behaves a certain way.
+  - name: Documentation
+    url: https://krotrn.github.io/apsta/
+    about: How apsta works, 5 GHz and Wi-Fi Direct explained, common problems and fixes.
+  - name: Does my Wi-Fi card work?
+    url: https://github.com/krotrn/apsta#supported-hardware
+    about: Run `apsta detect`, and check the supported hardware list.
