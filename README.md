@@ -99,6 +99,8 @@ Python library `jeepney` enables the [Wi-Fi Direct fallback](docs/wifi-direct.md
 > **pipx/pip users:** `sudo` can't see `~/.local/bin`. Install system-wide
 > with `sudo pipx install --global apsta` (pipx ≥ 1.5), or use the packages above.
 
+<a href="https://www.buymeacoffee.com/krotrn" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 ## Usage
 
 ```bash
