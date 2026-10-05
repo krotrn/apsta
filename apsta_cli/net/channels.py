@@ -26,6 +26,13 @@ class Channel:
         return {"bg": "2.4 GHz", "a": "5 GHz", "6g": "6 GHz"}[self.band]
 
     @property
+    def freq(self) -> int:
+        """Centre frequency in MHz (inverse of :func:`from_freq`)."""
+        if self.band == "bg":
+            return 2484 if self.number == 14 else 2407 + 5 * self.number
+        return (5000 if self.band == "a" else 5950) + 5 * self.number
+
+    @property
     def is_dfs(self) -> bool:
         return self.band == "a" and self.number in DFS_CHANNELS
 

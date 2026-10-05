@@ -9,14 +9,19 @@ from ..core import output, shell
 from ..core.errors import HardwareError
 from ..core.output import C
 from ..hw import capability, interfaces, usb
-from ..net import channels
+from ..net import channels, wpa
 
 
-def verdict(cap: capability.HardwareCapability, sta_freq: Optional[int] = None) -> dict:
+def verdict(cap: capability.HardwareCapability, sta_freq: Optional[int] = None, p2p_ready: bool = False) -> dict:
     if cap.ap_sta:
         messages = ["Your card can run a hotspot while staying connected to WiFi."]
         if cap.same_channel_required:
             messages.append("The hotspot will use the same channel as your WiFi connection.")
+            if p2p_ready:
+                messages.append(
+                    "Where that channel can't host, it runs as a Wi-Fi Direct group on its own channel instead."
+                )
+                return {"level": "ok", "mode": "ap+sta", "messages": messages, "next": "sudo apsta start"}
             sta = channels.from_freq(sta_freq) if sta_freq else None
             allowed = channels.allowed_channels(cap.ap_frequencies)
             if sta is not None and allowed is not None and sta not in allowed:
@@ -50,12 +55,20 @@ def verdict(cap: capability.HardwareCapability, sta_freq: Optional[int] = None) 
     }
 
 
-def methods() -> dict:
+def methods(cap: Optional[capability.HardwareCapability] = None) -> dict:
     missing = [b for b in ("hostapd", "dnsmasq") if not shell.have(b)]
-    return {
+    found = {
         "hostapd": "ready" if not missing else f"needs {', '.join(missing)}",
         "nmcli": "ready" if shell.have("nmcli") else "needs NetworkManager",
     }
+    if cap is not None and cap.p2p_go_own_channel:
+        if not shell.have("dnsmasq"):
+            found["p2p"] = "needs dnsmasq"
+        elif not wpa.available(cap.interface):
+            found["p2p"] = "needs wpa_supplicant (NetworkManager's)"
+        else:
+            found["p2p"] = "ready"
+    return found
 
 
 def cmd_detect(args) -> int:
@@ -67,8 +80,8 @@ def cmd_detect(args) -> int:
     )
     cap = capability.probe(target.name)
     link = interfaces.sta_link(target.name)
-    result = verdict(cap, link.freq if link else None)
-    available = methods()
+    available = methods(cap)
+    result = verdict(cap, link.freq if link else None, available.get("p2p") == "ready")
 
     if args.json:
         print(
@@ -106,6 +119,8 @@ def cmd_detect(args) -> int:
     _row("AP + STA at the same time", cap.ap_sta)
     if cap.ap_sta:
         _row("AP on a different channel than STA", not cap.same_channel_required)
+        if cap.same_channel_required:
+            _row("Wi-Fi Direct group on its own channel", cap.p2p_go_own_channel)
     _row("Hotspot on 5 GHz", any(f >= 5000 for f in cap.ap_frequencies))
     if cap.combinations:
         output.blank()

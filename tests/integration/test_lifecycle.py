@@ -11,6 +11,7 @@ from pathlib import Path
 from apsta_cli.core import paths
 from tests.integration import fakeworld
 from tests.integration.base import FakeWorldTestCase
+from tests.support import FakeWpaSupplicant
 
 PHONE = "aa:bb:cc:dd:ee:ff"
 
@@ -206,7 +207,83 @@ class DfsTests(FakeWorldTestCase):
         code, _, err = self.apsta("start")
         self.assertEqual(code, 1)
         self.assertIn("DFS channel 100", err)
+        self.assertIn("p2p: wpa_supplicant has no Wi-Fi Direct device", err)
         self.assertNotIn("wlo1_ap", self.world["ifaces"])
+
+
+class WifiDirectTests(FakeWorldTestCase):
+    """Real case: Intel card on a campus network's DFS channel 128; the hotspot gets a channel of its own."""
+
+    link = {"ssid": "NIT-Student", "freq": 5640}
+
+    def setUp(self):
+        super().setUp()
+        self.refuse = set()
+        self.ssid = None
+        self.wpa = FakeWpaSupplicant(paths.WPA_CTRL_DIR / "p2p-dev-wlo1", self.answer).install(self)
+
+    def answer(self, command):
+        verb, _, rest = command.partition(" ")
+        if verb in self.refuse:
+            return "FAIL\n"
+        args = rest.split()
+        if verb == "SET_NETWORK" and args[1] == "ssid":
+            self.ssid = bytes.fromhex(args[2]).decode()
+        sysfs = paths.SYSFS_NET / "p2p-wlo1-0"
+        if verb == "P2P_GROUP_ADD":
+            data = self.world
+            data["ifaces"]["p2p-wlo1-0"] = {"type": "P2P-GO", "addr": "e4:00:00:00:00:02", "link": None}
+            data["ifaces"]["p2p-wlo1-0"]["ssid"] = self.ssid
+            (self.root / "world.json").write_text(json.dumps(data))
+            sysfs.mkdir(parents=True, exist_ok=True)
+            (sysfs / "operstate").write_text("up\n")
+        if verb == "P2P_GROUP_REMOVE":
+            data = self.world
+            data["ifaces"].pop(args[0], None)
+            (self.root / "world.json").write_text(json.dumps(data))
+            for child in sysfs.glob("*"):
+                child.unlink()
+            sysfs.rmdir()
+        return self.wpa.default(command)
+
+    def test_hotspot_runs_on_its_own_channel(self):
+        code, out, err = self.apsta("start")
+        self.assertEqual(code, 0, err)
+        self.assertIn("own channel (6)", out)
+        st = self.state()
+        self.assertEqual((st.method, st.ap_interface, st.channel, st.band), ("p2p", "p2p-wlo1-0", 6, "bg"))
+        self.assertFalse(st.same_channel_required)  # the watcher must not chase the WiFi's channel
+        self.assertIn("P2P_GROUP_ADD persistent=0 freq=2437", self.wpa.commands)
+        self.assertIn("SET_NETWORK 0 mode 3", self.wpa.commands)
+        self.assertEqual(len(self.world["iptables"]), 6)
+        password = self.apsta_json("config", "--json", "--show-password")["password"]
+        self.assertIn(f'SET_NETWORK 0 psk "{password}"', self.wpa.commands)
+        self.assertFalse(any(password in " ".join(call) for call in self.world["calls"]))  # never on a command line
+        self.assertTrue(self.apsta_json("status", "--json")["active"])
+
+        code, _, err = self.apsta("stop")
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("p2p-wlo1-0", self.world["ifaces"])
+        self.assertIn("P2P_GROUP_REMOVE p2p-wlo1-0", self.wpa.commands)
+        self.assertIn("REMOVE_NETWORK 0", self.wpa.commands)
+        self.assertEqual(self.world["iptables"], [])
+        self.assertIsNone(self.state())
+
+    def test_refused_group_rolls_back_and_explains(self):
+        self.refuse = {"P2P_GROUP_ADD"}
+        code, _, err = self.apsta("start")
+        self.assertEqual(code, 1)
+        self.assertIn("DFS channel 128", err)
+        self.assertIn("p2p: wpa_supplicant refused to start the Wi-Fi Direct group", err)
+        self.assertIn("REMOVE_NETWORK 0", self.wpa.commands)
+        self.assertEqual(self.world["iptables"], [])
+        self.assertIsNone(self.state())
+
+    def test_detect_says_it_works(self):
+        data = self.apsta_json("detect", "--json")
+        self.assertEqual(data["verdict"]["level"], "ok")
+        self.assertEqual(data["methods"]["p2p"], "ready")
+        self.assertTrue(data["capability"]["p2p_go_own_channel"])
 
 
 class NoIrChannelTests(FakeWorldTestCase):
@@ -294,7 +371,9 @@ class DetectTests(FakeWorldTestCase):
         data = self.apsta_json("detect", "--json")
         self.assertEqual(data["verdict"]["mode"], "ap+sta")
         self.assertTrue(data["capability"]["same_channel_required"])
-        self.assertEqual(data["methods"], {"hostapd": "ready", "nmcli": "ready"})
+        self.assertEqual(data["methods"]["hostapd"], "ready")
+        self.assertEqual(data["methods"]["nmcli"], "ready")
+        self.assertIn("wpa_supplicant", data["methods"]["p2p"])  # no control socket in this world
         status = self.apsta_json("status", "--json")
         self.assertEqual(set(data["interfaces"][0]), set(status["interfaces"][0]))  # same shape everywhere
         self.assertEqual(data["interfaces"][0]["type"], "managed")

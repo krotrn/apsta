@@ -42,9 +42,10 @@ both directions. Real driver outputs live in `tests/fixtures/iw/`.
 
 ### Strategies + transactions
 
-`net/strategies.py` holds three implementations of one interface
+`net/strategies.py` holds four implementations of one interface
 (`unavailable`, `start(ctx, tx)`, `stop(state)`): `hostapd`, `nmcli`
-(virtual interface) and `nmcli-single`. `services/hotspot.start` tries them
+(virtual interface), `p2p` (a Wi-Fi Direct group owner through
+wpa_supplicant's control socket, `net/wpa.py`) and `nmcli-single`. `services/hotspot.start` tries them
 in order. Each `start` registers an undo step with the `Transaction` after
 every side effect, so a failure part-way rolls back to a clean system before
 the next strategy is tried.
@@ -52,8 +53,8 @@ the next strategy is tried.
 ```mermaid
 flowchart TD
     S(["apsta start"]) --> P["Plan: capability, WiFi channel,<br/>allowed channels, subnet"]
-    P -- "can't work (DFS, no IR, 6 GHz)" --> E(["HardwareError with hints"])
-    P --> N{"Next strategy:<br/>hostapd → nmcli → nmcli-single"}
+    P -- "WiFi's channel can't host, and no<br/>Wi-Fi Direct or --allow-disconnect" --> E(["HardwareError with hints"])
+    P --> N{"Next strategy:<br/>hostapd → nmcli → p2p → nmcli-single"}
     N -- "unavailable" --> N
     N --> T["start(ctx, tx): each side effect<br/>registers its undo step"]
     T -- "all steps OK, hotspot live" --> W["Write /run/apsta/state.json"] --> D(["Running"])
@@ -63,6 +64,14 @@ flowchart TD
 
 `nmcli-single` drops the WiFi connection, so while connected it is only tried
 with `--allow-disconnect`.
+
+When the WiFi's channel can't host (DFS, no IR, 6 GHz), the plan picks a
+channel of the hotspot's own and marks `sta_channel_usable=False`: `hostapd`
+and `nmcli` step aside, leaving `p2p` (cards whose combinations allow a
+`P2P-GO` beside `managed` with `#channels >= 2`) and `nmcli-single`. If
+neither works, the original channel explanation is raised with their reasons
+appended. A `p2p` hotspot records `same_channel_required=False`, so the
+watcher doesn't chase the WiFi's channel.
 
 ### Runtime state lives in /run
 

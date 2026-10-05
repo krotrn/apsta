@@ -44,13 +44,14 @@ def create_virtual_ap(base_iface: str) -> Tuple[str, str]:
 
 
 def is_broadcasting(name: str) -> bool:
-    """True when ``name`` is an AP that is actually up (it has an SSID).
+    """True when ``name`` is an AP (or Wi-Fi Direct group owner) that is actually up.
 
     A virtual interface created with ``type __ap`` reports "type AP" right away,
-    before anything runs on it, so the type alone proves nothing.
+    before anything runs on it, so the type alone proves nothing: only a
+    running one has an SSID.
     """
     info = shell.out(["iw", "dev", name, "info"])
-    return "type AP" in info and "\tssid " in info.replace("    ", "\t")
+    return ("type AP" in info or "type P2P-GO" in info) and "\tssid " in info.replace("    ", "\t")
 
 
 def wait_for_broadcast(name: str, timeout: float = 10.0) -> bool:

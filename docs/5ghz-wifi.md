@@ -14,6 +14,14 @@ broadcasting"* or NetworkManager's *"No suitable device found"*.
 The same laptop may have worked fine yesterday. What changed is the network
 you're connected to, not apsta.
 
+> **Newer apsta handles this on most Intel cards.** If `apsta detect` shows
+> *"Wi-Fi Direct group on its own channel: yes"*, apsta no longer refuses: the
+> hotspot runs as a Wi-Fi Direct group on a channel of its own, the way
+> Windows' Mobile Hotspot does (see [the Wi-Fi Direct fallback](#the-wi-fi-direct-fallback)).
+> The same goes for networks on radar (DFS) channels 52–144, common on campus
+> and office networks. The rest of this page is about cards that can't do
+> that, and the fixes for them.
+
 ## Why it happens
 
 Two rules of your WiFi card combine.
@@ -38,7 +46,7 @@ Put together:
 ```mermaid
 flowchart TD
     A["Laptop connected to WiFi<br/>on channel 44 (5 GHz)"] --> B{"Can the card use two<br/>channels at once?"}
-    B -- "yes (rare)" --> OK1["Hotspot on any allowed channel ✔"]
+    B -- "yes (rare), or as a Wi-Fi Direct<br/>group (most Intel cards)" --> OK1["Hotspot on its own<br/>allowed channel ✔"]
     B -- "no (most laptops)" --> C["Hotspot must also use channel 44"]
     C --> D{"May the card start a<br/>network on channel 44?"}
     D -- "yes" --> OK2["Hotspot on channel 44 ✔"]
@@ -110,11 +118,15 @@ sequenceDiagram
     W->>W: notices within ~20 s: WiFi lost or moved
     W->>L: stops the hotspot
     L->>P: reconnects on channel 44, internet is back
-    loop every 10 s, then less often (up to 5 min)
-        W--xW: try to start: channel 44 is "no IR"
+    alt card supports a Wi-Fi Direct group on a second channel
+        W->>W: starts the hotspot as a group on its own channel
+    else
+        loop every 10 s, then less often (up to 5 min)
+            W--xW: try to start: channel 44 is "no IR"
+        end
+        P->>L: later: "Moving to 2.4 GHz channel 6"
+        W->>W: next try succeeds: hotspot on channel 6
     end
-    P->>L: later: "Moving to 2.4 GHz channel 6"
-    W->>W: next try succeeds: hotspot on channel 6
 ```
 
 The watcher runs however you start the hotspot: with `sudo apsta start` or
@@ -127,8 +139,8 @@ journalctl -u apsta-watch    # started with apsta start or the GUI
 journalctl -u apsta          # started with apsta enable
 ```
 
-While the network stays on such a channel you get internet but no hotspot.
-The lasting fix is to stop the network from switching: set its band to
+On cards without the Wi-Fi Direct fallback, while the network stays on such
+a channel you get internet but no hotspot. The lasting fix is to stop the network from switching: set its band to
 2.4 GHz explicitly (below).
 
 On systems without systemd, a hotspot started with `apsta start` isn't
@@ -215,7 +227,45 @@ Pick whichever suits you:
    - apsta doesn't ship or run this patch; it's a change to your system's
      driver, so it stays your decision.
 
-## Why apsta doesn't work around it
+## The Wi-Fi Direct fallback
+
+Many cards that pin a normal hotspot to the WiFi's channel can run a *Wi-Fi
+Direct group owner* on a second one. `iw phy` shows it as a combination
+with `P2P-GO` and `#channels <= 2`:
+
+```
+* #{ managed } <= 1, #{ P2P-client, P2P-GO } <= 1, #{ P2P-device } <= 1, total <= 3, #channels <= 2
+* #{ managed } <= 1, #{ AP, P2P-client, P2P-GO } <= 1, #{ P2P-device } <= 1, total <= 3, #channels <= 1
+```
+
+Phones and laptops join a group owner like any WPA2 network, with your
+usual name and password. When the WiFi's channel can't host, apsta starts
+one through NetworkManager's wpa_supplicant (method `p2p`) on a channel the
+card allows, usually 2.4 GHz, and shares the connection as in hostapd mode:
+
+```
+$ iw dev | grep -E 'Interface|ssid|channel'
+        Interface p2p-wlo1-0
+                ssid apsta-hotspot
+                channel 6 (2437 MHz), width: 20 MHz       ← the hotspot
+        Interface wlo1
+                ssid NIT-Student
+                channel 128 (5640 MHz), width: 40 MHz     ← WiFi stays on a DFS channel
+```
+
+The trade-offs:
+
+- **Speed is shared.** One radio switches between the two channels, so the
+  hotspot and your own WiFi each get roughly half its airtime, with a little
+  more latency. That's why apsta still prefers the same channel whenever it
+  works.
+- **No allowlist or blocking.** `allowed_macs` and `apsta clients disconnect
+  --block` need hostapd mode. Listing and kicking clients work.
+- It needs NetworkManager's wpa_supplicant (the `p2p-dev-<interface>` socket
+  in `/run/wpa_supplicant`) and dnsmasq. `apsta detect` lists method `p2p`
+  as ready when both are there.
+
+## What apsta doesn't work around
 
 - **Hosting on the "no IR" channel anyway**: the firmware refuses. Where the
   firmware is stricter than the law, the fix is in the driver
@@ -224,12 +274,8 @@ Pick whichever suits you:
   exception (hosting on a no-IR channel you are already connected on) applies
   only to Wi-Fi Direct groups, not to a normal hotspot, and distributions
   don't enable it.
-- **Using a different channel for the hotspot**: some cards (Intel included)
-  can run a *Wi-Fi Direct* group on a second channel. We tested this on an
-  Intel AX201: the card does it, but NetworkManager immediately removes any
-  Wi-Fi Direct group it didn't start itself, and there is no setting to stop
-  that. Working around it would mean taking WiFi away from NetworkManager,
-  which is too fragile for a hotspot tool.
+- **Cards without a second channel for Wi-Fi Direct**: there is no other
+  way to keep WiFi and host elsewhere.
 
-So apsta tells you up front and suggests the fixes above, instead of trying
-and failing with driver errors.
+So on those cards apsta tells you up front and suggests the fixes above,
+instead of trying and failing with driver errors.

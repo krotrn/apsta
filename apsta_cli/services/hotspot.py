@@ -54,6 +54,8 @@ def is_alive(st: HotspotState) -> bool:
         return False
     if st.method == "hostapd":
         return strategies.HostapdStrategy.daemons_running(st)
+    if st.method == "p2p":
+        return strategies.P2pStrategy.daemons_running(st)
     return True
 
 
@@ -115,16 +117,19 @@ def build_context(config: dict, opts: StartOptions) -> StartContext:
     scan = () if pinned else list(channels.parse_nmcli_scan(nm.scan(base.name)))
     allowed = channels.allowed_channels(cap.ap_frequencies)
     sta_channel_usable = True
+    channel_problem = None
     try:
         plan = channels.plan(
             sta_channel, cap.same_channel_required, config["band"], config.get("channel"), scan, allowed
         )
-    except HardwareError:
-        if not (opts.allow_disconnect and sta_channel is not None):
+    except HardwareError as exc:
+        if sta_channel is None or not (opts.allow_disconnect or cap.p2p_go_own_channel):
             raise
-        # The WiFi's channel can't host an AP, but the user accepts dropping WiFi:
-        # only the single-interface method remains, on a channel the card allows.
+        # The WiFi's channel can't host an AP. A Wi-Fi Direct group on a channel
+        # of its own still can, or (if the user accepts dropping WiFi) the
+        # single-interface method: either way, on a channel the card allows.
         sta_channel_usable = False
+        channel_problem = exc
         if not scan:
             scan = list(channels.parse_nmcli_scan(nm.scan(base.name)))
         plan = channels.plan(None, cap.same_channel_required, config["band"], config.get("channel"), scan, allowed)
@@ -141,6 +146,7 @@ def build_context(config: dict, opts: StartOptions) -> StartContext:
         sta_channel_usable=sta_channel_usable,
         hidden=bool(config.get("hidden")),
         allowed_macs=list(config.get("allowed_macs") or []),
+        channel_problem=channel_problem,
     )
 
 
@@ -175,6 +181,11 @@ def start(opts: StartOptions, candidates: Optional[Sequence[Strategy]] = None) -
             return StartResult(st, strategy, generated, skipped)
 
         hints = [f"{name}: {why}" for name, why in skipped.items()] + failures
+        if ctx.channel_problem is not None:
+            # Say why the WiFi's channel doesn't work, not only why each method was skipped.
+            problem = ctx.channel_problem
+            tried = [h for h in hints if h.startswith(("p2p:", "nmcli-single:"))]
+            raise HardwareError(problem.message, hints=problem.hints + tried)
         raise ApstaError("Could not start the hotspot.", hints=hints)
 
 

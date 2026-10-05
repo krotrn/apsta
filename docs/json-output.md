@@ -59,7 +59,7 @@ Current hotspot, connected devices and configuration. Works without root.
 | ------------- | ------- |
 | `active`      | A hotspot is running and healthy. |
 | `stale`       | A hotspot was recorded but is gone (crash, driver reset). The next `start` cleans it up. |
-| `hotspot`     | The running hotspot, or `null`. `method` is `hostapd`, `nmcli` or `nmcli-single`. `band` is `bg` (2.4 GHz) or `a` (5 GHz). `subnet`/`gateway`/`firewall`/`supervisor` are set in hostapd mode, `connection_id` in nmcli modes. `firewall` and `client_limits` are internal bookkeeping for `stop`; don't rely on their contents. |
+| `hotspot`     | The running hotspot, or `null`. `method` is `hostapd`, `nmcli`, `p2p` or `nmcli-single`. `band` is `bg` (2.4 GHz) or `a` (5 GHz). `subnet`/`gateway`/`firewall`/`supervisor` are set in hostapd and p2p mode (`p2p_network` too in p2p mode), `connection_id` in nmcli modes. `firewall` and `client_limits` are internal bookkeeping for `stop`; don't rely on their contents. |
 | `clients`     | Currently associated devices (not stale DHCP leases). `ip` and `hostname` may be empty. |
 | `interfaces`  | WiFi interfaces. `type` is the nl80211 interface type (`managed`, `AP`, …). |
 | `autostart`   | `init` is `systemd`, `openrc`, `runit` or `unknown`. `enabled`/`running` are `null` when unknown. |
@@ -88,9 +88,10 @@ What the WiFi hardware can do and which method apsta would use.
     "supported_modes": ["managed", "AP", "monitor"],
     "combinations": ["#{ managed } <= 1, #{ AP, P2P-client, P2P-GO } <= 1, … total <= 3, #channels <= 1"],
     "driver": "iwlwifi",
-    "chipset": "Intel Corporation Wi-Fi 6 AX201"
+    "chipset": "Intel Corporation Wi-Fi 6 AX201",
+    "p2p_go_own_channel": true
   },
-  "methods": {"hostapd": "ready", "nmcli": "ready"},
+  "methods": {"hostapd": "ready", "nmcli": "ready", "p2p": "ready"},
   "verdict": {
     "level": "ok",
     "mode": "ap+sta",
@@ -104,7 +105,8 @@ What the WiFi hardware can do and which method apsta would use.
 | -------------- | ------- |
 | `capability.ap_sta` | The radio can run an access point and a WiFi connection at the same time. |
 | `capability.same_channel_required` | If so, the hotspot must use the WiFi connection's channel. |
-| `methods`      | `"ready"`, or what's missing (e.g. `"needs hostapd, dnsmasq"`). |
+| `capability.p2p_go_own_channel` | A Wi-Fi Direct group may use a different channel than the WiFi connection (the `p2p` method's fallback). |
+| `methods`      | `"ready"`, or what's missing (e.g. `"needs hostapd, dnsmasq"`). `p2p` is listed only on cards that support it. |
 | `verdict.mode` | `ap+sta` (keeps WiFi), `single` (hotspot drops WiFi) or `unsupported`. `level` is `ok`, `warn` or `error`. `warnings` (optional) explains a `warn`, e.g. the WiFi is on a channel this card can't host on. |
 
 ## `apsta config --json`

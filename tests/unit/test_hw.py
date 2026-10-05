@@ -61,6 +61,19 @@ class CombinationSemanticsTests(unittest.TestCase):
         self.assertTrue(support.supported)
         self.assertFalse(support.same_channel_required)
 
+    def test_group_owner_on_its_own_channel(self):
+        intel = [
+            self.combo(
+                "#{ managed } <= 1, #{ P2P-client, P2P-GO } <= 1, #{ P2P-device } <= 1, total <= 3, #channels <= 2"
+            ),
+            self.combo("#{ managed } <= 1, #{ AP, P2P-client, P2P-GO } <= 1, total <= 3, #channels <= 1"),
+        ]
+        self.assertTrue(combinations.go_own_channel(intel))
+        self.assertFalse(combinations.go_own_channel(intel[1:]))
+        self.assertFalse(
+            combinations.go_own_channel([self.combo("#{ managed, P2P-GO } <= 1, total <= 2, #channels <= 2")])
+        )
+
     def test_evaluate_without_capable_combination(self):
         support = combinations.evaluate([])
         self.assertFalse(support.supported)
@@ -76,6 +89,7 @@ class CapabilityTests(unittest.TestCase):
         self.assertTrue(cap.supports_ap and cap.supports_sta and cap.ap_sta)
         self.assertTrue(cap.same_channel_required)
         self.assertEqual(cap.max_channels, 1)
+        self.assertTrue(cap.p2p_go_own_channel)  # Wi-Fi Direct may still use a second channel
 
     def test_ath10k_multichannel(self):
         cap = self.cap("ath10k_multichannel")

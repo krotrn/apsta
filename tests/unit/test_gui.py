@@ -54,6 +54,16 @@ class HelperTests(unittest.TestCase):
         )
         self.assertEqual([r[2] for r in rows], [True, True, False, False, True])
         self.assertEqual(rows[3][1], "Needs hostapd")
+        p2p = helpers.capability_rows(
+            {
+                "capability": {"supports_ap": True, "ap_sta": True, "same_channel_required": True},
+                "methods": {"p2p": "ready"},
+            }
+        )
+        self.assertEqual(
+            p2p[2][1:], ("Hotspot may use a different channel than your Wi-Fi (as a Wi-Fi Direct group)", True)
+        )
+        self.assertEqual(p2p[3][0], "Wi-Fi Direct (own channel)")
         five = helpers.capability_rows({"capability": {"supports_ap": True, "ap_frequencies": [2437, 5745]}})
         self.assertEqual(five[-1][0], "Hotspot on 5 GHz")
         self.assertTrue(five[-1][2])

@@ -8,7 +8,7 @@ from apsta_cli.hw.interfaces import WifiInterface
 from apsta_cli.net import strategies
 from apsta_cli.net.channels import Channel
 from apsta_cli.net.transaction import Transaction
-from tests.support import FakeShell, isolate_paths
+from tests.support import FakeShell, FakeWpaSupplicant, isolate_paths
 
 
 def ctx(ap_sta=True, supports_ap=True, sta_ssid="Home", allow=False):
@@ -96,13 +96,25 @@ class AvailabilityTests(unittest.TestCase):
         self.assertIn("can't host", strategies.NmVirtualStrategy().unavailable(c))
         self.assertIsNone(strategies.NmSingleStrategy().unavailable(c))
 
+    def test_wifi_direct_needs_the_card_dnsmasq_and_wpa_supplicant(self):
+        isolate_paths(self)
+        FakeShell(["dnsmasq"]).install(self)
+        c = ctx()
+        self.assertIn("own", strategies.P2pStrategy().unavailable(c))
+        c.capability.p2p_go_own_channel = True
+        self.assertIn("p2p-dev-wlo1", strategies.P2pStrategy().unavailable(c))
+        FakeWpaSupplicant(paths.WPA_CTRL_DIR / "p2p-dev-wlo1").install(self)
+        self.assertIsNone(strategies.P2pStrategy().unavailable(c))
+        c.allowed_macs = ["aa:bb:cc:dd:ee:ff"]
+        self.assertIn("allowed_macs needs hostapd", strategies.P2pStrategy().unavailable(c))
+
     def test_without_nmcli(self):
         FakeShell([]).install(self)
         self.assertIn("nmcli", strategies.NmVirtualStrategy().unavailable(ctx()))
         self.assertIn("nmcli", strategies.NmSingleStrategy().unavailable(ctx(allow=True)))
 
     def test_candidates(self):
-        self.assertEqual([s.name for s in strategies.candidates("auto")], ["hostapd", "nmcli", "nmcli-single"])
+        self.assertEqual([s.name for s in strategies.candidates("auto")], ["hostapd", "nmcli", "p2p", "nmcli-single"])
         self.assertEqual([s.name for s in strategies.candidates("nmcli")], ["nmcli"])
         with self.assertRaises(UsageError):
             strategies.candidates("magic")

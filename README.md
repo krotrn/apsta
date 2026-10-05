@@ -37,8 +37,11 @@ Verdict
 - **Reads the hardware properly**: parses the driver's interface combinations
   to decide whether AP+STA is possible and whether the hotspot must share the
   WiFi channel.
-- **Keeps your connection**: the hotspot runs on a virtual interface. A mode
-  that drops WiFi is used only if you allow it (`--allow-disconnect`).
+- **Keeps your connection**: the hotspot runs on a virtual interface. If
+  your WiFi's channel can't host (radar/DFS channels, or 5 GHz channels the
+  card blocks), it runs as a Wi-Fi Direct group on a channel of its own, as
+  Windows does, on cards that support that. A mode that drops WiFi is used
+  only if you allow it (`--allow-disconnect`).
 - **All-or-nothing setup**: every step registers its own undo, so a failure
   part-way leaves nothing behind, and `stop` removes exactly what `start` added.
 - **Stays up**: a watcher restarts the hotspot after suspend/resume or a
@@ -221,6 +224,7 @@ apsta completion fish | sudo tee /etc/fish/completions/apsta.fish >/dev/null
 | -------------- | --------------------------------------- | ------------- | ----------------- |
 | `hostapd`      | card supports AP+STA, hostapd installed | yes           | yes               |
 | `nmcli`        | card supports AP+STA                    | yes           | list/kick         |
+| `p2p`          | WiFi's channel can't host; card can run Wi-Fi Direct on a second channel | yes (speed shared) | list/kick |
 | `nmcli-single` | card supports AP only                   | **no**        | list/kick         |
 
 ```mermaid
@@ -229,7 +233,9 @@ flowchart LR
     H -- "yes" --> HA["hostapd ✔<br/>WiFi stays up"]
     H -- "no / failed" --> N{"AP+STA card?"}
     N -- "yes" --> NM["nmcli ✔<br/>WiFi stays up"]
-    N -- "no / failed" --> D{"WiFi not connected, or<br/>--allow-disconnect?"}
+    N -- "no / failed" --> P{"Wi-Fi Direct on a<br/>second channel?"}
+    P -- "yes" --> PG["p2p ✔<br/>WiFi stays up, own channel"]
+    P -- "no / failed" --> D{"WiFi not connected, or<br/>--allow-disconnect?"}
     D -- "yes" --> NS["nmcli-single ✔<br/>WiFi drops"]
     D -- "no" --> E(["Explains why, suggests a fix"])
 ```
@@ -238,10 +244,12 @@ A method that fails part-way is rolled back completely before the next one
 is tried.
 
 On single-channel cards (most laptop chips) the hotspot has to use the same
-channel as your WiFi. apsta reads it from the live connection and refuses
-cases that can't work, such as DFS or 6 GHz channels, with an explanation.
-Many cards also can't host on some 5 GHz channels at all, so a hotspot can't
-start while your WiFi is on one of them; see
+channel as your WiFi. apsta reads it from the live connection. Some channels
+can't host a hotspot: radar (DFS) channels 52–144, 6 GHz, and 5 GHz channels
+the card's firmware blocks. On cards that can run a Wi-Fi Direct group on a
+second channel (most Intel cards) apsta then gives the hotspot a channel of
+its own; the radio switches between the two, so they share its speed. On
+other cards it refuses with an explanation; see
 [docs/5ghz-wifi.md](docs/5ghz-wifi.md).
 The hotspot follows the connection when it changes channel (on systemd,
 also when started with `apsta start` or the GUI).
@@ -250,9 +258,11 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
 ## Troubleshooting
 
-- **Won't start while connected to a 5 GHz network** (e.g. a phone hotspot)?
-  Your card can't host on that channel. Switch the network to 2.4 GHz, or see
-  [docs/5ghz-wifi.md](docs/5ghz-wifi.md) for why and the other fixes.
+- **Won't start while connected to a 5 GHz network** (e.g. a phone hotspot
+  or a campus network on a DFS channel)? Your card can't host on that channel
+  and has no Wi-Fi Direct fallback (`apsta detect` shows whether it does).
+  Switch the network to 2.4 GHz, or see [docs/5ghz-wifi.md](docs/5ghz-wifi.md)
+  for why and the other fixes.
 - `APSTA_DEBUG=1 sudo apsta start` prints every step; privileged runs also log
   JSON lines to `/var/log/apsta.log`.
 - The service's own log: `journalctl -u apsta`.

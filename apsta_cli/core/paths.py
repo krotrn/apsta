@@ -37,6 +37,9 @@ DNSMASQ_CONF = RUN_DIR / "dnsmasq.conf"
 DNSMASQ_PID = RUN_DIR / "dnsmasq.pid"
 DNSMASQ_LEASES = RUN_DIR / "dnsmasq.leases"
 
+# wpa_supplicant's control sockets (NetworkManager starts it with -O here).
+WPA_CTRL_DIR = _env("APSTA_WPA_CTRL_DIR", "/run/wpa_supplicant")
+
 # NetworkManager reads volatile keyfiles from /run too, so nmcli-mode
 # connections disappear on reboot instead of accumulating in /etc.
 NM_RUNTIME_KEYFILE_DIR = _env("APSTA_NM_KEYFILE_DIR", "/run/NetworkManager/system-connections")

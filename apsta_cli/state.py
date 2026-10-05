@@ -26,11 +26,13 @@ class HotspotState:
     same_channel_required: bool
     sta_ssid_at_start: Optional[str] = None
     started_at: str = ""
-    # hostapd strategy
+    # hostapd and p2p strategies
     subnet: Optional[str] = None
     gateway: Optional[str] = None
     supervisor: Optional[str] = None
     firewall: Dict = field(default_factory=dict)
+    # p2p strategy: wpa_supplicant's network id for the group
+    p2p_network: Optional[int] = None
     # nmcli strategies
     connection_id: Optional[str] = None
     # client management

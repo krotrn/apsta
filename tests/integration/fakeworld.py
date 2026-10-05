@@ -117,6 +117,8 @@ def iw(w, a):
         out = ["phy#0"]
         for name, i in w["ifaces"].items():
             out += [f"\tInterface {name}", f"\t\taddr {i['addr']}", f"\t\ttype {i['type']}"]
+            if i.get("ssid"):
+                out.append(f"\t\tssid {i['ssid']}")
         return "\n".join(out)
     if a[:1] == ["phy"] or a == ["list"]:
         return w["phy_info"]

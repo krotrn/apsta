@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument(
             "--method",
             default="auto",
-            choices=["auto", "hostapd", "nmcli", "nmcli-single"],
+            choices=["auto", "hostapd", "nmcli", "p2p", "nmcli-single"],
             help="Force a method (default: best available)",
         )
         p.add_argument(

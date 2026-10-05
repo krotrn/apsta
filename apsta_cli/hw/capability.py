@@ -25,6 +25,7 @@ class HardwareCapability:
     driver: str = ""
     chipset: str = ""
     ap_frequencies: List[int] = field(default_factory=list)  # MHz where an AP may be started
+    p2p_go_own_channel: bool = False  # a Wi-Fi Direct group can use another channel than the STA
 
     def to_dict(self) -> dict:
         return dict(self.__dict__)
@@ -46,6 +47,7 @@ def from_iw_text(iface: str, phy: Optional[str], iw_text: str) -> HardwareCapabi
         supported_modes=modes,
         combinations=[c.raw for c in parsed],
         ap_frequencies=combos.parse_ap_frequencies(iw_text),
+        p2p_go_own_channel="P2P-GO" in modes and "managed" in modes and combos.go_own_channel(parsed),
     )
 
 

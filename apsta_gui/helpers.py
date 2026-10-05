@@ -76,17 +76,18 @@ def capability_rows(detect: dict) -> list:
         ("Keep Wi-Fi while hosting", "Hotspot and Wi-Fi connection at the same time", cap.get("ap_sta")),
     ]
     if cap.get("ap_sta"):
-        rows.append(
-            (
-                "Independent channel",
-                "Hotspot may use a different channel than your Wi-Fi",
-                not cap.get("same_channel_required"),
-            )
-        )
+        p2p_ready = (detect.get("methods") or {}).get("p2p") == "ready"
+        own_channel = not cap.get("same_channel_required") or p2p_ready
+        subtitle = "Hotspot may use a different channel than your Wi-Fi"
+        if cap.get("same_channel_required") and own_channel:
+            subtitle += " (as a Wi-Fi Direct group)"
+        rows.append(("Independent channel", subtitle, bool(own_channel)))
     if "ap_frequencies" in cap:
         five_ghz = any(f >= 5000 for f in cap["ap_frequencies"])
         rows.append(("Hotspot on 5 GHz", "Some 5 GHz channels allow starting a network", five_ghz))
     for name, state in (detect.get("methods") or {}).items():
-        label = "hostapd (client management)" if name == "hostapd" else "NetworkManager"
+        label = {"hostapd": "hostapd (client management)", "p2p": "Wi-Fi Direct (own channel)"}.get(
+            name, "NetworkManager"
+        )
         rows.append((label, "Ready" if state == "ready" else state.capitalize(), state == "ready"))
     return rows

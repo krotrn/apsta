@@ -38,6 +38,7 @@ def isolate_paths(testcase, root: Optional[Path] = None) -> Path:
         "DNSMASQ_CONF": run / "dnsmasq.conf",
         "DNSMASQ_PID": run / "dnsmasq.pid",
         "DNSMASQ_LEASES": run / "dnsmasq.leases",
+        "WPA_CTRL_DIR": run / "wpa_supplicant",
         "NM_RUNTIME_KEYFILE_DIR": run / "NetworkManager",
         "NM_RUNTIME_CONF_DIR": run / "NetworkManager-conf.d",
         "LOG_PATH": root / "apsta.log",
@@ -101,3 +102,54 @@ def as_root(testcase) -> None:
     patcher = mock.patch("os.geteuid", return_value=0)
     patcher.start()
     testcase.addCleanup(patcher.stop)
+
+
+class FakeWpaSupplicant:
+    """A wpa_supplicant control socket on a thread: records commands, answers via ``handler``.
+
+    ``handler(command) -> reply``; the default accepts everything and hands
+    out network ids from 0.
+    """
+
+    def __init__(self, path: Path, handler: Optional[Callable[[str], str]] = None):
+        import socket
+        import threading
+
+        self.path = path
+        self.commands: List[str] = []
+        self.handler = handler or self.default
+        self._ids = 0
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self.sock.bind(str(path))
+        self.sock.settimeout(0.2)
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def default(self, command: str) -> str:
+        if command == "ADD_NETWORK":
+            self._ids += 1
+            return f"{self._ids - 1}\n"
+        return "OK\n"
+
+    def _serve(self) -> None:
+        while not self._stop.is_set():
+            try:
+                data, addr = self.sock.recvfrom(4096)
+            except OSError:
+                continue
+            command = data.decode()
+            self.commands.append(command)
+            reply = self.handler(command)
+            if reply is not None:
+                self.sock.sendto(reply.encode(), addr)
+
+    def close(self) -> None:
+        self._stop.set()
+        self._thread.join()
+        self.sock.close()
+
+    def install(self, testcase) -> FakeWpaSupplicant:
+        testcase.addCleanup(self.close)
+        return self

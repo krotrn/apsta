@@ -145,6 +145,16 @@ def parse_ap_frequencies(iw_text: str) -> List[int]:
     return allowed
 
 
+def go_own_channel(combinations: List[Combination]) -> bool:
+    """Can a Wi-Fi Direct group owner run beside the STA on a *different* channel?
+
+    Many cards that pin an AP to the STA's channel allow this (Intel lists
+    ``#{ managed } <= 1, #{ P2P-client, P2P-GO } <= 1 ... #channels <= 2``).
+    It is what Windows' Mobile Hotspot uses.
+    """
+    return any(c.channels >= 2 and c.allows({"managed": 1, "P2P-GO": 1}) for c in combinations)
+
+
 def evaluate(combinations: List[Combination]) -> ApStaSupport:
     """Pick the most capable combination that allows AP+STA, preferring multi-channel."""
     capable = [c for c in combinations if c.ap_sta]

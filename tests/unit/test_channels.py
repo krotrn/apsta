@@ -16,6 +16,10 @@ class FrequencyTests(unittest.TestCase):
         self.assertEqual(channels.from_freq(5825), Channel(165, "a"))
         self.assertEqual(channels.from_freq(5885), Channel(177, "a"))
 
+    def test_freq_round_trips(self):
+        for freq in (2412, 2437, 2484, 5180, 5640, 5825, 5955):
+            self.assertEqual(channels.from_freq(freq).freq, freq)
+
     def test_6ghz(self):
         self.assertEqual(channels.from_freq(5955), Channel(1, "6g"))
         self.assertEqual(channels.from_freq(6115), Channel(33, "6g"))

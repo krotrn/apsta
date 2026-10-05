@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Wi-Fi Direct fallback (method `p2p`), as Windows' Mobile Hotspot does: when
+  your WiFi is on a channel the card can't host on (radar/DFS channels 52–144,
+  such as campus networks, 5 GHz channels the firmware marks "no IR", or
+  6 GHz), cards that can run a Wi-Fi Direct group on a second channel (most
+  Intel cards) now give the hotspot a channel of its own instead of refusing.
+  Same name, password, DHCP and NAT as hostapd mode; the radio switches
+  between the two channels, so they share its speed. It goes through
+  NetworkManager's wpa_supplicant over its control socket, so the password is
+  never on a command line. `apsta detect` and the GUI show whether it's
+  available.
+
 ## [0.8.0] - 2026-10-05
 
 ### Added
