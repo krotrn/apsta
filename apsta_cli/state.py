@@ -31,8 +31,10 @@ class HotspotState:
     gateway: Optional[str] = None
     supervisor: Optional[str] = None
     firewall: Dict = field(default_factory=dict)
-    # p2p strategy: wpa_supplicant's network id for the group
-    p2p_network: Optional[int] = None
+    # p2p strategy: how wpa_supplicant was reached ("socket"/"dbus") and the
+    # group's network (an id or a D-Bus object path), for stop
+    p2p_backend: Optional[str] = None
+    p2p_network: Optional[str] = None
     # nmcli strategies
     connection_id: Optional[str] = None
     # client management

@@ -230,40 +230,15 @@ Pick whichever suits you:
 ## The Wi-Fi Direct fallback
 
 Many cards that pin a normal hotspot to the WiFi's channel can run a *Wi-Fi
-Direct group owner* on a second one. `iw phy` shows it as a combination
-with `P2P-GO` and `#channels <= 2`:
+Direct group owner* on a second one (most Intel cards). When the WiFi's
+channel can't host, apsta starts one through NetworkManager's wpa_supplicant
+(method `p2p`) on a channel the card allows, with your usual name and
+password. The radio switches between the two channels, so the hotspot and
+your WiFi share its speed; that's why apsta still prefers the same channel
+whenever it works.
 
-```
-* #{ managed } <= 1, #{ P2P-client, P2P-GO } <= 1, #{ P2P-device } <= 1, total <= 3, #channels <= 2
-* #{ managed } <= 1, #{ AP, P2P-client, P2P-GO } <= 1, #{ P2P-device } <= 1, total <= 3, #channels <= 1
-```
-
-Phones and laptops join a group owner like any WPA2 network, with your
-usual name and password. When the WiFi's channel can't host, apsta starts
-one through NetworkManager's wpa_supplicant (method `p2p`) on a channel the
-card allows, usually 2.4 GHz, and shares the connection as in hostapd mode:
-
-```
-$ iw dev | grep -E 'Interface|ssid|channel'
-        Interface p2p-wlo1-0
-                ssid apsta-hotspot
-                channel 6 (2437 MHz), width: 20 MHz       ← the hotspot
-        Interface wlo1
-                ssid NIT-Student
-                channel 128 (5640 MHz), width: 40 MHz     ← WiFi stays on a DFS channel
-```
-
-The trade-offs:
-
-- **Speed is shared.** One radio switches between the two channels, so the
-  hotspot and your own WiFi each get roughly half its airtime, with a little
-  more latency. That's why apsta still prefers the same channel whenever it
-  works.
-- **No allowlist or blocking.** `allowed_macs` and `apsta clients disconnect
-  --block` need hostapd mode. Listing and kicking clients work.
-- It needs NetworkManager's wpa_supplicant (the `p2p-dev-<interface>` socket
-  in `/run/wpa_supplicant`) and dnsmasq. `apsta detect` lists method `p2p`
-  as ready when both are there.
+[wifi-direct.md](wifi-direct.md) explains which cards and distributions
+support it, the trade-offs, and how it works.
 
 ## What apsta doesn't work around
 

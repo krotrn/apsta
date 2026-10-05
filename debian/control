@@ -32,6 +32,7 @@ Depends:
 Recommends:
  hostapd,
  dnsmasq,
+ python3-jeepney,
  iptables | nftables,
  pkexec | policykit-1,
  librsvg2-common

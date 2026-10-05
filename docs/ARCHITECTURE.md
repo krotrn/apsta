@@ -45,7 +45,8 @@ both directions. Real driver outputs live in `tests/fixtures/iw/`.
 `net/strategies.py` holds four implementations of one interface
 (`unavailable`, `start(ctx, tx)`, `stop(state)`): `hostapd`, `nmcli`
 (virtual interface), `p2p` (a Wi-Fi Direct group owner through
-wpa_supplicant's control socket, `net/wpa.py`) and `nmcli-single`. `services/hotspot.start` tries them
+wpa_supplicant, `net/wpa.py`: its control socket, or D-Bus where there is no
+socket; see [wifi-direct.md](wifi-direct.md)) and `nmcli-single`. `services/hotspot.start` tries them
 in order. Each `start` registers an undo step with the `Transaction` after
 every side effect, so a failure part-way rolls back to a clean system before
 the next strategy is tried.

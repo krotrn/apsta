@@ -64,8 +64,12 @@ def methods(cap: Optional[capability.HardwareCapability] = None) -> dict:
     if cap is not None and cap.p2p_go_own_channel:
         if not shell.have("dnsmasq"):
             found["p2p"] = "needs dnsmasq"
-        elif not wpa.available(cap.interface):
-            found["p2p"] = "needs wpa_supplicant (NetworkManager's)"
+        elif wpa.connect(cap.interface) is None:
+            found["p2p"] = (
+                "needs python3-jeepney (wpa_supplicant has no control socket here)"
+                if not wpa.jeepney_installed()
+                else "needs wpa_supplicant (NetworkManager may be using iwd)"
+            )
         else:
             found["p2p"] = "ready"
     return found

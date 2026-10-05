@@ -93,7 +93,8 @@ sudo ./install.sh --uninstall  # removes it again
 
 Runtime requirements: Python ≥ 3.10, NetworkManager, `iw`, `iproute2`.
 Recommended: `hostapd` + `dnsmasq` (needed for client management), and one of
-`iptables`/`nftables`/`firewalld`. Desktop app: see [Desktop app](#desktop-app).
+`iptables`/`nftables`/`firewalld`. On Fedora, openSUSE, Alpine and Void, the
+Python library `jeepney` enables the [Wi-Fi Direct fallback](docs/wifi-direct.md). Desktop app: see [Desktop app](#desktop-app).
 
 > **pipx/pip users:** `sudo` can't see `~/.local/bin`. Install system-wide
 > with `sudo pipx install --global apsta` (pipx ≥ 1.5), or use the packages above.
@@ -248,8 +249,9 @@ channel as your WiFi. apsta reads it from the live connection. Some channels
 can't host a hotspot: radar (DFS) channels 52–144, 6 GHz, and 5 GHz channels
 the card's firmware blocks. On cards that can run a Wi-Fi Direct group on a
 second channel (most Intel cards) apsta then gives the hotspot a channel of
-its own; the radio switches between the two, so they share its speed. On
-other cards it refuses with an explanation; see
+its own; the radio switches between the two, so they share its speed. See
+[docs/wifi-direct.md](docs/wifi-direct.md) for which cards and distributions
+support it. On other cards apsta refuses with an explanation; see
 [docs/5ghz-wifi.md](docs/5ghz-wifi.md).
 The hotspot follows the connection when it changes channel (on systemd,
 also when started with `apsta start` or the GUI).
@@ -260,7 +262,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
 
 - **Won't start while connected to a 5 GHz network** (e.g. a phone hotspot
   or a campus network on a DFS channel)? Your card can't host on that channel
-  and has no Wi-Fi Direct fallback (`apsta detect` shows whether it does).
+  and has no [Wi-Fi Direct fallback](docs/wifi-direct.md) (`apsta detect`
+  shows whether it does, and what's missing).
   Switch the network to 2.4 GHz, or see [docs/5ghz-wifi.md](docs/5ghz-wifi.md)
   for why and the other fixes.
 - `APSTA_DEBUG=1 sudo apsta start` prints every step; privileged runs also log

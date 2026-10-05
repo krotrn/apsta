@@ -102,7 +102,7 @@ class AvailabilityTests(unittest.TestCase):
         c = ctx()
         self.assertIn("own", strategies.P2pStrategy().unavailable(c))
         c.capability.p2p_go_own_channel = True
-        self.assertIn("p2p-dev-wlo1", strategies.P2pStrategy().unavailable(c))
+        self.assertIn("wpa_supplicant", strategies.P2pStrategy().unavailable(c))
         FakeWpaSupplicant(paths.WPA_CTRL_DIR / "p2p-dev-wlo1").install(self)
         self.assertIsNone(strategies.P2pStrategy().unavailable(c))
         c.allowed_macs = ["aa:bb:cc:dd:ee:ff"]

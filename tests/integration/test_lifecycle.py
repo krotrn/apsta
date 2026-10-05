@@ -9,9 +9,10 @@ import unittest
 from pathlib import Path
 
 from apsta_cli.core import paths
+from apsta_cli.net import wpa
 from tests.integration import fakeworld
 from tests.integration.base import FakeWorldTestCase
-from tests.support import FakeWpaSupplicant
+from tests.support import FakeBus, FakeWpaSupplicant
 
 PHONE = "aa:bb:cc:dd:ee:ff"
 
@@ -207,7 +208,7 @@ class DfsTests(FakeWorldTestCase):
         code, _, err = self.apsta("start")
         self.assertEqual(code, 1)
         self.assertIn("DFS channel 100", err)
-        self.assertIn("p2p: wpa_supplicant has no Wi-Fi Direct device", err)
+        self.assertIn("p2p: wpa_supplicant", err)  # no socket, and no D-Bus service either
         self.assertNotIn("wlo1_ap", self.world["ifaces"])
 
 
@@ -266,6 +267,7 @@ class WifiDirectTests(FakeWorldTestCase):
         self.assertNotIn("p2p-wlo1-0", self.world["ifaces"])
         self.assertIn("P2P_GROUP_REMOVE p2p-wlo1-0", self.wpa.commands)
         self.assertIn("REMOVE_NETWORK 0", self.wpa.commands)
+        self.assertEqual(self.wpa.networks, {})  # wpa_supplicant's own copy of the group is gone too
         self.assertEqual(self.world["iptables"], [])
         self.assertIsNone(self.state())
 
@@ -284,6 +286,51 @@ class WifiDirectTests(FakeWorldTestCase):
         self.assertEqual(data["verdict"]["level"], "ok")
         self.assertEqual(data["methods"]["p2p"], "ready")
         self.assertTrue(data["capability"]["p2p_go_own_channel"])
+
+
+@unittest.skipUnless(wpa.jeepney_installed(), "needs the jeepney D-Bus library")
+class WifiDirectOverDBusTests(FakeWorldTestCase):
+    """Same case on a distribution without the control socket (Fedora, openSUSE, Alpine, Void)."""
+
+    link = {"ssid": "NIT-Student", "freq": 5640}
+
+    def setUp(self):
+        super().setUp()
+        self.bus = FakeBus(self.answer).install(self)
+        self.ssid = None
+
+    def answer(self, path, member, body):
+        sysfs = paths.SYSFS_NET / "p2p-wlo1-0"
+        data = self.world
+        if member == "AddPersistentGroup":
+            self.ssid = body[0]["ssid"][1].decode()
+        if member == "GroupAdd":
+            data["ifaces"]["p2p-wlo1-0"] = {"type": "P2P-GO", "addr": "e4:00:00:00:00:02", "link": None}
+            data["ifaces"]["p2p-wlo1-0"]["ssid"] = self.ssid
+            sysfs.mkdir(parents=True, exist_ok=True)
+            (sysfs / "operstate").write_text("up\n")
+        if member == "Disconnect" and path == self.bus.iface_path("p2p-wlo1-0"):
+            data["ifaces"].pop("p2p-wlo1-0", None)
+            for child in sysfs.glob("*"):
+                child.unlink()
+            sysfs.rmdir()
+        (self.root / "world.json").write_text(json.dumps(data))
+        return self.bus.default(path, member, body)
+
+    def test_hotspot_runs_on_its_own_channel(self):
+        code, _, err = self.apsta("start")
+        self.assertEqual(code, 0, err)
+        st = self.state()
+        self.assertEqual((st.method, st.p2p_backend, st.ap_interface, st.channel), ("p2p", "dbus", "p2p-wlo1-0", 6))
+        self.assertEqual(st.p2p_network, "/fi/w1/wpa_supplicant1/Interfaces/0/PersistentGroups/0")
+        self.assertEqual(self.bus.members(), ["GetInterface", "AddPersistentGroup", "GetInterface", "GroupAdd"])
+
+        code, _, err = self.apsta("stop")
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("p2p-wlo1-0", self.world["ifaces"])
+        self.assertIn("Disconnect", self.bus.members())
+        self.assertEqual(self.bus.groups, {})  # apsta's group and wpa_supplicant's copy
+        self.assertEqual(self.world["iptables"], [])
 
 
 class NoIrChannelTests(FakeWorldTestCase):

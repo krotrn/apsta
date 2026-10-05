@@ -59,7 +59,7 @@ Current hotspot, connected devices and configuration. Works without root.
 | ------------- | ------- |
 | `active`      | A hotspot is running and healthy. |
 | `stale`       | A hotspot was recorded but is gone (crash, driver reset). The next `start` cleans it up. |
-| `hotspot`     | The running hotspot, or `null`. `method` is `hostapd`, `nmcli`, `p2p` or `nmcli-single`. `band` is `bg` (2.4 GHz) or `a` (5 GHz). `subnet`/`gateway`/`firewall`/`supervisor` are set in hostapd and p2p mode (`p2p_network` too in p2p mode), `connection_id` in nmcli modes. `firewall` and `client_limits` are internal bookkeeping for `stop`; don't rely on their contents. |
+| `hotspot`     | The running hotspot, or `null`. `method` is `hostapd`, `nmcli`, `p2p` or `nmcli-single`. `band` is `bg` (2.4 GHz) or `a` (5 GHz). `subnet`/`gateway`/`firewall`/`supervisor` are set in hostapd and p2p mode (`p2p_backend` and `p2p_network` too in p2p mode), `connection_id` in nmcli modes. `firewall` and `client_limits` are internal bookkeeping for `stop`; don't rely on their contents. |
 | `clients`     | Currently associated devices (not stale DHCP leases). `ip` and `hostname` may be empty. |
 | `interfaces`  | WiFi interfaces. `type` is the nl80211 interface type (`managed`, `AP`, …). |
 | `autostart`   | `init` is `systemd`, `openrc`, `runit` or `unknown`. `enabled`/`running` are `null` when unknown. |

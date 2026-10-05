@@ -28,11 +28,14 @@ dependencies = []
 [project.optional-dependencies]
 # The GUI also needs PyGObject + GTK4 + libadwaita from the distribution.
 gui = ["qrcode[pil]>=7.4"]  # distro packages: Ubuntu 22.04 ships 7.3
+# Wi-Fi Direct hotspots on distributions whose wpa_supplicant has no control
+# socket (Fedora, openSUSE, Alpine, Void): apsta talks to it over D-Bus.
+p2p = ["jeepney>=0.7"]
 
 # Development tools (PEP 735): `uv sync` installs them automatically;
 # with pip >= 25.1: `pip install -e . --group dev`. Or just `make dev`.
 [dependency-groups]
-dev = ["coverage[toml]>=7.16", "ruff>=0.16"]
+dev = ["coverage[toml]>=7.16", "ruff>=0.16", "jeepney>=0.7"]
 
 [project.urls]
 Homepage = "https://github.com/krotrn/apsta"

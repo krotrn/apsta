@@ -15,6 +15,7 @@ depends=(
   'pciutils'
 )
 makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+checkdepends=('python-jeepney')
 optdepends=(
   'hostapd: AP+STA on split-combination cards such as Intel AX200'
   'dnsmasq: DHCP for hotspot clients in hostapd mode'
@@ -25,6 +26,7 @@ optdepends=(
   'polkit: privileged actions from apsta-gtk'
   'python-qrcode: QR codes in apsta-gtk'
   'python-pillow: QR codes in apsta-gtk'
+  'python-jeepney: Wi-Fi Direct hotspot when wpa_supplicant has no control socket'
 )
 install=apsta.install
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")

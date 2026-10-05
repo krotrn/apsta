@@ -14,10 +14,14 @@ All notable changes to this project are documented here. The format follows
   6 GHz), cards that can run a Wi-Fi Direct group on a second channel (most
   Intel cards) now give the hotspot a channel of its own instead of refusing.
   Same name, password, DHCP and NAT as hostapd mode; the radio switches
-  between the two channels, so they share its speed. It goes through
-  NetworkManager's wpa_supplicant over its control socket, so the password is
-  never on a command line. `apsta detect` and the GUI show whether it's
-  available.
+  between the two channels, so they share its speed. apsta asks
+  NetworkManager's wpa_supplicant for the group through its control socket
+  (Arch, Debian, Ubuntu) or over D-Bus with the Python library jeepney
+  (Fedora, openSUSE, Alpine, Void); the password is never on a command line.
+  `apsta detect` and the GUI show whether it's available and what's missing.
+  See [docs/wifi-direct.md](docs/wifi-direct.md).
+- Optional dependency `jeepney` (`pip install "apsta[p2p]"`; recommended by
+  the .deb, optional on Arch).
 
 ## [0.8.0] - 2026-10-05
 

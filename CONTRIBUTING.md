@@ -17,6 +17,9 @@ add a regression test (`tests/fixtures/iw/`).
 To test a checkout on real hardware, `sudo scripts/hardware_check.sh` starts
 the hotspot, keeps it up while you join from a phone, stops it, checks the
 system was restored, and writes `/tmp/apsta-hardware-report.txt` to attach.
+`sudo METHOD=p2p scripts/hardware_check.sh` tests the Wi-Fi Direct method on
+its own; reports from cards and distributions not yet listed in
+[docs/wifi-direct.md](docs/wifi-direct.md) are especially welcome.
 
 ## Development setup
 

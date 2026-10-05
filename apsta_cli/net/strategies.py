@@ -241,25 +241,29 @@ class P2pStrategy(Strategy):
             return "the card can't run a Wi-Fi Direct group on a channel of its own"
         if not shell.have("dnsmasq"):
             return "dnsmasq not installed"
-        if not wpa.available(ctx.base.name):
-            return f"wpa_supplicant has no Wi-Fi Direct device for {ctx.base.name} (p2p-dev-{ctx.base.name})"
+        if wpa.connect(ctx.base.name) is None:
+            return wpa.missing_reason(ctx.base.name)
         return None
 
     def start(self, ctx: StartContext, tx: Transaction) -> HotspotState:
         paths.ensure_run_dir()
-        base, phy = ctx.base.name, ctx.base.phy
+        phy = ctx.base.phy
+        supplicant = wpa.connect(ctx.base.name)
+        if supplicant is None:
+            raise SetupError(wpa.missing_reason(ctx.base.name))
+        output.dbg("Reaching wpa_supplicant", backend=supplicant.kind)
         before = set(_group_interfaces(phy))
 
-        net_id = wpa.add_group_network(base, ctx.ssid, ctx.password, ctx.hidden)
-        tx.on_rollback("forget the Wi-Fi Direct network", lambda: wpa.remove_network(base, net_id))
+        network = supplicant.add_group_network(ctx.ssid, ctx.password, ctx.hidden)
+        tx.on_rollback("forget the Wi-Fi Direct network", lambda: supplicant.forget(network, ctx.ssid))
 
         def remove_groups() -> None:
             for name in set(_group_interfaces(phy)) - before:
-                wpa.remove_group(base, name)
+                supplicant.remove_group(name)
                 if iface.exists(name):
                     iface.delete(name)
 
-        wpa.start_group(base, net_id, ctx.channel.freq)
+        supplicant.start_group(network, ctx.channel.freq)
         tx.on_rollback("stop the Wi-Fi Direct group", remove_groups)
         ap = _wait_for_group(phy, before)
         if ap is None:
@@ -269,7 +273,8 @@ class P2pStrategy(Strategy):
         state = self._base_state(ctx, ap)
         # The group keeps its channel wherever the WiFi goes: nothing to follow.
         state.same_channel_required = False
-        state.p2p_network = net_id
+        state.p2p_backend = supplicant.kind
+        state.p2p_network = network
         share_connection(ap, tx, state)
         if ctx.sta_ssid:
             output.info(
@@ -280,12 +285,13 @@ class P2pStrategy(Strategy):
 
     def stop(self, state: HotspotState) -> None:
         unshare_connection(state)
-        base = state.base_interface
-        wpa.remove_group(base, state.ap_interface)
+        supplicant = wpa.connect(state.base_interface, state.p2p_backend)
+        if supplicant is not None:
+            supplicant.remove_group(state.ap_interface)
         if iface.exists(state.ap_interface):
-            iface.delete(state.ap_interface)
-        if state.p2p_network is not None:
-            wpa.remove_network(base, state.p2p_network)
+            iface.delete(state.ap_interface)  # wpa_supplicant gone or refused: remove it ourselves
+        if supplicant is not None and state.p2p_network is not None:
+            supplicant.forget(state.p2p_network, state.ssid)
 
     @staticmethod
     def daemons_running(state: HotspotState) -> bool:

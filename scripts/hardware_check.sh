@@ -3,6 +3,7 @@
 # phone, stop it, and verify that everything was cleaned up.
 #
 #   sudo scripts/hardware_check.sh [SECONDS]     # default: keep it up 60 s
+#   sudo METHOD=p2p scripts/hardware_check.sh    # test one method (here Wi-Fi Direct)
 #
 # Runs the apsta in this checkout. Writes a report to $REPORT
 # (default /tmp/apsta-hardware-report.txt) that you can attach to an issue.
@@ -10,6 +11,8 @@
 set -uo pipefail
 
 HOLD=${1:-60}
+START_ARGS=()
+[[ -n ${METHOD:-} ]] && START_ARGS=(--method "$METHOD")
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 REPORT=${REPORT:-/tmp/apsta-hardware-report.txt}
 apsta() { python3 "$REPO/apsta.py" "$@"; }
@@ -66,12 +69,12 @@ snapshot > /tmp/apsta-before.$$
 cat /tmp/apsta-before.$$
 
 section "start"
-if APSTA_DEBUG=1 apsta start; then
+if APSTA_DEBUG=1 apsta start "${START_ARGS[@]}"; then
     STARTED=1
 else
     echo "START FAILED (exit $?)"
     section "logs"
-    journalctl -u apsta-hostapd -u apsta-dnsmasq -n 60 --no-pager 2>/dev/null
+    journalctl -u apsta-hostapd -u apsta-dnsmasq -u wpa_supplicant -n 60 --no-pager 2>/dev/null
     tail -n 40 /var/log/apsta.log 2>/dev/null
     exit 1
 fi
