@@ -75,6 +75,46 @@ class ControlSocketTests(unittest.TestCase):
         self.assertEqual([n["ssid"] for n in self.wpa.networks.values()], [b"Other".hex()])
         self.assertEqual(self.sup.persistent_groups("Cafe"), [])
 
+    def test_unprivileged_callers_see_the_directory(self):
+        # /run/wpa_supplicant is root-only: `apsta detect` can't stat the socket inside.
+        with mock.patch("pathlib.Path.is_socket", side_effect=PermissionError):
+            self.assertTrue(wpa.socket_available("wlo1"))  # the directory exists in this test
+            with mock.patch.object(paths, "WPA_CTRL_DIR", paths.RUN_DIR / "absent"):
+                self.assertFalse(wpa.socket_available("wlo1"))
+
+    def test_unsolicited_events_before_the_reply_are_skipped(self):
+        replies = iter(["<3>P2P-DEVICE-FOUND 02:00:00:00:00:01", "<3>CTRL-EVENT-SCAN-STARTED", "OK"])
+        self.wpa.handler = lambda command: None  # answer by hand below
+        self.wpa.sock.close()
+        import socket as socketlib
+        import threading
+
+        server = socketlib.socket(socketlib.AF_UNIX, socketlib.SOCK_DGRAM)
+        (paths.WPA_CTRL_DIR / "p2p-dev-wlo1").unlink()
+        server.bind(str(paths.WPA_CTRL_DIR / "p2p-dev-wlo1"))
+        self.addCleanup(server.close)
+
+        def answer():
+            _, addr = server.recvfrom(4096)
+            for reply in replies:
+                server.sendto(reply.encode(), addr)
+
+        threading.Thread(target=answer, daemon=True).start()
+        self.assertEqual(wpa.request("wlo1", "PING"), "OK")
+
+    def test_refused_network_adds_nothing_more(self):
+        self.refuse = {"ADD_NETWORK"}
+        with self.assertRaises(SetupError) as raised:
+            self.sup.add_group_network("Cafe", "secret123")
+        self.assertIn("refused to add a network (FAIL)", raised.exception.message)
+        self.assertEqual(self.wpa.commands, ["ADD_NETWORK"])
+
+    def test_teardown_survives_a_vanished_supplicant(self):
+        gone = wpa.ControlSocket("wlan9")  # no socket at all
+        self.assertFalse(gone.remove_group("p2p-wlan9-0"))
+        self.assertEqual(gone.persistent_groups("Cafe"), [])
+        gone.forget("0", "Cafe")  # must not raise
+
     def test_ssid_matches(self):
         self.assertTrue(wpa.ssid_matches('"Cafe"', "Cafe"))
         self.assertTrue(wpa.ssid_matches("436166c3a9", "Café"))  # non-ASCII names come back as hex
@@ -135,6 +175,24 @@ class DBusTests(unittest.TestCase):
         self.sup.forget(network, "Cafe")
         self.assertEqual(list(self.bus.groups), [other])
 
+    def test_teardown_survives_refusals(self):
+        self.refuse = {"RemovePersistentGroup", "Get"}
+        self.assertFalse(self.sup.remove_network("/x"))
+        self.assertEqual(self.sup.persistent_groups("Cafe"), [])
+        self.sup.forget("/x", "Cafe")  # must not raise
+
+    def test_unreachable_or_silent_bus(self):
+        with mock.patch.object(wpa, "_connect", side_effect=OSError("no system bus")):
+            with self.assertRaises(SetupError) as raised:
+                self.sup.start_group("/x", 2437)
+            self.assertIn("Can't reach the system D-Bus", raised.exception.message)
+        silent = mock.Mock(send_and_get_reply=mock.Mock(side_effect=TimeoutError("timed out")))
+        with mock.patch.object(wpa, "_connect", return_value=silent):
+            with self.assertRaises(SetupError) as raised:
+                self.sup.start_group("/x", 2437)
+            self.assertIn("didn't answer GetInterface", raised.exception.message)
+        silent.close.assert_called()  # the connection is closed either way
+
     def test_raw_key_goes_as_bytes(self):
         call = wpa.add_persistent_group_call("/i", "x", "ab" * 32, False)
         self.assertEqual(call[4][0]["psk"], ("ay", bytes.fromhex("ab" * 32)))
@@ -157,6 +215,32 @@ class DBusTests(unittest.TestCase):
         ):
             address = DBusAddress(path, bus_name=wpa.BUS_NAME, interface=interface)
             self.assertTrue(new_method_call(address, method, signature, body).serialise(serial=1))
+
+
+@unittest.skipUnless(wpa.jeepney_installed(), "needs the jeepney D-Bus library")
+class DBusAvailableTests(unittest.TestCase):
+    """The unprivileged check behind `apsta detect`: does wpa_supplicant own its D-Bus name?"""
+
+    def check(self, owner=True, connect_error=None, call_error=None):
+        from jeepney import new_method_return
+
+        conn = mock.Mock()
+        conn.send_and_get_reply.side_effect = call_error or (
+            lambda msg, timeout=None: new_method_return(msg, "b", (owner,))
+        )
+        with mock.patch.object(wpa, "_connect", side_effect=connect_error, return_value=conn):
+            result = wpa.dbus_available()
+        if connect_error is None:
+            conn.close.assert_called_once()
+        return result
+
+    def test_answers(self):
+        self.assertTrue(self.check(owner=True))
+        self.assertFalse(self.check(owner=False))  # wpa_supplicant not running (iwd, or stopped)
+        self.assertFalse(self.check(connect_error=OSError("no bus")))
+        self.assertFalse(self.check(call_error=TimeoutError()))
+        with mock.patch.object(wpa, "jeepney_installed", return_value=False):
+            self.assertFalse(wpa.dbus_available())
 
 
 class ChoosingTests(unittest.TestCase):

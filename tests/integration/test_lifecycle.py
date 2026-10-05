@@ -6,10 +6,12 @@ import stat
 import subprocess
 import sys
 import unittest
+import unittest.mock as mock
 from pathlib import Path
 
 from apsta_cli.core import paths
-from apsta_cli.net import wpa
+from apsta_cli.core.errors import SetupError
+from apsta_cli.net import strategies, wpa
 from tests.integration import fakeworld
 from tests.integration.base import HOME_24GHZ, FakeWorldTestCase
 from tests.support import FakeBus, FakeWpaSupplicant
@@ -221,6 +223,7 @@ class WifiDirectWorld(FakeWorldTestCase):
         super().setUp()
         self.refuse = set()
         self.ssid = None
+        self.no_group = False  # accept P2P_GROUP_ADD but never create the interface
         self.wpa = FakeWpaSupplicant(paths.WPA_CTRL_DIR / "p2p-dev-wlo1", self.answer).install(self)
 
     def answer(self, command):
@@ -231,7 +234,7 @@ class WifiDirectWorld(FakeWorldTestCase):
         if verb == "SET_NETWORK" and args[1] == "ssid":
             self.ssid = bytes.fromhex(args[2]).decode()
         sysfs = paths.SYSFS_NET / "p2p-wlo1-0"
-        if verb == "P2P_GROUP_ADD":
+        if verb == "P2P_GROUP_ADD" and not self.no_group:
             data = self.world
             data["ifaces"]["p2p-wlo1-0"] = {"type": "P2P-GO", "addr": "e4:00:00:00:00:02", "link": None}
             data["ifaces"]["p2p-wlo1-0"]["ssid"] = self.ssid
@@ -289,11 +292,69 @@ class WifiDirectTests(WifiDirectWorld):
         self.assertEqual(self.world["iptables"], [])
         self.assertIsNone(self.state())
 
+    def test_group_that_never_appears_is_rolled_back(self):
+        self.no_group = True
+        wait = strategies._wait_for_group
+        with mock.patch.object(strategies, "_wait_for_group", lambda phy, before: wait(phy, before, timeout=0)):
+            code, _, err = self.apsta("start")
+        self.assertEqual(code, 1)
+        self.assertIn("didn't start the Wi-Fi Direct group", err)
+        self.assertEqual(self.wpa.networks, {})  # apsta's network and wpa_supplicant's copy
+        self.assertEqual(self.world["iptables"], [])
+        self.assertIsNone(self.state())
+
+    def test_failure_after_the_group_started_removes_it(self):
+        with mock.patch.object(strategies, "share_connection", side_effect=SetupError("dnsmasq failed")):
+            code, _, err = self.apsta("start")
+        self.assertEqual(code, 1)
+        self.assertIn("P2P_GROUP_REMOVE p2p-wlo1-0", self.wpa.commands)
+        self.assertNotIn("p2p-wlo1-0", self.world["ifaces"])
+        self.assertEqual(self.wpa.networks, {})
+        self.assertIsNone(self.state())
+
+    def test_stop_after_wpa_supplicant_went_away(self):
+        self.assertEqual(self.apsta("start")[0], 0)
+        self.wpa.close()
+        (paths.WPA_CTRL_DIR / "p2p-dev-wlo1").unlink()  # e.g. NetworkManager restarted it
+        code, _, err = self.apsta("stop")
+        self.assertEqual(code, 0, err)
+        self.assertNotIn("p2p-wlo1-0", self.world["ifaces"])  # removed with iw instead
+        self.assertEqual(self.world["iptables"], [])
+        self.assertIsNone(self.state())
+
     def test_detect_says_it_works(self):
         data = self.apsta_json("detect", "--json")
         self.assertEqual(data["verdict"]["level"], "ok")
         self.assertEqual(data["methods"]["p2p"], "ready")
         self.assertTrue(data["capability"]["p2p_go_own_channel"])
+
+
+class NoWifiDirectCardTests(FakeWorldTestCase):
+    """A card that can't run Wi-Fi Direct on a second channel, on a DFS network: explain, touch nothing."""
+
+    phy = "iw/intel_no_p2p_channel.txt"
+    link = {"ssid": "NIT-Student", "freq": 5640}
+
+    def test_refused_with_the_channel_explanation(self):
+        code, _, err = self.apsta("start")
+        self.assertEqual(code, 1)
+        self.assertIn("DFS channel 128", err)
+        self.assertIn("channel 36–48 or 149–165", err)
+        self.assertEqual(self.world["iptables"], [])
+        self.assertIsNone(self.state())
+
+    def test_forcing_wifi_direct_is_refused_too(self):
+        self.apsta("config", "--set", "method=p2p")
+        code, _, err = self.apsta("start")
+        self.assertEqual(code, 1)
+        self.assertIn("p2p: the card can't run a Wi-Fi Direct group on a channel of its own", err)
+
+    def test_detect(self):
+        data = self.apsta_json("detect", "--json")
+        self.assertFalse(data["capability"]["p2p_go_own_channel"])
+        self.assertNotIn("p2p", data["methods"])
+        self.assertEqual(data["verdict"]["level"], "warn")
+        self.assertIn("channel 128, where this card can't host", data["verdict"]["warnings"][0])
 
 
 class ChoicesTests(WifiDirectWorld):
@@ -332,6 +393,14 @@ class ChoicesTests(WifiDirectWorld):
         self.assertEqual(self.state().channel, 6)
         self.assertIn("the same as your WiFi's, so the radio doesn't have to switch", out)
         self.assertNotIn("share its speed", out)
+        self.apsta("stop")
+
+    def test_channel_setting_while_sharing_the_wifis_channel_is_explained(self):
+        self.apsta("config", "--set", "channel=11")
+        code, out, err = self.apsta("start")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.state().channel, 6)
+        self.assertIn("Your channel setting (11) is not used: the hotspot shares your WiFi's channel.", out)
         self.apsta("stop")
 
     def test_blocked_channel_setting_is_explained(self):

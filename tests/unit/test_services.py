@@ -413,3 +413,17 @@ class AutostartTests(unittest.TestCase):
         self.assertTrue(autostart.info("openrc")["enabled"])
         self.assertIsNone(autostart.info("runit")["enabled"])
         self.assertIn(autostart.detect_init(), ("systemd", "openrc", "runit", "unknown"))
+
+    def test_detect_init(self):
+        from pathlib import Path
+
+        from apsta_cli.services import autostart
+
+        for present, expected in (
+            ({"/run/systemd/system"}, "systemd"),
+            ({"/run/openrc"}, "openrc"),
+            ({"/etc/runit"}, "runit"),
+            (set(), "unknown"),
+        ):
+            with mock.patch.object(Path, "is_dir", lambda self, p=present: str(self) in p):
+                self.assertEqual(autostart.detect_init(), expected)

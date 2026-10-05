@@ -105,6 +105,8 @@ class AvailabilityTests(unittest.TestCase):
         self.assertIn("wpa_supplicant", strategies.P2pStrategy().unavailable(c))
         FakeWpaSupplicant(paths.WPA_CTRL_DIR / "p2p-dev-wlo1").install(self)
         self.assertIsNone(strategies.P2pStrategy().unavailable(c))
+        with mock.patch("apsta_cli.core.shell.which", return_value=None):
+            self.assertEqual(strategies.P2pStrategy().unavailable(c), "dnsmasq not installed")
         c.allowed_macs = ["aa:bb:cc:dd:ee:ff"]
         self.assertIn("allowed_macs needs hostapd", strategies.P2pStrategy().unavailable(c))
 
