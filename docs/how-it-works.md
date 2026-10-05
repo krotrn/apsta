@@ -187,5 +187,5 @@ The same notes go to `/var/log/apsta.log`.
 | `p2p` "needs python3-jeepney" in `apsta detect` | Your distribution needs one small library for Wi-Fi Direct | Install `python3-jeepney` (or your distribution's name for it) |
 | Hotspot slower than expected | Wi-Fi Direct mode is sharing the radio | Connect to a network on a channel your card can host on |
 
-More help: [README troubleshooting](../README.md#troubleshooting),
+More help: [README troubleshooting](https://github.com/krotrn/apsta#troubleshooting),
 [5ghz-wifi.md](5ghz-wifi.md), [wifi-direct.md](wifi-direct.md).

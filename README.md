@@ -1,14 +1,26 @@
-# apsta
+# apsta: Linux Wi-Fi hotspot that keeps your Wi-Fi connected
 
 **Run a WiFi hotspot on Linux while staying connected to WiFi.**
 
 [![CI](https://github.com/krotrn/apsta/actions/workflows/ci.yml/badge.svg)](https://github.com/krotrn/apsta/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/apsta)](https://pypi.org/project/apsta/)
+[![Python](https://img.shields.io/pypi/pyversions/apsta)](https://pypi.org/project/apsta/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/krotrn/apsta/blob/main/LICENSE)
+
+apsta is a command-line tool and GTK 4 desktop app for Linux that shares your
+internet over a Wi-Fi hotspot while the same Wi-Fi card stays connected to
+your Wi-Fi network (AP+STA mode). It works with NetworkManager, hostapd and
+dnsmasq on Ubuntu, Debian, Fedora, Arch and other distributions.
 
 `nmcli device wifi hotspot` takes over your WiFi card and drops your
 connection. Most modern cards can actually be a client and an access point at
 the same time ("AP+STA"). apsta finds out whether yours can, sets the hotspot
 up the right way for it, keeps it healthy, and cleans up completely when you
 stop it.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/hotspot.png" alt="apsta desktop app: hotspot running while Wi-Fi stays connected" width="300">
+</p>
 
 ```
 $ apsta detect
@@ -94,12 +106,10 @@ sudo ./install.sh --uninstall  # removes it again
 Runtime requirements: Python ≥ 3.10, NetworkManager, `iw`, `iproute2`.
 Recommended: `hostapd` + `dnsmasq` (needed for client management), and one of
 `iptables`/`nftables`/`firewalld`. On Fedora, openSUSE, Alpine and Void, the
-Python library `jeepney` enables the [Wi-Fi Direct fallback](docs/wifi-direct.md). Desktop app: see [Desktop app](#desktop-app).
+Python library `jeepney` enables the [Wi-Fi Direct fallback](https://github.com/krotrn/apsta/blob/main/docs/wifi-direct.md). Desktop app: see [Desktop app](#desktop-app).
 
 > **pipx/pip users:** `sudo` can't see `~/.local/bin`. Install system-wide
 > with `sudo pipx install --global apsta` (pipx ≥ 1.5), or use the packages above.
-
-<a href="https://www.buymeacoffee.com/krotrn" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 ## Usage
 
@@ -137,7 +147,7 @@ Settings:
 | `ssid`, `password` | | The network's name and password |
 | `band` | `bg` (2.4 GHz), `a` (5 GHz) | Used whenever the hotspot has a channel of its own |
 | `channel` | `auto` (default) or a number | `auto` picks the least crowded channel the card allows |
-| `method` | `auto` (default), `hostapd`, `nmcli`, `p2p`, `nmcli-single` | How the hotspot runs. `p2p` (Wi-Fi Direct) always uses your band and channel, at the cost of shared speed ([details](docs/wifi-direct.md)) |
+| `method` | `auto` (default), `hostapd`, `nmcli`, `p2p`, `nmcli-single` | How the hotspot runs. `p2p` (Wi-Fi Direct) always uses your band and channel, at the cost of shared speed ([details](https://github.com/krotrn/apsta/blob/main/docs/wifi-direct.md)) |
 | `interface` | `auto` (default) or a name | Which WiFi card to use |
 | `hidden` | `yes`, `no` | Stop broadcasting the name; devices type it or scan the QR code |
 | `allowed_macs` | MAC list | Only these devices may join (see below) |
@@ -177,7 +187,7 @@ MAC; iPhone: *Private Wi-Fi Address*).
 ### Scripting
 
 `status`, `detect`, `config`, `clients` and `start` accept `--json`. See
-[docs/json-output.md](docs/json-output.md) for the keys and exit codes.
+[docs/json-output.md](https://github.com/krotrn/apsta/blob/main/docs/json-output.md) for the keys and exit codes.
 
 ```bash
 apsta status --json | jq -r '.clients[].ip'
@@ -186,12 +196,12 @@ apsta status --json | jq -r '.clients[].ip'
 ## Desktop app
 
 <p>
-  <img src="docs/screenshots/hotspot.png" alt="Hotspot tab" width="300">
-  <img src="docs/screenshots/devices.png" alt="Devices tab" width="300">
+  <img src="https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/hotspot.png" alt="Hotspot tab" width="300">
+  <img src="https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/devices.png" alt="Devices tab" width="300">
 </p>
 <p>
-  <img src="docs/screenshots/share.png" alt="Share dialog with QR code" width="300">
-  <img src="docs/screenshots/narrow.png" alt="Narrow window with tabs at the bottom" width="170">
+  <img src="https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/share.png" alt="Share dialog with QR code" width="300">
+  <img src="https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/narrow.png" alt="Narrow window with tabs at the bottom" width="170">
 </p>
 
 Open **Hotspot (apsta)** from your app menu, or run `apsta-gtk`.
@@ -266,23 +276,23 @@ can't host a hotspot: radar (DFS) channels 52–144, 6 GHz, and 5 GHz channels
 the card's firmware blocks. On cards that can run a Wi-Fi Direct group on a
 second channel (most Intel cards) apsta then gives the hotspot a channel of
 its own; the radio switches between the two, so they share its speed. See
-[docs/wifi-direct.md](docs/wifi-direct.md) for which cards and distributions
+[docs/wifi-direct.md](https://github.com/krotrn/apsta/blob/main/docs/wifi-direct.md) for which cards and distributions
 support it. On other cards apsta refuses with an explanation; see
-[docs/5ghz-wifi.md](docs/5ghz-wifi.md).
+[docs/5ghz-wifi.md](https://github.com/krotrn/apsta/blob/main/docs/5ghz-wifi.md).
 The hotspot follows the connection when it changes channel (on systemd,
 also when started with `apsta start` or the GUI).
 
-New to this? [docs/how-it-works.md](docs/how-it-works.md) explains it in plain
+New to this? [docs/how-it-works.md](https://github.com/krotrn/apsta/blob/main/docs/how-it-works.md) explains it in plain
 language, with the common problems and fixes. For the design, see
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+[docs/ARCHITECTURE.md](https://github.com/krotrn/apsta/blob/main/docs/ARCHITECTURE.md).
 
 ## Troubleshooting
 
 - **Won't start while connected to a 5 GHz network** (e.g. a phone hotspot
   or a campus network on a DFS channel)? Your card can't host on that channel
-  and has no [Wi-Fi Direct fallback](docs/wifi-direct.md) (`apsta detect`
+  and has no [Wi-Fi Direct fallback](https://github.com/krotrn/apsta/blob/main/docs/wifi-direct.md) (`apsta detect`
   shows whether it does, and what's missing).
-  Switch the network to 2.4 GHz, or see [docs/5ghz-wifi.md](docs/5ghz-wifi.md)
+  Switch the network to 2.4 GHz, or see [docs/5ghz-wifi.md](https://github.com/krotrn/apsta/blob/main/docs/5ghz-wifi.md)
   for why and the other fixes.
 - `APSTA_DEBUG=1 sudo apsta start` prints every step; privileged runs also log
   JSON lines to `/var/log/apsta.log`.
@@ -306,13 +316,88 @@ language, with the common problems and fixes. For the design, see
 If your card can't do AP+STA, `apsta recommend` suggests USB adapters with
 in-kernel drivers that can (MediaTek mt7921au, mt7612u, mt7610u, mt7925u).
 
+## Compared with other tools
+
+| | Keeps your Wi-Fi connected | Picks a mode for your card | Own channel when Wi-Fi is on a DFS / "no IR" channel | Undoes a failed start | GUI |
+| --- | --- | --- | --- | --- | --- |
+| **apsta** | yes, when the card supports AP+STA | yes (`apsta detect`) | yes, as a Wi-Fi Direct group (most Intel cards) | yes, step by step | GTK 4 |
+| `nmcli device wifi hotspot` / GNOME Settings hotspot | no, the card becomes the hotspot | no | no | n/a | GNOME Settings |
+| [create_ap](https://github.com/oblique/create_ap) | yes, with a virtual interface | partly | no | partly | no (archived in 2021) |
+| [linux-wifi-hotspot](https://github.com/lakinduakash/linux-wifi-hotspot) | yes, with a virtual interface | partly | no | partly | GTK 3 |
+| hostapd + dnsmasq by hand | if you set it up | you decide | you set it up | no | no |
+
+apsta also handles firewalld, iptables and nftables, picks a subnet that
+doesn't clash with your networks, follows your Wi-Fi when it changes
+channel, and survives suspend/resume.
+
+## Supported hardware
+
+Any card whose driver reports an AP+STA interface combination can run a
+hotspot while staying connected. `apsta detect` tells you for your card.
+
+| Card / chipset | Driver | Status |
+| --- | --- | --- |
+| Intel Wi-Fi 6 AX200, AX201 | `iwlwifi` (`iwlmvm`) | AP+STA on the Wi-Fi channel; Wi-Fi Direct fallback tested on AX201 |
+| Other Intel Wi-Fi 5/6/6E (7260 … AX211) | `iwlwifi` (`iwlmvm`) | Expected to work like the AX201 |
+| Intel Wi-Fi 7 (BE200 …) | `iwlwifi` (`iwlmld`) | Unknown, reports welcome |
+| MediaTek USB: mt7921au, mt7925u, mt7612u, mt7610u | `mt76` family | AP+STA (suggested by `apsta recommend`) |
+| Realtek, Qualcomm/Atheros, Broadcom | various | Depends on the driver; run `apsta detect` |
+
+Tried apsta on a card that isn't listed? Please
+[open a hardware report](https://github.com/krotrn/apsta/issues/new?template=hardware_report.yml)
+with `apsta detect --json`.
+
+## FAQ
+
+### How do I share Wi-Fi over Wi-Fi on Linux without disconnecting?
+
+Install apsta and run `sudo apsta start`. If your card supports AP+STA, the
+hotspot runs on a second, virtual interface and your Wi-Fi connection stays
+up. `apsta detect` tells you beforehand whether your card can.
+
+### Why does `nmcli device wifi hotspot` disconnect my Wi-Fi?
+
+NetworkManager's hotspot turns the card itself into an access point, so it
+can no longer be a client. apsta adds a separate access-point interface next
+to the client one instead.
+
+### How do I check if my Wi-Fi card supports AP+STA?
+
+Run `apsta detect`. It reads the driver's interface combinations (the same
+data as `iw phy phy0 info`) and says whether AP and client can run at the
+same time, and whether they must share a channel.
+
+### Can I run a 5 GHz hotspot while connected to Wi-Fi?
+
+On most laptop cards the hotspot must use the same channel as your Wi-Fi, so
+it's 5 GHz when your Wi-Fi is on 5 GHz. Radar (DFS) channels and channels the
+firmware blocks can't host a hotspot; on those, apsta uses a Wi-Fi Direct
+group on its own channel when the card supports it. See
+[5 GHz Wi-Fi](https://github.com/krotrn/apsta/blob/main/docs/5ghz-wifi.md).
+
+### Which distributions does it work on?
+
+Any Linux distribution with NetworkManager, `iw` and `iproute2`, and
+Python 3.10 or newer. There are packages for Ubuntu and Pop!\_OS (PPA) and
+Arch Linux, a package on PyPI, and an installer for everything else. CI
+tests Ubuntu 22.04 and 24.04, Debian 12, Fedora and Arch.
+
+### Is apsta an alternative to create_ap?
+
+Yes. create_ap was archived in September 2021 and is no longer maintained.
+apsta covers the same use case (a hotspot from a Wi-Fi card that stays
+connected) and adds capability detection, a Wi-Fi Direct fallback, full
+rollback and a desktop app.
+
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). The test
+Contributions are welcome. See [CONTRIBUTING.md](https://github.com/krotrn/apsta/blob/main/CONTRIBUTING.md). The test
 suite runs without root or WiFi hardware.
 
-Security issues: see [SECURITY.md](SECURITY.md).
+Security issues: see [SECURITY.md](https://github.com/krotrn/apsta/blob/main/SECURITY.md).
 
 ## License
 
 MIT
+
+<a href="https://www.buymeacoffee.com/krotrn" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>

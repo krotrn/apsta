@@ -8,6 +8,6 @@ Exec=apsta-gtk
 Icon=com.github.apsta.Gtk
 Terminal=false
 Categories=GNOME;GTK;Network;Settings;
-Keywords=wifi;hotspot;wireless;network;apsta;
+Keywords=wifi;wi-fi;hotspot;access point;tethering;share internet;wireless;network;AP+STA;Wi-Fi Direct;apsta;
 StartupNotify=true
 StartupWMClass=com.github.apsta.Gtk

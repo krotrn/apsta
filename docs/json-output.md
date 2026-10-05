@@ -4,7 +4,7 @@ Commands that support `--json` print a single JSON document on stdout. The GUI
 is built on this output, and scripts can use it too.
 
 **Stability:** keys may be added in any release. Renaming or removing a key is
-a breaking change and is listed in the [changelog](../CHANGELOG.md). Ignore
+a breaking change and is listed in the [changelog](https://github.com/krotrn/apsta/blob/main/CHANGELOG.md). Ignore
 keys you don't know. Errors go to stderr with a non-zero exit code (see
 [Exit codes](#exit-codes)).
 

@@ -1,0 +1,30 @@
+# apsta
+
+> apsta is a command-line tool and GTK 4 desktop app for Linux that runs a Wi-Fi hotspot while the same Wi-Fi card stays connected to a Wi-Fi network (AP+STA mode). It detects what the card supports, picks a method (hostapd, NetworkManager, or a Wi-Fi Direct group on its own channel), keeps the hotspot running across suspend and channel changes, and removes everything it added when stopped. MIT licensed, Python 3.10+.
+
+Key facts:
+
+- Problem it solves: `nmcli device wifi hotspot` and the GNOME Settings hotspot turn the Wi-Fi card into an access point and drop the Wi-Fi connection. apsta adds a separate virtual access-point interface instead, when the card's driver allows AP and client at the same time.
+- Check a card: `apsta detect` (reads the driver's interface combinations, like `iw phy phy0 info`).
+- Start/stop: `sudo apsta start`, `sudo apsta stop`; start at boot: `sudo apsta enable`.
+- Methods, in order: `hostapd` (AP+STA card, hostapd installed; full client management), `nmcli` (AP+STA card), `p2p` (Wi-Fi Direct group on a second channel, used when the Wi-Fi's channel can't host a hotspot, e.g. 5 GHz DFS channels 52–144; most Intel `iwlmvm` cards), `nmcli-single` (card supports AP only; drops Wi-Fi, so used only when Wi-Fi is not connected or with `--allow-disconnect`).
+- On single-channel cards (most laptop chips) the hotspot shares the Wi-Fi's channel and band.
+- Requirements: NetworkManager, `iw`, `iproute2`, Python ≥ 3.10. Recommended: `hostapd`, `dnsmasq`, and one of iptables/nftables/firewalld. Optional: `jeepney` for Wi-Fi Direct on Fedora, openSUSE, Alpine, Void.
+- Install: Ubuntu/Pop!_OS PPA `ppa:krotrn/apsta`; Arch pacman repo (see README); PyPI `apsta` (`sudo pipx install --global apsta`); `sudo ./install.sh` from source.
+- Client management (hostapd mode): `apsta clients`, disconnect, block, per-client speed limits, MAC allow-list. QR code to join: `apsta qr`.
+- Scripting: `status`, `detect`, `config`, `clients` and `start` accept `--json`.
+- Alternative to: create_ap (archived in September 2021), linux-wifi-hotspot, manual hostapd + dnsmasq setups.
+
+## Docs
+
+- [README](https://github.com/krotrn/apsta/blob/main/README.md): install, usage, settings, comparison with other tools, supported hardware, FAQ
+- [How it works, in plain language](https://github.com/krotrn/apsta/blob/main/docs/how-it-works.md): channels, DFS, common problems and fixes
+- [5 GHz Wi-Fi](https://github.com/krotrn/apsta/blob/main/docs/5ghz-wifi.md): why a hotspot won't start on some 5 GHz channels, and the fixes
+- [Wi-Fi Direct fallback](https://github.com/krotrn/apsta/blob/main/docs/wifi-direct.md): the `p2p` method, supported cards and distributions
+- [JSON output](https://github.com/krotrn/apsta/blob/main/docs/json-output.md): keys and exit codes for scripts
+
+## Optional
+
+- [Architecture](https://github.com/krotrn/apsta/blob/main/docs/ARCHITECTURE.md): design of the CLI, rollback, watcher and GUI
+- [Changelog](https://github.com/krotrn/apsta/blob/main/CHANGELOG.md)
+- [Issues and hardware reports](https://github.com/krotrn/apsta/issues)
