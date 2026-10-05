@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-05
+
 ### Added
 
 - Wi-Fi Direct fallback (method `p2p`), as Windows' Mobile Hotspot does: when
