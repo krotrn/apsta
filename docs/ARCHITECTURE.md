@@ -12,7 +12,7 @@ flowchart TD
     CMD["<b>cmd/*</b> · present<br/>thin: print results"]
     SVC["<b>services/</b> · use cases<br/>hotspot.py: start / stop / status, strategy selection<br/>watch.py: apsta run keeps the hotspot healthy<br/>guard.py: runs it behind apsta start"]
     CFG["<b>config/</b><br/>model, store, validate<br/>state.py"]
-    NET["<b>net/</b><br/>strategies, transaction<br/>hostapd, dnsmasq, nm<br/>firewall, supervisor<br/>iface, subnet, channels, clients"]
+    NET["<b>net/</b><br/>strategies, transaction<br/>hostapd, dnsmasq, nm<br/>firewall, supervisor<br/>iface, subnet, channels, clients<br/>wpa (wpa_supplicant: socket or D-Bus)"]
     HW["<b>hw/</b><br/>combinations, capability<br/>interfaces, usb"]
     CORE["<b>core/</b><br/>shell (argv only), paths, fsutil (atomic)<br/>lock, output, log, errors"]
 
@@ -74,11 +74,37 @@ neither works, the original channel explanation is raised with their reasons
 appended. A `p2p` hotspot records `same_channel_required=False`, so the
 watcher doesn't chase the WiFi's channel.
 
+### Settings, decisions and notes
+
+Whatever apsta decides on its own, the user can set instead, and whatever it
+can't follow, it explains:
+
+- **Method**: `--method` for one run, else the profile's `method` setting,
+  else `auto` (`hotspot.resolve_method`). The watcher is launched without
+  `--method` unless one was given, so it reads the same setting.
+- **Channel**: `net/channels.plan()` returns a `ChannelPlan` with the channel,
+  the reason in words ("the least crowded nearby", "your channel setting")
+  and `notes` for anything asked for but not granted (a channel on the wrong
+  band, or one the card may not start a network on).
+- `hotspot.build_context()` adds notes the planner can't know: the band
+  setting differs from a channel the hotspot must share with the WiFi, or the
+  WiFi's channel can't host at all. Methods with a channel of their own
+  (`p2p`, `nmcli-single`) follow `band` and `channel` instead of sharing.
+- `hotspot.start()` puts a note about the method first (chosen in the
+  settings, or which methods were skipped and why), and a strategy may add
+  its own (`p2p`: the radio's speed is shared).
+
+The notes are stored in `HotspotState.notes`, printed by `apsta start` and
+`apsta status`, exposed as `hotspot.notes` in `status --json` (so the GUI shows
+them under *Why it runs this way*), and logged with the `hotspot_started`
+event in `/var/log/apsta.log`. Each is one plain sentence for the user.
+
 ### Runtime state lives in /run
 
 `state.py` writes `HotspotState` to `/run/apsta/state.json` once the hotspot
 is fully up, with everything `stop` needs: interface names, subnet, firewall
-backend and its undo data, the previous `ip_forward` value, client limits.
+backend and its undo data, the previous `ip_forward` value, client limits,
+and the notes explaining the choices made at start (below).
 `/run` is a tmpfs, so a crash or reboot can't leave a stale "running" record.
 On start, a recorded hotspot that is no longer alive is cleaned up first.
 Configuration (`/etc/apsta/config.json`, world-readable) and secrets
@@ -101,8 +127,8 @@ hotspot. `services/watch.py` polls every 5 s and `decide()` (a pure function)
 restarts the hotspot when:
 
 - it went down (resume from suspend, driver reset, hostapd gave up);
-- on single-channel radios, the WiFi connection moved to another channel;
-- on single-channel radios, the WiFi connection has been gone for 20 s.
+- it shares the WiFi's channel and the WiFi moved to another channel;
+- it shares the WiFi's channel and the WiFi has been gone for 20 s.
   The AP may be what stops NetworkManager reconnecting on another channel.
 
 ```mermaid
@@ -111,7 +137,7 @@ flowchart TD
     St -- "no (apsta stop)" --> Exit(["exit"])
     St -- "yes" --> Alive{"hotspot alive?"}
     Alive -- "no" --> Restart
-    Alive -- "yes" --> Same{"same-channel<br/>radio?"}
+    Alive -- "yes" --> Same{"hotspot shares the<br/>WiFi's channel?"}
     Same -- "no" --> Poll
     Same -- "yes" --> Link{"WiFi connected?"}
     Link -- "yes, same channel" --> Poll
@@ -121,9 +147,12 @@ flowchart TD
     Restart["stop, then start again<br/>retry 10 s → 20 s → … → 5 min"] --> Poll
 ```
 
-If the WiFi moved to a channel the card can't host on, every retry fails
-with the "no IR" error until the network moves back; see
-[5ghz-wifi.md](5ghz-wifi.md).
+A `p2p` hotspot never shares the WiFi's channel (`same_channel_required` is
+false in its state), so only the first rule applies to it. If the WiFi moved
+to a channel the card can't host on, the restart falls back to a `p2p` group
+on cards that support it; on others every retry fails with the "no IR"
+error until the network moves back. See [5ghz-wifi.md](5ghz-wifi.md) and
+[wifi-direct.md](wifi-direct.md).
 
 ### Firewall backends record their own undo data
 
