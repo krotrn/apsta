@@ -31,7 +31,7 @@ jobs:
       - name: Install build dependencies
         run: |
           pacman -Syu --noconfirm --needed git pacman-contrib \
-            python python-build python-installer python-setuptools python-wheel \
+            python python-build python-installer python-setuptools python-wheel python-jeepney \
             networkmanager iw iproute2 usbutils pciutils
           useradd -m builder
 
