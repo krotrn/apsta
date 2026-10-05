@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-05
+
 ### Added
 
 - `hidden` setting: don't broadcast the network name (hostapd and
