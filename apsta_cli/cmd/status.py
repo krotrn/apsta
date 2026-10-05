@@ -43,6 +43,11 @@ def cmd_status(args) -> int:
         if hs.get("subnet"):
             output.detail(f"Subnet {hs['subnet']}, gateway {hs['gateway']}")
         output.detail(f"Clients connected: {len(data['clients'])}")
+        if hs.get("notes"):
+            output.blank()
+            output.info("Why it runs this way:")
+            for note in hs["notes"]:
+                output.detail(note)
     else:
         output.info("Hotspot is not running.")
         if data["stale"]:

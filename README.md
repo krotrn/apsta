@@ -117,6 +117,7 @@ sudo apsta disable
 ```bash
 apsta config                              # show the active profile
 sudo apsta config --set ssid=MyHotspot --set band=a
+sudo apsta config --set method=p2p --set channel=149   # own channel, always on 5 GHz 149
 sudo apsta config --password-stdin        # prompts; nothing ends up in shell history
 sudo apsta config --generate-password
 sudo apsta config --show-password
@@ -127,12 +128,25 @@ sudo apsta profile create travel
 sudo apsta profile use travel
 ```
 
-Settings: `ssid`, `password`, `band` (`bg` = 2.4 GHz, `a` = 5 GHz), `channel`
-(used only when the hotspot doesn't have to follow your WiFi channel),
-`interface` (`auto` by default), `hidden` (`yes` stops broadcasting the
-network name; devices must type it or scan the QR code) and `allowed_macs`
-(see below). Configuration lives in `/etc/apsta/` and
-passwords in the root-only `/etc/apsta/secrets.json`.
+Settings:
+
+| Setting | Values | Meaning |
+| ------- | ------ | ------- |
+| `ssid`, `password` | | The network's name and password |
+| `band` | `bg` (2.4 GHz), `a` (5 GHz) | Used whenever the hotspot has a channel of its own |
+| `channel` | `auto` (default) or a number | `auto` picks the least crowded channel the card allows |
+| `method` | `auto` (default), `hostapd`, `nmcli`, `p2p`, `nmcli-single` | How the hotspot runs. `p2p` (Wi-Fi Direct) always uses your band and channel, at the cost of shared speed ([details](docs/wifi-direct.md)) |
+| `interface` | `auto` (default) or a name | Which WiFi card to use |
+| `hidden` | `yes`, `no` | Stop broadcasting the name; devices type it or scan the QR code |
+| `allowed_macs` | MAC list | Only these devices may join (see below) |
+
+On most laptop cards a normal hotspot has to share your WiFi's channel, so
+`band` and `channel` can't always be followed. apsta never ignores them
+silently: `apsta start`, `apsta status` and the app's *Why it runs this way*
+section say what it chose and why, and so does `/var/log/apsta.log`.
+
+Configuration lives in `/etc/apsta/` and passwords in the root-only
+`/etc/apsta/secrets.json`.
 
 ### Clients (hostapd mode)
 
@@ -256,7 +270,9 @@ support it. On other cards apsta refuses with an explanation; see
 The hotspot follows the connection when it changes channel (on systemd,
 also when started with `apsta start` or the GUI).
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design.
+New to this? [docs/how-it-works.md](docs/how-it-works.md) explains it in plain
+language, with the common problems and fixes. For the design, see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Troubleshooting
 

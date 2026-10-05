@@ -4,8 +4,8 @@ Shape on disk (config.json, world-readable)::
 
     {
       "active_profile": "default",
-      "profiles": {"default": {"ssid": ..., "band": ..., "channel": ..., "interface": ...,
-                               "hidden": false, "allowed_macs": null}}
+      "profiles": {"default": {"ssid": ..., "band": ..., "channel": ..., "method": ...,
+                               "interface": ..., "hidden": false, "allowed_macs": null}}
     }
 
 Passwords are stored separately (see :mod:`.store`). Runtime facts such as the
@@ -22,13 +22,15 @@ from typing import Dict, List, Optional
 from ..core.errors import UsageError
 from . import validate
 
-PROFILE_KEYS = ("ssid", "password", "band", "channel", "interface", "hidden", "allowed_macs")
+PROFILE_KEYS = ("ssid", "password", "band", "channel", "method", "interface", "hidden", "allowed_macs")
 
 DEFAULT_PROFILE: Dict[str, Optional[str]] = {
     "ssid": "apsta-hotspot",
     "password": None,  # generated randomly on first start; never a shared default
     "band": "bg",
-    "channel": "6",  # used only when the STA isn't connected and no scan is possible
+    # Used when the hotspot isn't tied to the WiFi's channel; "auto" = least crowded nearby.
+    "channel": "auto",
+    "method": "auto",  # or force one: hostapd, nmcli, p2p, nmcli-single
     "interface": None,  # auto-detect
     "hidden": False,  # don't broadcast the network name
     "allowed_macs": None,  # None: anyone with the password; else only these devices
@@ -50,7 +52,11 @@ def _normalize_profile(values: dict) -> dict:
             val = None
         if key == "password" and val in INSECURE_PASSWORDS:
             val = None
-        if key in ("hidden", "allowed_macs"):
+        if key == "channel" and val == "6" and "method" not in values:
+            # apsta <= 0.8 stored "6" as a fallback nobody chose and overrode it with a
+            # scan; profiles from then (no "method" key yet) mean "pick for me".
+            val = "auto"
+        if key in ("hidden", "allowed_macs", "channel", "method"):
             val = _coerce(key, val)
         profile[key] = val
     return profile
@@ -61,6 +67,8 @@ def _coerce(key: str, val):
     try:
         if key == "hidden":
             return val if isinstance(val, bool) else validate.flag(str(val))
+        if key in ("channel", "method"):
+            return validate.VALIDATORS[key](str(val)) if val not in (None, "") else DEFAULT_PROFILE[key]
         if isinstance(val, list):
             val = ",".join(str(v) for v in val)
         return validate.mac_list(val) if isinstance(val, str) else None

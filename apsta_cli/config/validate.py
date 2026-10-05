@@ -13,6 +13,8 @@ _HEX64_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 _MAC_RE = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
 _TRUE, _FALSE = ("yes", "true", "on", "1"), ("no", "false", "off", "0")
 BANDS = ("bg", "a")
+# "auto" picks the best method; the rest name a strategy (see net.strategies).
+METHODS = ("auto", "hostapd", "nmcli", "p2p", "nmcli-single")
 
 
 def ssid(value: str) -> str:
@@ -42,9 +44,20 @@ def band(value: str) -> str:
 
 
 def channel(value: str) -> str:
+    if value.strip().lower() == "auto":
+        return "auto"
     if not value.isdigit() or not 1 <= int(value) <= 196:
-        raise UsageError("channel must be a number between 1 and 196.")
+        raise UsageError("channel must be 'auto' or a number between 1 and 196.")
     return str(int(value))
+
+
+def method(value: str) -> str:
+    value = value.strip().lower()
+    if value == "nmcli-force":  # name used by apsta <= 0.6
+        value = "nmcli-single"
+    if value not in METHODS:
+        raise UsageError(f"method must be one of: {', '.join(METHODS)}.")
+    return value
 
 
 def interface(value: Optional[str]) -> Optional[str]:
@@ -92,6 +105,7 @@ VALIDATORS = {
     "password": password,
     "band": band,
     "channel": channel,
+    "method": method,
     "interface": interface,
     "hidden": flag,
     "allowed_macs": mac_list,
@@ -104,5 +118,5 @@ def profile_value(key: str, value: Optional[str]):
     if value is None or (key != "interface" and value.lower() in ("none", "null", "")):
         if key in ("ssid", "band"):
             raise UsageError(f"{key} cannot be empty.")
-        return False if key == "hidden" else None
+        return {"hidden": False, "channel": "auto", "method": "auto"}.get(key)
     return VALIDATORS[key](value)

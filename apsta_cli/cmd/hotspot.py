@@ -13,7 +13,7 @@ from .service import apsta_binary
 
 def _options(args) -> hotspot.StartOptions:
     return hotspot.StartOptions(
-        method=getattr(args, "method", "auto") or "auto",
+        method=getattr(args, "method", None) or None,  # None: the profile's setting
         allow_disconnect=bool(getattr(args, "allow_disconnect", False)),
         wait_sta=float(getattr(args, "wait_sta", 0) or 0),
         interface=getattr(args, "interface", None),
@@ -57,6 +57,8 @@ def cmd_start(args) -> int:
     link = interfaces.sta_link(st.base_interface)
     if link and result.strategy.keeps_wifi:
         output.ok(f"Still connected to '{link.ssid}'")
+    for note in st.notes:
+        output.info(note)
     if st.subnet:
         output.info(f"Clients get addresses in {st.subnet} (gateway {st.gateway})")
     if result.generated_password:

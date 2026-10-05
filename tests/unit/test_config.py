@@ -82,6 +82,28 @@ class ModelTests(unittest.TestCase):
         model.set_field(config, "hidden", "yes")
         self.assertEqual((config["hidden"], config["allowed_macs"]), (True, ["aa:bb:cc:dd:ee:ff"]))
 
+    def test_method_and_channel_settings(self):
+        config = model.normalize({})
+        self.assertEqual((config["method"], config["channel"]), ("auto", "auto"))
+        model.set_field(config, "method", "P2P")
+        model.set_field(config, "channel", "149")
+        self.assertEqual((config["method"], config["channel"]), ("p2p", "149"))
+        model.set_field(config, "channel", "auto")
+        model.set_field(config, "method", "")  # empty: back to the default
+        self.assertEqual((config["method"], config["channel"]), ("auto", "auto"))
+        self.assertEqual(validate.method("nmcli-force"), "nmcli-single")
+        for bad in (("method", "magic"), ("channel", "0"), ("channel", "x")):
+            with self.assertRaises(UsageError):
+                model.set_field(config, *bad)
+        junk = model.normalize({"method": "magic", "channel": "nope"})  # hand-edited
+        self.assertEqual((junk["method"], junk["channel"]), ("auto", "auto"))
+
+    def test_old_default_channel_means_auto(self):
+        # apsta <= 0.8 wrote channel "6" without anyone choosing it, and no "method".
+        self.assertEqual(model.normalize({"channel": "6"})["channel"], "auto")
+        self.assertEqual(model.normalize({"channel": "11"})["channel"], "11")  # a real choice is kept
+        self.assertEqual(model.normalize({"channel": "6", "method": "auto"})["channel"], "6")
+
     def test_legacy_top_level_values_become_default_profile(self):
         cfg = model.normalize({"ssid": "Old", "password": "changeme123", "ap_interface": "x"})
         self.assertEqual(cfg["profiles"]["default"]["ssid"], "Old")

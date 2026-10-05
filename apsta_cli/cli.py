@@ -42,9 +42,9 @@ def build_parser() -> argparse.ArgumentParser:
     def start_options(p: argparse.ArgumentParser) -> None:
         p.add_argument(
             "--method",
-            default="auto",
+            default=None,
             choices=["auto", "hostapd", "nmcli", "p2p", "nmcli-single"],
-            help="Force a method (default: best available)",
+            help="Method for this run (default: the profile's method setting, normally auto)",
         )
         p.add_argument(
             "--allow-disconnect",

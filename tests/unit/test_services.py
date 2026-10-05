@@ -342,6 +342,11 @@ if __name__ == "__main__":
 
 
 class GuardTests(unittest.TestCase):
+    def test_watcher_follows_the_method_setting_unless_one_was_given(self):
+        self.assertNotIn("--method", guard.run_argv("/usr/bin/apsta", hotspot.StartOptions()))
+        argv = guard.run_argv("/usr/bin/apsta", hotspot.StartOptions(method="p2p"))
+        self.assertEqual(argv[argv.index("--method") + 1], "p2p")
+
     def setUp(self):
         self.sh = FakeShell()
         mock.patch("apsta_cli.core.shell.run", self.sh).start()

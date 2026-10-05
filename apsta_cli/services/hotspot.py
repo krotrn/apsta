@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Sequence
 
 from .. import state as state_store
 from ..config import model, store
-from ..core import lock, output
+from ..core import lock, log, output
 from ..core.errors import AlreadyRunning, ApstaError, HardwareError, PermissionDenied, SetupError, UsageError
 from ..hw import capability, interfaces
 from ..net import channels, clients, iface, nm, strategies
@@ -30,7 +30,7 @@ def require_root(action: str = "This command") -> None:
 
 @dataclass
 class StartOptions:
-    method: str = "auto"
+    method: Optional[str] = None  # None: the profile's ``method`` setting
     allow_disconnect: bool = False
     wait_sta: float = 0.0
     interface: Optional[str] = None
@@ -103,7 +103,16 @@ def ensure_password(config: dict) -> Optional[str]:
     return password
 
 
-def build_context(config: dict, opts: StartOptions) -> StartContext:
+def resolve_method(config: dict, opts: StartOptions) -> str:
+    """``--method`` for this run, else the profile's setting."""
+    return opts.method or config.get("method") or "auto"
+
+
+# Methods that never share the WiFi's channel: the hotspot may use any channel the card allows.
+OWN_CHANNEL_METHODS = ("p2p", "nmcli-single")
+
+
+def build_context(config: dict, opts: StartOptions, method: str = "auto") -> StartContext:
     base = select_interface(config, opts.interface)
     cap = capability.probe(base.name)
     if not cap.supports_ap:
@@ -113,26 +122,55 @@ def build_context(config: dict, opts: StartOptions) -> StartContext:
         )
     link = interfaces.wait_for_sta(base.name, opts.wait_sta) if opts.wait_sta else interfaces.sta_link(base.name)
     sta_channel = channels.from_freq(link.freq) if link else None
-    pinned = sta_channel is not None and cap.same_channel_required
-    scan = () if pinned else list(channels.parse_nmcli_scan(nm.scan(base.name)))
     allowed = channels.allowed_channels(cap.ap_frequencies)
+    band, wanted = config["band"], config.get("channel")
+    scan: list = []
+
+    def own_channel_plan() -> channels.ChannelPlan:
+        if not scan:
+            scan.extend(channels.parse_nmcli_scan(nm.scan(base.name)))
+        return channels.plan(None, cap.same_channel_required, band, wanted, scan, allowed)
+
     sta_channel_usable = True
     channel_problem = None
+    notes: List[str] = []
     try:
-        plan = channels.plan(
-            sta_channel, cap.same_channel_required, config["band"], config.get("channel"), scan, allowed
-        )
+        plan = channels.plan(sta_channel, cap.same_channel_required, band, wanted, (), allowed)
+        if sta_channel is None or not cap.same_channel_required:
+            plan = own_channel_plan()  # not tied to the WiFi: scan and pick
     except HardwareError as exc:
-        if sta_channel is None or not (opts.allow_disconnect or cap.p2p_go_own_channel):
+        if not (opts.allow_disconnect or cap.p2p_go_own_channel or method in OWN_CHANNEL_METHODS):
             raise
         # The WiFi's channel can't host an AP. A Wi-Fi Direct group on a channel
         # of its own still can, or (if the user accepts dropping WiFi) the
         # single-interface method: either way, on a channel the card allows.
         sta_channel_usable = False
         channel_problem = exc
-        if not scan:
-            scan = list(channels.parse_nmcli_scan(nm.scan(base.name)))
-        plan = channels.plan(None, cap.same_channel_required, config["band"], config.get("channel"), scan, allowed)
+        notes.append(f"{exc.message.split('. ')[0]}.")
+        plan = own_channel_plan()
+
+    tied = sta_channel_usable and sta_channel is not None and cap.same_channel_required
+    if tied and method in OWN_CHANNEL_METHODS:
+        # Forced to a method with its own channel: keep the WiFi's channel only
+        # when it is what the settings ask for anyway (no radio switching then).
+        if wanted not in (None, "auto") or sta_channel.band != band:
+            plan = own_channel_plan()
+        else:
+            plan = channels.ChannelPlan(sta_channel, "the same as your WiFi's, so the radio doesn't have to switch")
+    elif tied and sta_channel.band != band:
+        hint = (
+            "To always use your band, set method to p2p (Wi-Fi Direct; shares the radio's speed)."
+            if cap.p2p_go_own_channel
+            else "This card can't run the hotspot on another channel while connected."
+        )
+        notes.append(
+            f"Your band setting is {channels.Channel(1, band).label}, but the hotspot is on "
+            f"{sta_channel.label} because it shares your WiFi's channel. {hint}"
+        )
+    elif tied and wanted not in (None, "auto") and int(wanted) != sta_channel.number:
+        notes.append(f"Your channel setting ({wanted}) is not used: the hotspot shares your WiFi's channel.")
+    notes.extend(plan.notes)  # what couldn't be followed, before what was done instead
+    notes.append(f"Channel {plan.channel.number} ({plan.channel.label}): {plan.reason}.")
     output.dbg("Channel plan", channel=plan.channel.number, band=plan.channel.band, reason=plan.reason)
     return StartContext(
         base=base,
@@ -147,6 +185,8 @@ def build_context(config: dict, opts: StartOptions) -> StartContext:
         hidden=bool(config.get("hidden")),
         allowed_macs=list(config.get("allowed_macs") or []),
         channel_problem=channel_problem,
+        notes=notes,
+        sta_channel=sta_channel,
     )
 
 
@@ -156,11 +196,12 @@ def start(opts: StartOptions, candidates: Optional[Sequence[Strategy]] = None) -
         _reap_stale()
         config = store.load()
         generated = ensure_password(config)
-        ctx = build_context(config, opts)
+        method = resolve_method(config, opts)
+        ctx = build_context(config, opts, method)
 
         skipped: Dict[str, str] = {}
         failures: List[str] = []
-        for strategy in candidates if candidates is not None else strategies.candidates(opts.method):
+        for strategy in candidates if candidates is not None else strategies.candidates(method):
             reason = strategy.unavailable(ctx)
             if reason:
                 skipped[strategy.name] = reason
@@ -172,12 +213,14 @@ def start(opts: StartOptions, candidates: Optional[Sequence[Strategy]] = None) -
             try:
                 with Transaction() as tx:
                     st = strategy.start(ctx, tx)
+                    st.notes = _decision_notes(method, strategy, ctx, skipped, failures) + st.notes
                     state_store.save(st)
                     tx.commit()
             except SetupError as exc:
                 output.warn(f"{strategy.name}: {exc.message}")
                 failures.append(f"{strategy.name}: {exc.message}")
                 continue
+            log.event("info", "hotspot_started", method=st.method, channel=st.channel, notes=st.notes)
             return StartResult(st, strategy, generated, skipped)
 
         hints = [f"{name}: {why}" for name, why in skipped.items()] + failures
@@ -187,6 +230,27 @@ def start(opts: StartOptions, candidates: Optional[Sequence[Strategy]] = None) -
             tried = [h for h in hints if h.startswith(("p2p:", "nmcli-single:"))]
             raise HardwareError(problem.message, hints=problem.hints + tried)
         raise ApstaError("Could not start the hotspot.", hints=hints)
+
+
+def _decision_notes(
+    method: str, strategy: Strategy, ctx: StartContext, skipped: Dict[str, str], failures: List[str]
+) -> List[str]:
+    """Why the hotspot runs the way it does, in words for the user (CLI, status, GUI, log)."""
+    if method != "auto":
+        notes = [f"Method {strategy.name}: chosen in your settings."]
+    elif not skipped and not failures:
+        notes = [f"Method {strategy.name}: the best one for this card and setup."]
+    else:
+        by_reason: Dict[str, List[str]] = {}
+        for name, why in skipped.items():
+            by_reason.setdefault(why, []).append(name)
+        passed = [
+            f"{' and '.join(names)} {'was' if len(names) == 1 else 'were'} skipped ({why})"
+            for why, names in by_reason.items()
+        ]
+        passed += [f"{failure} (failed)" for failure in failures]
+        notes = [f"Method {strategy.name}: " + "; ".join(passed) + "."]
+    return notes + ctx.notes
 
 
 # ── stop / status ─────────────────────────────────────────────────────────────
@@ -226,6 +290,7 @@ def status() -> dict:
             "ssid": config["ssid"],
             "band": config["band"],
             "channel": config["channel"],
+            "method": config["method"],
             "interface": config["interface"],
             "hidden": config["hidden"],
             "allowed_macs": config["allowed_macs"],

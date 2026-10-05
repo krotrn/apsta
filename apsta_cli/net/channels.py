@@ -10,7 +10,9 @@ from ..core.errors import HardwareError
 # Channels that need radar detection (DFS) before transmitting as an AP.
 DFS_CHANNELS = frozenset(list(range(52, 65, 4)) + list(range(100, 145, 4)))
 SAFE_24G = (1, 6, 11)
-SAFE_5G = (36, 40, 44, 48)
+# Non-overlapping, no radar detection needed. Many cards may only start a
+# network on one of the two groups (Intel often blocks 36-48), so both count.
+SAFE_5G = (36, 40, 44, 48, 149, 153, 157, 161, 165)
 
 # User guide for "can't host on this channel" (no IR); linked from errors.
 DOCS_5GHZ = "https://github.com/krotrn/apsta/blob/main/docs/5ghz-wifi.md"
@@ -40,7 +42,8 @@ class Channel:
 @dataclass(frozen=True)
 class ChannelPlan:
     channel: Channel
-    reason: str
+    reason: str  # why this channel, in words for the user ("least crowded nearby")
+    notes: Tuple[str, ...] = ()  # what the user asked for and didn't get, and why
 
 
 def from_freq(freq: int) -> Optional[Channel]:
@@ -55,12 +58,17 @@ def from_freq(freq: int) -> Optional[Channel]:
     return None
 
 
-def least_congested(band: str, scan: Iterable[Tuple[int, int]]) -> Optional[int]:
+def least_congested(
+    band: str, scan: Iterable[Tuple[int, int]], usable: Optional[FrozenSet[int]] = None
+) -> Optional[int]:
     """Pick the non-overlapping channel with the lowest weighted neighbour count.
 
-    ``scan`` yields (channel, signal 0-100) for visible networks.
+    ``scan`` yields (channel, signal 0-100) for visible networks; ``usable``
+    limits the choice to channels the card may start a network on.
     """
-    candidates = SAFE_5G if band == "a" else SAFE_24G
+    candidates = [ch for ch in (SAFE_5G if band == "a" else SAFE_24G) if usable is None or ch in usable]
+    if not candidates:
+        return None
     scores: Dict[int, float] = {ch: 0.0 for ch in candidates}
     seen = False
     for channel, signal in scan:
@@ -78,6 +86,12 @@ def allowed_channels(frequencies: Iterable[int]) -> Optional[FrozenSet[Channel]]
     return channels or None
 
 
+def valid_for_band(number: int, band: str) -> bool:
+    if band == "bg":
+        return 1 <= number <= 14
+    return from_freq(5000 + 5 * number) == Channel(number, "a")
+
+
 def plan(
     sta: Optional[Channel],
     same_channel_required: bool,
@@ -89,7 +103,10 @@ def plan(
     """Decide which channel the AP uses.
 
     On single-channel radios the AP *must* share the STA's channel; anything
-    else either fails with EBUSY or knocks the STA off its network.
+    else either fails with EBUSY or knocks the STA off its network. Otherwise
+    the configured channel wins when the card may use it, then the least
+    crowded safe channel. Anything asked for but not granted is explained in
+    ``notes``.
     """
     if sta is not None and same_channel_required:
         if sta.band == "6g":
@@ -120,24 +137,39 @@ def plan(
                     f"Why: {DOCS_5GHZ}",
                 ],
             )
-        return ChannelPlan(sta, "matches the WiFi connection (single-channel radio)")
+        return ChannelPlan(sta, "the same as your WiFi's (this card uses one channel for both)")
 
+    notes = []
     if allowed is not None and not any(c.band == band for c in allowed):
+        notes.append(f"This card can't start a network on {Channel(1, band).label}, so the hotspot uses 2.4 GHz.")
         band = "bg"  # e.g. all of 5 GHz is "no IR" on this card
-    default = 36 if band == "a" else 6
-    try:
-        fixed = int(configured_channel) if configured_channel else default
-    except ValueError:
-        fixed = default
     usable = None if allowed is None else {c.number for c in allowed if c.band == band}
-    candidates = [(ch, sig) for ch, sig in scan if usable is None or ch in usable]
-    picked = least_congested(band, candidates)
+
+    wanted = int(configured_channel) if configured_channel and configured_channel.isdigit() else None
+    if wanted is not None:
+        if not valid_for_band(wanted, band):
+            label = Channel(1, band).label
+            notes.append(
+                f"Your channel setting ({wanted}) isn't a {label} channel, so apsta picks one "
+                f"(set channel to auto or a {label} channel)."
+            )
+        elif usable is not None and wanted not in usable:
+            notes.append(
+                f"This card isn't allowed to start a network on channel {wanted} "
+                '(radar or "no IR" rules), so apsta picks another.'
+            )
+        else:
+            return ChannelPlan(Channel(wanted, band), "your channel setting", tuple(notes))
+
+    picked = least_congested(band, scan, None if usable is None else frozenset(usable))
     if picked is not None:
-        return ChannelPlan(Channel(picked, band), "least congested nearby")
-    if usable is not None and fixed not in usable:
-        safe = [ch for ch in (SAFE_5G if band == "a" else SAFE_24G) if ch in usable] or sorted(usable)
-        return ChannelPlan(Channel(safe[0], band), "first channel this card may host on")
-    return ChannelPlan(Channel(fixed, band), "configured default")
+        return ChannelPlan(Channel(picked, band), "the least crowded nearby", tuple(notes))
+    safe = [ch for ch in (SAFE_5G if band == "a" else SAFE_24G) if usable is None or ch in usable]
+    if not safe and usable:
+        safe = sorted(usable)
+    default = 36 if band == "a" else 6
+    chosen = default if default in safe or not safe else safe[0]
+    return ChannelPlan(Channel(chosen, band), "the default (no scan available)", tuple(notes))
 
 
 def parse_nmcli_scan(text: str) -> Iterable[Tuple[int, int]]:

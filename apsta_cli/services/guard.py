@@ -27,7 +27,9 @@ def available() -> bool:
 
 
 def run_argv(binary: str, opts: StartOptions) -> List[str]:
-    argv = [binary, "run", "--wait-sta", str(WAIT_STA), "--method", opts.method]
+    argv = [binary, "run", "--wait-sta", str(WAIT_STA)]
+    if opts.method:  # otherwise the watcher reads the profile's setting, like start did
+        argv += ["--method", opts.method]
     if opts.interface:
         argv += ["--interface", opts.interface]
     if opts.allow_disconnect:

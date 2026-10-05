@@ -56,8 +56,22 @@ class PlanTests(unittest.TestCase):
             channels.plan(Channel(37, "6g"), True, "bg", "6")
 
     def test_multichannel_ignores_sta_and_picks_quiet_channel(self):
-        plan = channels.plan(Channel(100, "a"), False, "bg", "6", [(1, 90), (6, 80), (11, 10)])
+        plan = channels.plan(Channel(100, "a"), False, "bg", "auto", [(1, 90), (6, 80), (11, 10)])
         self.assertEqual(plan.channel, Channel(11, "bg"))
+        self.assertEqual(plan.reason, "the least crowded nearby")
+
+    def test_channel_setting_beats_the_scan(self):
+        plan = channels.plan(None, False, "bg", "6", [(1, 10), (6, 90), (11, 90)])
+        self.assertEqual((plan.channel, plan.reason, plan.notes), (Channel(6, "bg"), "your channel setting", ()))
+
+    def test_channel_setting_that_cant_be_used_is_explained(self):
+        wrong_band = channels.plan(None, False, "a", "11")
+        self.assertEqual(wrong_band.channel, Channel(36, "a"))
+        self.assertIn("isn't a 5 GHz channel", wrong_band.notes[0])
+        allowed = channels.allowed_channels([2437, 5745, 5765])
+        blocked = channels.plan(None, False, "a", "44", allowed=allowed)
+        self.assertEqual(blocked.channel, Channel(149, "a"))
+        self.assertIn("isn't allowed to start a network on channel 44", blocked.notes[0])
 
     def test_no_scan_uses_configured(self):
         self.assertEqual(channels.plan(None, True, "a", "40").channel, Channel(40, "a"))
@@ -67,8 +81,14 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(channels.plan(None, True, "a", None).channel, Channel(36, "a"))
 
     def test_least_congested_ties_pick_lowest(self):
-        self.assertEqual(channels.least_congested("a", [(36, 50), (40, 50), (44, 50), (48, 50)]), 36)
+        self.assertEqual(channels.least_congested("bg", [(1, 50), (6, 50), (11, 50)]), 1)
         self.assertIsNone(channels.least_congested("bg", [(3, 50)]))
+
+    def test_5ghz_compares_both_groups_but_only_usable_channels(self):
+        busy_low = [(36, 90), (40, 90), (44, 90), (48, 90), (149, 5)]
+        self.assertEqual(channels.least_congested("a", busy_low), 153)  # 149 has a neighbour, 153 none
+        self.assertEqual(channels.least_congested("a", busy_low, frozenset({149})), 149)
+        self.assertIsNone(channels.least_congested("a", busy_low, frozenset({100})))
 
     def test_sta_on_no_ir_channel_is_refused_with_workaround(self):
         allowed = channels.allowed_channels([2437, 5745])
@@ -82,7 +102,9 @@ class PlanTests(unittest.TestCase):
         allowed = channels.allowed_channels([2412, 2437, 2462, 5745, 5765])
         self.assertEqual(channels.plan(None, True, "a", "36", allowed=allowed).channel, Channel(149, "a"))
         scan = [(1, 10), (6, 90), (11, 90), (36, 1)]
-        self.assertEqual(channels.plan(None, True, "bg", "6", scan, allowed).channel, Channel(1, "bg"))
+        self.assertEqual(channels.plan(None, True, "bg", "auto", scan, allowed).channel, Channel(1, "bg"))
+        # 36 is blocked on this card: the empty-looking 36 must not win over 149.
+        self.assertEqual(channels.plan(None, True, "a", "auto", [(149, 20)], allowed).channel, Channel(153, "a"))
 
     def test_band_without_allowed_channels_falls_back_to_24ghz(self):
         allowed = channels.allowed_channels([2412, 2437, 2462])

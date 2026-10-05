@@ -35,7 +35,11 @@ Current hotspot, connected devices and configuration. Works without root.
     "firewall": {"backend": "iptables", "ip_forward_prev": "0", "data": {}},
     "connection_id": null,
     "client_limits": {"aa:bb:cc:dd:ee:ff": {"pref": 49152, "kbps": 8000}},
-    "blocked": []
+    "blocked": [],
+    "notes": [
+      "Method hostapd: the best one for this card and setup.",
+      "Channel 6 (2.4 GHz): the same as your WiFi's (this card uses one channel for both)."
+    ]
   },
   "clients": [
     {"mac": "aa:bb:cc:dd:ee:ff", "ip": "192.168.42.17", "hostname": "pixel-8", "limit_kbps": 8000, "blocked": false}
@@ -49,7 +53,8 @@ Current hotspot, connected devices and configuration. Works without root.
     "profiles": ["default", "travel"],
     "ssid": "MyHotspot",
     "band": "bg",
-    "channel": "6",
+    "channel": "auto",
+    "method": "auto",
     "interface": null
   }
 }
@@ -59,11 +64,11 @@ Current hotspot, connected devices and configuration. Works without root.
 | ------------- | ------- |
 | `active`      | A hotspot is running and healthy. |
 | `stale`       | A hotspot was recorded but is gone (crash, driver reset). The next `start` cleans it up. |
-| `hotspot`     | The running hotspot, or `null`. `method` is `hostapd`, `nmcli`, `p2p` or `nmcli-single`. `band` is `bg` (2.4 GHz) or `a` (5 GHz). `subnet`/`gateway`/`firewall`/`supervisor` are set in hostapd and p2p mode (`p2p_backend` and `p2p_network` too in p2p mode), `connection_id` in nmcli modes. `firewall` and `client_limits` are internal bookkeeping for `stop`; don't rely on their contents. |
+| `hotspot`     | The running hotspot, or `null`. `method` is `hostapd`, `nmcli`, `p2p` or `nmcli-single`. `band` is `bg` (2.4 GHz) or `a` (5 GHz). `subnet`/`gateway`/`firewall`/`supervisor` are set in hostapd and p2p mode (`p2p_backend` and `p2p_network` too in p2p mode), `connection_id` in nmcli modes. `firewall` and `client_limits` are internal bookkeeping for `stop`; don't rely on their contents. `notes` explains the choices made at start (method, channel, settings that couldn't be followed), one sentence each, for display. |
 | `clients`     | Currently associated devices (not stale DHCP leases). `ip` and `hostname` may be empty. |
 | `interfaces`  | WiFi interfaces. `type` is the nl80211 interface type (`managed`, `AP`, …). |
 | `autostart`   | `init` is `systemd`, `openrc`, `runit` or `unknown`. `enabled`/`running` are `null` when unknown. |
-| `config`      | The active profile's settings (no password). `interface: null` means automatic. |
+| `config`      | The active profile's settings (no password). `interface: null` means automatic; `channel` and `method` may be `auto`. |
 
 `apsta status --check` prints nothing and exits `0` if the hotspot is running,
 `3` if not.
@@ -117,7 +122,7 @@ The active profile's settings.
 {
   "active_profile": "default",
   "profiles": ["default", "travel"],
-  "settings": {"ssid": "MyHotspot", "band": "bg", "channel": "6", "interface": null},
+  "settings": {"ssid": "MyHotspot", "band": "bg", "channel": "auto", "method": "auto", "interface": null},
   "password": "kd7Ws3qPzT9mXbR2"
 }
 ```

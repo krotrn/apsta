@@ -36,6 +36,15 @@ class HelperTests(unittest.TestCase):
         title, subtitle, _ = helpers.hero_text({"hotspot": {"ssid": "S"}, "clients": [{}]})
         self.assertEqual((title, subtitle), ("Hotspot is on", "S · 1 device connected"))
 
+    def test_method_and_channel_choices(self):
+        self.assertEqual([m[0] for m in helpers.METHODS], ["auto", "hostapd", "nmcli", "p2p", "nmcli-single"])
+        five = helpers.channel_options("a")
+        self.assertEqual(five[0], ("auto", "Automatic (least crowded)"))
+        self.assertIn(("149", "Channel 149"), five)
+        self.assertEqual(len(helpers.channel_options("bg")), 14)
+        self.assertEqual(helpers.index_of(five, "149"), 5)
+        self.assertEqual(helpers.index_of(five, "6"), 0)  # not on this band: automatic
+
     def test_uplink(self):
         data = {
             "hotspot": {"base_interface": "wlo1"},
@@ -90,11 +99,15 @@ class BackendTests(unittest.TestCase):
         self.assertIn("band=a", argv)
         self.assertIn("interface=auto", argv)
         self.assertIn("hidden=no", argv)
+        self.assertIn("method=auto", argv)
+        self.assertIn("channel=auto", argv)
         self.assertEqual(run.call_args.kwargs["input"], "secret123\n")
         with mock.patch.object(backend.subprocess, "run", return_value=completed()) as run:
-            self.b.save_config("Cafe", "", "bg", "wlan1", hidden=True)
+            self.b.save_config("Cafe", "", "a", "wlan1", hidden=True, method="p2p", channel="157")
         self.assertIsNone(run.call_args.kwargs["input"])
         self.assertIn("hidden=yes", run.call_args[0][0])
+        self.assertIn("method=p2p", run.call_args[0][0])
+        self.assertIn("channel=157", run.call_args[0][0])
 
     def test_pkexec_failures(self):
         cases = [

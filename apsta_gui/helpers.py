@@ -8,6 +8,29 @@ APP_ID = "com.github.apsta.Gtk"
 POLL_INTERVAL = 5  # seconds between status refreshes
 
 BANDS = [("bg", "2.4 GHz"), ("a", "5 GHz")]
+# The ``method`` setting: (value, label, what it means).
+METHODS = [
+    ("auto", "Automatic", "Best for your card and network"),
+    ("hostapd", "hostapd", "Same channel; fastest; device control"),
+    ("nmcli", "NetworkManager", "Same channel; no blocking or allowlist"),
+    ("p2p", "Wi-Fi Direct", "Own channel; shares the radio's speed"),
+    ("nmcli-single", "Hotspot only", "Wi-Fi disconnects while it runs"),
+]
+# Channels people can pick; the card may still forbid some (apsta then says so).
+CHANNELS = {
+    "bg": [str(n) for n in range(1, 14)],
+    "a": ["36", "40", "44", "48", "149", "153", "157", "161", "165"],
+}
+
+
+def channel_options(band: str) -> list:
+    """(value, label) choices for the channel setting on ``band``, "auto" first."""
+    return [("auto", "Automatic (least crowded)")] + [(c, f"Channel {c}") for c in CHANNELS.get(band, CHANNELS["bg"])]
+
+
+def index_of(options: list, value) -> int:
+    """Position of ``value`` among (value, ...) tuples, or 0 (the first, "automatic") if absent."""
+    return next((i for i, option in enumerate(options) if option[0] == value), 0)
 
 
 def escape_wifi_field(value: str) -> str:

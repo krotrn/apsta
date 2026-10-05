@@ -79,6 +79,12 @@ HOTSPOT = {
     "subnet": "192.168.42.0/24",
     "gateway": "192.168.42.1",
     "blocked": ["de:ad:be:ef:00:01"],
+    "notes": [
+        "Method hostapd: the best one for this card and setup.",
+        "Your band setting is 5 GHz, but the hotspot is on 2.4 GHz because it shares your WiFi's channel. "
+        "To always use your band, set method to p2p (Wi-Fi Direct; shares the radio's speed).",
+        "Channel 6 (2.4 GHz): the same as your WiFi's (this card uses one channel for both).",
+    ],
 }
 CLIENTS = [
     {"mac": "aa:bb:cc:dd:ee:ff", "ip": "192.168.42.17", "hostname": "pixel-8", "limit_kbps": 8000, "blocked": False},
@@ -92,8 +98,9 @@ BASE = {
         "active_profile": "default",
         "profiles": ["default", "travel"],
         "ssid": HOTSPOT["ssid"],
-        "band": "bg",
-        "channel": "6",
+        "band": "a",
+        "channel": "157",
+        "method": "p2p",
         "interface": None,
     },
 }
@@ -263,6 +270,14 @@ def run(app: Adw.Application, out: Path) -> None:
     pump(1.0)
     screenshot(narrow, out / "narrow.png")
     narrow.close()
+
+    print("why it runs this way", flush=True)  # below the fold of the Hotspot tab
+    why = ApstaWindow(app, FakeBackend(*SCENARIOS["on"]))
+    why.present()
+    pump(1.0)
+    assert why.hotspot_page.why.get_visible(), "notes of a running hotspot aren't shown"
+    screenshot(why.hotspot_page.why, out / "on-hotspot-why.png")
+    why.close()
 
     print("about window", flush=True)
     host = ApstaWindow(app, FakeBackend(*SCENARIOS["off"]))

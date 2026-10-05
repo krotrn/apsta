@@ -42,6 +42,8 @@ def display(key: str, value) -> Optional[str]:
         return "yes" if value else "no"
     if key == "allowed_macs":
         return ", ".join(value) if value else None
+    if key in ("channel", "method") and value == "auto":
+        return "auto (apsta picks)"
     return value or None
 
 

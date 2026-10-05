@@ -11,7 +11,7 @@ from pathlib import Path
 from apsta_cli.core import paths
 from apsta_cli.net import wpa
 from tests.integration import fakeworld
-from tests.integration.base import FakeWorldTestCase
+from tests.integration.base import HOME_24GHZ, FakeWorldTestCase
 from tests.support import FakeBus, FakeWpaSupplicant
 
 PHONE = "aa:bb:cc:dd:ee:ff"
@@ -212,8 +212,8 @@ class DfsTests(FakeWorldTestCase):
         self.assertNotIn("wlo1_ap", self.world["ifaces"])
 
 
-class WifiDirectTests(FakeWorldTestCase):
-    """Real case: Intel card on a campus network's DFS channel 128; the hotspot gets a channel of its own."""
+class WifiDirectWorld(FakeWorldTestCase):
+    """A fake wpa_supplicant that creates and removes the group's interface in the fake world."""
 
     link = {"ssid": "NIT-Student", "freq": 5640}
 
@@ -247,10 +247,18 @@ class WifiDirectTests(FakeWorldTestCase):
             sysfs.rmdir()
         return self.wpa.default(command)
 
+
+class WifiDirectTests(WifiDirectWorld):
+    """Real case: Intel card on a campus network's DFS channel 128; the hotspot gets a channel of its own."""
+
     def test_hotspot_runs_on_its_own_channel(self):
         code, out, err = self.apsta("start")
         self.assertEqual(code, 0, err)
-        self.assertIn("own channel (6)", out)
+        self.assertIn("p2p: hostapd and nmcli were skipped (the WiFi connection's channel can't host", out)
+        self.assertIn("Channel 6 (2.4 GHz): the least crowded nearby.", out)
+        self.assertIn("Your WiFi is connected on DFS channel 128", out)
+        self.assertIn("they share its speed", out)
+        self.assertTrue(any("p2p: hostapd and nmcli" in n for n in self.state().notes))
         st = self.state()
         self.assertEqual((st.method, st.ap_interface, st.channel, st.band), ("p2p", "p2p-wlo1-0", 6, "bg"))
         self.assertFalse(st.same_channel_required)  # the watcher must not chase the WiFi's channel
@@ -286,6 +294,54 @@ class WifiDirectTests(FakeWorldTestCase):
         self.assertEqual(data["verdict"]["level"], "ok")
         self.assertEqual(data["methods"]["p2p"], "ready")
         self.assertTrue(data["capability"]["p2p_go_own_channel"])
+
+
+class ChoicesTests(WifiDirectWorld):
+    """The user's band, channel and method settings, and the notes that explain what was done."""
+
+    link = HOME_24GHZ
+
+    def test_band_that_cant_be_honoured_is_explained(self):
+        self.apsta("config", "--set", "band=a")
+        code, out, err = self.apsta("start")
+        self.assertEqual(code, 0, err)
+        st = self.state()
+        self.assertEqual((st.method, st.channel, st.band), ("hostapd", 6, "bg"))
+        self.assertIn("Your band setting is 5 GHz, but the hotspot is on 2.4 GHz", out)
+        self.assertIn("set method to p2p", out)
+        self.assertIn("Why it runs this way:", self.apsta("status")[1])
+        self.assertIn("Your band setting is 5 GHz", " ".join(self.apsta_json("status", "--json")["hotspot"]["notes"]))
+        self.apsta("stop")
+
+    def test_wifi_direct_from_settings_uses_my_band_and_channel(self):
+        self.apsta("config", "--set", "method=p2p", "--set", "band=a", "--set", "channel=157")
+        code, out, err = self.apsta("start")
+        self.assertEqual(code, 0, err)
+        st = self.state()
+        self.assertEqual((st.method, st.channel, st.band), ("p2p", 157, "a"))
+        self.assertIn("P2P_GROUP_ADD persistent=0 freq=5785", self.wpa.commands)
+        self.assertIn("Method p2p: chosen in your settings.", out)
+        self.assertIn("Channel 157 (5 GHz): your channel setting.", out)
+        self.assertIn("they share its speed", out)
+        self.apsta("stop")
+
+    def test_wifi_direct_stays_on_the_wifis_channel_when_settings_agree(self):
+        self.apsta("config", "--set", "method=p2p")
+        code, out, err = self.apsta("start")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.state().channel, 6)
+        self.assertIn("the same as your WiFi's, so the radio doesn't have to switch", out)
+        self.assertNotIn("share its speed", out)
+        self.apsta("stop")
+
+    def test_blocked_channel_setting_is_explained(self):
+        self.apsta("config", "--set", "method=p2p", "--set", "band=a", "--set", "channel=44")
+        code, out, err = self.apsta("start")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.state().band, "a")
+        self.assertNotEqual(self.state().channel, 44)
+        self.assertIn("isn't allowed to start a network on channel 44", out)
+        self.apsta("stop")
 
 
 @unittest.skipUnless(wpa.jeepney_installed(), "needs the jeepney D-Bus library")

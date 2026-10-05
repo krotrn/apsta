@@ -151,14 +151,18 @@ flowchart TD
     D -- "no" --> E(["Explains the channel problem<br/>and why p2p wasn't possible"])
 ```
 
-You can also ask for it directly: `sudo apsta start --method p2p`. Then the
-group starts on the WiFi's channel when that channel allows it (full speed),
-and simply stays there if the WiFi moves later.
+You can also choose it: `sudo apsta config --set method=p2p` (or *Settings →
+Method → Wi-Fi Direct* in the app; `apsta start --method p2p` for one run).
+Then your `band` and `channel` settings are always followed. With
+`channel=auto` and WiFi already on that band, the group stays on the WiFi's
+channel at full speed and simply keeps it if the WiFi moves later.
 
 The channel for the group comes from the same planner as hostapd mode: your
-`band` setting, the least crowded of 1/6/11 (2.4 GHz) or 36–48 (5 GHz), and
-only channels the card may start a network on. On Intel cards in many
-countries that means 2.4 GHz.
+`band` and `channel` settings, otherwise the least crowded of 1/6/11
+(2.4 GHz) or 36–48 and 149–165 (5 GHz), and only channels the card may start
+a network on. Intel cards often block 36–48 but allow 149–165, so with
+`band=a` the group usually lands on 149–165. If a setting can't be followed,
+the notes in `apsta status` and the app say why.
 
 Once it runs, the [watcher](5ghz-wifi.md#when-the-network-switches-band-while-the-hotspot-is-running)
 only checks that the group is still alive. It doesn't restart the hotspot when

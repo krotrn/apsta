@@ -43,6 +43,8 @@ class StartContext:
     hidden: bool = False
     allowed_macs: List[str] = field(default_factory=list)
     channel_problem: Optional[HardwareError] = None  # why the WiFi's channel can't host, if it can't
+    notes: List[str] = field(default_factory=list)  # decisions explained for the user, see HotspotState.notes
+    sta_channel: Optional[Channel] = None  # the WiFi connection's channel, if connected
 
 
 def _now() -> str:
@@ -276,10 +278,10 @@ class P2pStrategy(Strategy):
         state.p2p_backend = supplicant.kind
         state.p2p_network = network
         share_connection(ap, tx, state)
-        if ctx.sta_ssid:
-            output.info(
-                f"The hotspot has its own channel ({ctx.channel.number}); the card switches between it "
-                f"and '{ctx.sta_ssid}', so they share its speed."
+        if ctx.sta_ssid and ctx.sta_channel != ctx.channel:
+            state.notes.append(
+                f"Wi-Fi Direct: the card switches between the hotspot's channel and your WiFi's "
+                f"('{ctx.sta_ssid}'), so they share its speed."
             )
         return state
 

@@ -20,8 +20,29 @@ All notable changes to this project are documented here. The format follows
   (Fedora, openSUSE, Alpine, Void); the password is never on a command line.
   `apsta detect` and the GUI show whether it's available and what's missing.
   See [docs/wifi-direct.md](docs/wifi-direct.md).
+- `method` setting: choose how the hotspot runs (`auto`, `hostapd`, `nmcli`,
+  `p2p`, `nmcli-single`) for `start`, the app, autostart and the watcher, not
+  only per run with `--method`. With a method that has its own channel
+  (`p2p`), your `band` and `channel` settings are always followed.
+- Notes that explain every choice: which method and why the others were
+  skipped, which channel and why, and any setting that couldn't be followed
+  (for example *"Your band setting is 5 GHz, but the hotspot is on 2.4 GHz
+  because it shares your WiFi's channel"*). Shown by `apsta start` and
+  `apsta status`, in `status --json` (`hotspot.notes`), in the app's new *Why
+  it runs this way* section, and written to `/var/log/apsta.log`.
+- App: *Method* and *Channel* choices in Settings.
 - Optional dependency `jeepney` (`pip install "apsta[p2p]"`; recommended by
   the .deb, optional on Arch).
+
+### Changed
+
+- `channel` is now followed whenever the hotspot has a channel of its own.
+  Before, a scan for the least crowded channel overrode it. The new default
+  `channel=auto` keeps that scan; profiles from earlier versions that still
+  have the old default (`6`) become `auto`.
+- On 5 GHz, the least crowded channel is chosen from 149–165 as well as
+  36–48, and only among channels the card may start a network on (Intel
+  cards often block 36–48).
 
 ## [0.8.0] - 2026-10-05
 

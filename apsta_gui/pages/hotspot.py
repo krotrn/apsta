@@ -56,6 +56,16 @@ class HotspotPage:
             self.details.add(row)
         self.widget.add(self.details)
 
+        # ── why it runs this way (while running) ──────────────────────────────
+        self.why = Adw.PreferencesGroup(
+            title="Why it runs this way",
+            description="What apsta chose, and any setting it couldn't follow. Also in /var/log/apsta.log.",
+        )
+        self.why_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=6, margin_bottom=6)
+        self.why.add(self.why_box)
+        self.widget.add(self.why)
+        self._notes: list = []
+
         # ── options (while stopped) ───────────────────────────────────────────
         self.options = Adw.PreferencesGroup(title="Options")
         self.profile_row = Adw.ComboRow(title="Profile", subtitle="Network name and password to use")
@@ -91,6 +101,7 @@ class HotspotPage:
         self.toggle.set_sensitive(not self.window.busy)
 
         self._update_note(data, detect)
+        self._update_why((hotspot or {}).get("notes") or [])
         self.details.set_visible(bool(hotspot))
         self.options.set_visible(bool(data) and not hotspot)
         if hotspot:
@@ -106,6 +117,19 @@ class HotspotPage:
         self.allow_row.set_visible(not cap or not cap.get("ap_sta"))
         has_options = self.profile_row.get_visible() or self.allow_row.get_visible()
         self.options.set_visible(bool(data) and not hotspot and has_options)
+
+    def _update_why(self, notes: list) -> None:
+        self.why.set_visible(bool(notes))
+        if notes == self._notes:
+            return
+        self._notes = list(notes)
+        child = self.why_box.get_first_child()
+        while child is not None:
+            self.why_box.remove(child)
+            child = self.why_box.get_first_child()
+        for note in notes:
+            label = Gtk.Label(label=note, xalign=0, wrap=True, selectable=True)
+            self.why_box.append(label)
 
     def _update_note(self, data: dict, detect: dict) -> None:
         for cls in ("success", "warning", "dim-label"):

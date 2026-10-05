@@ -5,7 +5,7 @@ from __future__ import annotations
 from gi.repository import Adw, Gtk
 
 from ..compat import EntryField, button_row, esc, switch_row
-from ..helpers import BANDS, capability_rows
+from ..helpers import BANDS, METHODS, capability_rows, channel_options, index_of
 
 
 class SettingsPage:
@@ -28,6 +28,16 @@ class SettingsPage:
         self.band = Adw.ComboRow(title="Band")
         self.band.set_model(Gtk.StringList.new([label for _, label in BANDS]))
         self.band.set_subtitle("If not tied to your Wi-Fi's channel")
+        self.band.connect("notify::selected", lambda *_: self._fill_channels())
+        self.channel = Adw.ComboRow(title="Channel", subtitle="Used when the hotspot has a channel of its own")
+        self.channel_model = Gtk.StringList()
+        self.channel.set_model(self.channel_model)
+        self._channels: list = []
+        self._fill_channels()
+        self.method = Adw.ComboRow(title="Method")
+        self.method.set_model(Gtk.StringList.new([label for _, label, _ in METHODS]))
+        self.method.connect("notify::selected", lambda *_: self._describe_method())
+        self._describe_method()
         self.iface = Adw.ComboRow(title="Wi-Fi interface")
         self.iface_model = Gtk.StringList.new(["Automatic"])
         self.iface.set_model(self.iface_model)
@@ -35,7 +45,16 @@ class SettingsPage:
             "Hide network name", "Devices must type the name to join; the QR code still works"
         )
         save_row, self.save_btn = button_row("Save", self._on_save, style="suggested-action")
-        for row in (self.ssid.widget, self.password.widget, self.band, self.iface, self.hidden_row, save_row):
+        rows = (
+            self.ssid.widget,
+            self.password.widget,
+            self.band,
+            self.channel,
+            self.method,
+            self.iface,
+            self.hidden_row,
+        )
+        for row in rows + (save_row,):
             net.add(row)
         self.widget.add(net)
 
@@ -81,6 +100,21 @@ class SettingsPage:
 
     # ── updates ───────────────────────────────────────────────────────────────
 
+    def _band(self) -> str:
+        index = self.band.get_selected()
+        return BANDS[index][0] if index < len(BANDS) else "bg"
+
+    def _fill_channels(self) -> None:
+        """The channel list depends on the band; keep the choice when it still exists."""
+        keep = self._channels[self.channel.get_selected()][0] if self._channels else "auto"
+        self._channels = channel_options(self._band())
+        self.channel_model.splice(0, self.channel_model.get_n_items(), [label for _, label in self._channels])
+        self.channel.set_selected(index_of(self._channels, keep))
+
+    def _describe_method(self) -> None:
+        index = self.method.get_selected()
+        self.method.set_subtitle(METHODS[index][2] if index < len(METHODS) else "")
+
     def _sync(self, key, current, value, setter) -> None:
         """Only overwrite a field the user hasn't changed since the last sync."""
         last = self._synced.get(key)
@@ -97,6 +131,10 @@ class SettingsPage:
             self._sync("ssid", self.ssid.get_text(), config.get("ssid") or "", self.ssid.set_text)
             band_index = 1 if config.get("band") == "a" else 0
             self._sync("band", self.band.get_selected(), band_index, self.band.set_selected)
+            channel_index = index_of(self._channels, config.get("channel") or "auto")
+            self._sync("channel", self.channel.get_selected(), channel_index, self.channel.set_selected)
+            method_index = index_of(METHODS, config.get("method") or "auto")
+            self._sync("method", self.method.get_selected(), method_index, self.method.set_selected)
 
             names = [i["name"] for i in data.get("interfaces") or [] if i.get("type") != "AP"]
             if names != self._ifaces:
@@ -145,13 +183,15 @@ class SettingsPage:
         if password and not 8 <= len(password) <= 63:
             self.window.toast("Passwords need 8–63 characters.")
             return
-        band = BANDS[self.band.get_selected()][0] if self.band.get_selected() < len(BANDS) else "bg"
+        band = self._band()
+        channel = self._channels[self.channel.get_selected()][0] if self._channels else "auto"
+        method = METHODS[self.method.get_selected()][0] if self.method.get_selected() < len(METHODS) else "auto"
         index = self.iface.get_selected()
         iface = self._ifaces[index - 1] if 0 < index <= len(self._ifaces) else ""
         hidden = self.hidden.get_active()
 
         def work():
-            result = self.window.backend.save_config(ssid, password, band, iface, hidden)
+            result = self.window.backend.save_config(ssid, password, band, iface, hidden, method, channel)
             if result.ok:
                 self._synced.clear()
             return result

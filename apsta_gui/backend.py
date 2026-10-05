@@ -124,9 +124,25 @@ class ApstaBackend:
                 return Result(False, "Could not read the configuration.")
         return result
 
-    def save_config(self, ssid: str, password: str, band: str, interface: str, hidden: bool = False) -> Result:
+    def save_config(
+        self,
+        ssid: str,
+        password: str,
+        band: str,
+        interface: str,
+        hidden: bool = False,
+        method: str = "auto",
+        channel: str = "auto",
+    ) -> Result:
         args = ["config", "--set", f"ssid={ssid}", "--set", f"band={band}", "--set", f"interface={interface or 'auto'}"]
-        args += ["--set", f"hidden={'yes' if hidden else 'no'}"]
+        args += [
+            "--set",
+            f"hidden={'yes' if hidden else 'no'}",
+            "--set",
+            f"method={method}",
+            "--set",
+            f"channel={channel}",
+        ]
         if password:
             args.append("--password-stdin")
         return self.privileged(*args, stdin=password + "\n" if password else None, success="Settings saved.")
