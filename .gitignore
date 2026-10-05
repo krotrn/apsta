@@ -43,3 +43,7 @@ debian/files
 coverage.xml
 htmlcov/
 gui-screenshots/
+
+# Documentation website (scripts/build_site.py, mkdocs build)
+site-src/
+site/

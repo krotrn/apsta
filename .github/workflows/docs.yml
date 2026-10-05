@@ -1,0 +1,79 @@
+name: Docs
+
+# Builds the documentation website (README + docs/) and publishes it to
+# GitHub Pages at https://krotrn.github.io/apsta/. Pull requests only build it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - llms.txt
+      - docs/**
+      - docs-theme/**
+      - mkdocs.yml
+      - scripts/build_site.py
+      - .github/workflows/docs.yml
+  pull_request:
+    paths:
+      - README.md
+      - llms.txt
+      - docs/**
+      - docs-theme/**
+      - mkdocs.yml
+      - scripts/build_site.py
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install MkDocs
+        # MkDocs 2.0 drops the plugin and theme system Material relies on.
+        run: python -m pip install "mkdocs>=1.6,<2" "mkdocs-material>=9.7,<10"
+
+      - name: Build
+        run: |
+          python scripts/build_site.py
+          mkdocs build
+
+      - name: Upload site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/
+
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

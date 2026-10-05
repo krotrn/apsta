@@ -7,7 +7,7 @@
 # as the code under test (e.g. an activated .venv).
 PYTHON ?= python3
 
-.PHONY: dev test coverage lint lint-ci fmt check gui gui-smoke clean
+.PHONY: dev test coverage lint lint-ci fmt check gui gui-smoke site clean
 
 # uv-managed environments have no pip; use uv when it's available.
 dev:
@@ -49,8 +49,13 @@ gui:
 gui-smoke:
 	G_DEBUG=fatal-criticals $(PYTHON) scripts/gui_smoke.py gui-screenshots
 
+# Serves the documentation website at http://127.0.0.1:8000 (needs mkdocs-material).
+site:
+	$(PYTHON) scripts/build_site.py
+	mkdocs serve
+
 clean:
-	rm -rf build dist *.egg-info .coverage coverage.xml gui-screenshots
+	rm -rf build dist *.egg-info .coverage coverage.xml gui-screenshots site-src site
 	find . -name __pycache__ -prune -exec rm -rf {} +
 
 _require-dev:
