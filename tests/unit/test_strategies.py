@@ -77,15 +77,16 @@ class AvailabilityTests(unittest.TestCase):
         self.assertIsNone(strategies.NmVirtualStrategy().unavailable(ctx()))
         self.assertIn("cannot run", strategies.NmVirtualStrategy().unavailable(ctx(ap_sta=False)))
         self.assertIn("--allow-disconnect", strategies.NmSingleStrategy().unavailable(ctx()))
+        self.assertIsNone(strategies.NmSingleStrategy().unavailable(ctx(allow=True)))
+        self.assertIsNone(strategies.NmSingleStrategy().unavailable(ctx(sta_ssid=None)))
+        self.assertIn("AP mode", strategies.NmSingleStrategy().unavailable(ctx(supports_ap=False)))
 
     def test_networkmanager_refuses_an_allowlist(self):
+        FakeShell(["nmcli"]).install(self)
         c = ctx(allow=True)
         c.allowed_macs = ["aa:bb:cc:dd:ee:ff"]
         for strategy in (strategies.NmVirtualStrategy(), strategies.NmSingleStrategy()):
             self.assertIn("allowed_macs needs hostapd", strategy.unavailable(c))
-        self.assertIsNone(strategies.NmSingleStrategy().unavailable(ctx(allow=True)))
-        self.assertIsNone(strategies.NmSingleStrategy().unavailable(ctx(sta_ssid=None)))
-        self.assertIn("AP mode", strategies.NmSingleStrategy().unavailable(ctx(supports_ap=False)))
 
     def test_unusable_wifi_channel_leaves_only_the_disconnecting_method(self):
         FakeShell(["hostapd", "dnsmasq", "nmcli"]).install(self)
