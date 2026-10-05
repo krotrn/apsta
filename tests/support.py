@@ -32,6 +32,7 @@ def isolate_paths(testcase, root: Optional[Path] = None) -> Path:
         "LOCK_PATH": run / "lock",
         "RESUME_MARKER": run / "resume-pending",
         "HOSTAPD_CONF": run / "hostapd.conf",
+        "HOSTAPD_ACCEPT": run / "hostapd.accept",
         "HOSTAPD_CTRL_DIR": run / "hostapd",
         "HOSTAPD_PID": run / "hostapd.pid",
         "DNSMASQ_CONF": run / "dnsmasq.conf",

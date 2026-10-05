@@ -16,11 +16,12 @@ def escape_wifi_field(value: str) -> str:
     return value
 
 
-def wifi_share_string(ssid: str, password: str) -> str:
-    """The ``WIFI:`` payload phone cameras understand for joining a network."""
+def wifi_share_string(ssid: str, password: str, hidden: bool = False) -> str:
+    """The ``WIFI:`` payload phone cameras understand; ``H:true`` for hidden networks."""
     if not ssid or not password:
         return ""
-    return f"WIFI:T:WPA;S:{escape_wifi_field(ssid)};P:{escape_wifi_field(password)};;"
+    tail = "H:true;" if hidden else ""
+    return f"WIFI:T:WPA;S:{escape_wifi_field(ssid)};P:{escape_wifi_field(password)};{tail};"
 
 
 def band_label(band: Optional[str]) -> str:

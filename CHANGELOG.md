@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `hidden` setting: don't broadcast the network name (hostapd and
+  NetworkManager). The QR code carries the hidden flag so phones still join.
+- `allowed_macs` setting: only the listed devices may join, even with the
+  password (hostapd mode). NetworkManager can't enforce it, so apsta refuses
+  those methods instead of starting an open hotspot. Blocking an allowlisted
+  client still works.
+- `apsta qr`: a QR code in the terminal for joining with a phone camera.
+- GUI: "Hide network name" switch in Settings.
+
 ### Fixed
 
 - A hotspot started with `apsta start` or the GUI no longer cuts off your
@@ -23,6 +34,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Documentation
 
+- `docs/5ghz-wifi.md`: on Intel cards the firmware's "no IR" rules can be
+  stricter than the law; how to check, and the driver patch (maintained by
+  linux-wifi-hotspot) that hands the decision back to the kernel, with its
+  costs.
 - `docs/5ghz-wifi.md`: what happens when the network switches band while the
   hotspot is running (phone hotspots do this by themselves), and how the
   service recovers.

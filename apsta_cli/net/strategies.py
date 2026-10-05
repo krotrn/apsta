@@ -14,7 +14,7 @@ and register it in ``STRATEGIES``.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -39,6 +39,8 @@ class StartContext:
     sta_ssid: Optional[str]
     allow_disconnect: bool
     sta_channel_usable: bool = True  # False: the AP can't share the WiFi's channel
+    hidden: bool = False
+    allowed_macs: List[str] = field(default_factory=list)
 
 
 def _now() -> str:
@@ -127,13 +129,15 @@ class HostapdStrategy(Strategy):
         net = subnet.pick(subnet.networks_in_use())
         gateway, dhcp_start, dhcp_end = subnet.addresses(net)
 
-        fsutil.atomic_write(
-            paths.HOSTAPD_CONF,
-            hostapd.render(
-                hostapd.HostapdConfig(ap, ctx.ssid, ctx.password, ctx.channel, ctx.country, str(paths.HOSTAPD_CTRL_DIR))
-            ),
-            mode=0o600,
+        accept_file = None
+        if ctx.allowed_macs:
+            fsutil.atomic_write(paths.HOSTAPD_ACCEPT, hostapd.render_accept(ctx.allowed_macs), mode=0o600)
+            tx.on_rollback("remove the MAC allowlist", lambda: fsutil.remove(paths.HOSTAPD_ACCEPT))
+            accept_file = str(paths.HOSTAPD_ACCEPT)
+        cfg = hostapd.HostapdConfig(
+            ap, ctx.ssid, ctx.password, ctx.channel, ctx.country, str(paths.HOSTAPD_CTRL_DIR), ctx.hidden, accept_file
         )
+        fsutil.atomic_write(paths.HOSTAPD_CONF, hostapd.render(cfg), mode=0o600)
         tx.on_rollback("remove hostapd.conf", lambda: fsutil.remove(paths.HOSTAPD_CONF))
 
         hostapd_d = hostapd_daemon()
@@ -166,6 +170,7 @@ class HostapdStrategy(Strategy):
         state.gateway = gateway
         state.supervisor = sup.kind
         state.firewall = fw
+        state.allowed_macs = list(ctx.allowed_macs)
         return state
 
     def stop(self, state: HotspotState) -> None:
@@ -176,7 +181,7 @@ class HostapdStrategy(Strategy):
         sup.stop(hostapd_daemon())
         if iface.exists(state.ap_interface):
             iface.delete(state.ap_interface)
-        for path in (paths.HOSTAPD_CONF, paths.DNSMASQ_CONF, paths.DNSMASQ_LEASES):
+        for path in (paths.HOSTAPD_CONF, paths.HOSTAPD_ACCEPT, paths.DNSMASQ_CONF, paths.DNSMASQ_LEASES):
             fsutil.remove(path)
         nm.release()
 
@@ -191,6 +196,13 @@ class HostapdStrategy(Strategy):
 class _NmStrategy(Strategy):
     virtual = True
 
+    @staticmethod
+    def _unsupported(ctx: StartContext) -> Optional[str]:
+        # NetworkManager has no MAC filter for hotspots; never run one open to all.
+        if ctx.allowed_macs:
+            return "NetworkManager can't limit which devices join (allowed_macs needs hostapd)"
+        return None
+
     def start(self, ctx: StartContext, tx: Transaction) -> HotspotState:
         if self.virtual:
             ap, mac = iface.create_virtual_ap(ctx.base.name)
@@ -202,7 +214,14 @@ class _NmStrategy(Strategy):
             ap, mac = ctx.base.name, None
 
         nm.install_connection(
-            nm.render_keyfile(interface=ap, ssid=ctx.ssid, password=ctx.password, channel=ctx.channel, cloned_mac=mac)
+            nm.render_keyfile(
+                interface=ap,
+                ssid=ctx.ssid,
+                password=ctx.password,
+                channel=ctx.channel,
+                cloned_mac=mac,
+                hidden=ctx.hidden,
+            )
         )
         tx.on_rollback("delete NM connection", nm.remove_connection)
         nm.up()
@@ -226,6 +245,8 @@ class NmVirtualStrategy(_NmStrategy):
     description = "NetworkManager shared connection on a virtual interface (keeps WiFi)"
 
     def unavailable(self, ctx: StartContext) -> Optional[str]:
+        if self._unsupported(ctx):
+            return self._unsupported(ctx)
         if not ctx.capability.ap_sta:
             return "the radio cannot run an AP and a WiFi connection at the same time"
         if not ctx.sta_channel_usable:
@@ -242,6 +263,8 @@ class NmSingleStrategy(_NmStrategy):
     virtual = False
 
     def unavailable(self, ctx: StartContext) -> Optional[str]:
+        if self._unsupported(ctx):
+            return self._unsupported(ctx)
         if not ctx.capability.supports_ap:
             return "the WiFi card does not support AP mode"
         if not shell.have("nmcli"):

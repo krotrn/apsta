@@ -25,7 +25,7 @@ def qr_texture(payload: str):
 
 
 class ShareDialog:
-    def __init__(self, parent: Gtk.Window, ssid: str, password: str):
+    def __init__(self, parent: Gtk.Window, ssid: str, password: str, hidden: bool = False):
         self.window = Adw.Window(
             transient_for=parent, modal=True, title="Share hotspot", default_width=360, resizable=False
         )
@@ -40,7 +40,7 @@ class ShareDialog:
             margin_start=24,
             margin_end=24,
         )
-        texture = qr_texture(wifi_share_string(ssid, password))
+        texture = qr_texture(wifi_share_string(ssid, password, hidden))
         if texture is not None:
             frame = Gtk.Box(halign=Gtk.Align.CENTER)
             frame.add_css_class("card")

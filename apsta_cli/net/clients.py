@@ -122,7 +122,7 @@ def disconnect(state: HotspotState, mac: str, block: bool) -> None:
 def unblock(state: HotspotState, mac: str) -> None:
     if state.method != "hostapd":
         raise UsageError("Blocking clients needs hostapd mode.")
-    hostapd.allow(state.ap_interface, mac)
+    hostapd.allow(state.ap_interface, mac, allowlisted=mac in state.allowed_macs)
     if mac in state.blocked:
         state.blocked.remove(mac)
 

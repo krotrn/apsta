@@ -31,8 +31,11 @@ class SettingsPage:
         self.iface = Adw.ComboRow(title="Wi-Fi interface")
         self.iface_model = Gtk.StringList.new(["Automatic"])
         self.iface.set_model(self.iface_model)
+        self.hidden_row, self.hidden = switch_row(
+            "Hide network name", "Devices must type the name to join; the QR code still works"
+        )
         save_row, self.save_btn = button_row("Save", self._on_save, style="suggested-action")
-        for row in (self.ssid.widget, self.password.widget, self.band, self.iface, save_row):
+        for row in (self.ssid.widget, self.password.widget, self.band, self.iface, self.hidden_row, save_row):
             net.add(row)
         self.widget.add(net)
 
@@ -102,6 +105,7 @@ class SettingsPage:
             wanted = config.get("interface")
             iface_index = names.index(wanted) + 1 if wanted in names else 0
             self._sync("iface", self.iface.get_selected(), iface_index, self.iface.set_selected)
+            self._sync("hidden", self.hidden.get_active(), bool(config.get("hidden")), self.hidden.set_active)
 
             autostart = data.get("autostart") or {}
             self.autostart_row.set_sensitive(autostart.get("init") in ("systemd", "openrc", "runit"))
@@ -144,9 +148,10 @@ class SettingsPage:
         band = BANDS[self.band.get_selected()][0] if self.band.get_selected() < len(BANDS) else "bg"
         index = self.iface.get_selected()
         iface = self._ifaces[index - 1] if 0 < index <= len(self._ifaces) else ""
+        hidden = self.hidden.get_active()
 
         def work():
-            result = self.window.backend.save_config(ssid, password, band, iface)
+            result = self.window.backend.save_config(ssid, password, band, iface, hidden)
             if result.ok:
                 self._synced.clear()
             return result

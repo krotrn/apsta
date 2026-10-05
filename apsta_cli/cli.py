@@ -105,6 +105,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--show-password", action="store_true", help="Show the password (root)")
     p.add_argument("--json", action="store_true", help="Machine-readable output")
 
+    sub.add_parser("qr", help="Show a QR code phones can scan to join (root)")
+
     p = sub.add_parser("profile", help="Manage named hotspot profiles")
     psub = p.add_subparsers(dest="action", metavar="ACTION")
     psub.add_parser("list", help="List profiles")
@@ -138,7 +140,7 @@ REQUIRED_TOOLS = {
 
 
 def _handler(command: str):
-    from .cmd import clients, completion, config, detect, hotspot, profile, service, status, usb
+    from .cmd import clients, completion, config, detect, hotspot, profile, qr, service, status, usb
 
     return {
         "detect": detect.cmd_detect,
@@ -148,6 +150,7 @@ def _handler(command: str):
         "status": status.cmd_status,
         "clients": clients.cmd_clients,
         "config": config.cmd_config,
+        "qr": qr.cmd_qr,
         "profile": profile.cmd_profile,
         "enable": service.cmd_enable,
         "disable": service.cmd_disable,

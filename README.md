@@ -49,7 +49,9 @@ Verdict
   networks. DNS goes through your normal resolver, so captive portals and VPN
   DNS keep working.
 - **Fast**: 802.11n/ac + WMM, and the right regulatory country code.
-- **Client management** (hostapd mode): list, kick, block, and rate-limit clients.
+- **Client management** (hostapd mode): list, kick, block, and rate-limit
+  clients, or let only the devices you list join.
+- **Hidden network** option, and a QR code to join (`apsta qr` or the app).
 - **Safe by default**: a random password on first start (never a shared
   default), passwords never on a command line, a scoped polkit action for the
   GUI.
@@ -114,6 +116,7 @@ sudo apsta config --set ssid=MyHotspot --set band=a
 sudo apsta config --password-stdin        # prompts; nothing ends up in shell history
 sudo apsta config --generate-password
 sudo apsta config --show-password
+sudo apsta qr                             # QR code a phone camera can scan to join
 
 apsta profile list
 sudo apsta profile create travel
@@ -121,8 +124,10 @@ sudo apsta profile use travel
 ```
 
 Settings: `ssid`, `password`, `band` (`bg` = 2.4 GHz, `a` = 5 GHz), `channel`
-(used only when the hotspot doesn't have to follow your WiFi channel) and
-`interface` (`auto` by default). Configuration lives in `/etc/apsta/` and
+(used only when the hotspot doesn't have to follow your WiFi channel),
+`interface` (`auto` by default), `hidden` (`yes` stops broadcasting the
+network name; devices must type it or scan the QR code) and `allowed_macs`
+(see below). Configuration lives in `/etc/apsta/` and
 passwords in the root-only `/etc/apsta/secrets.json`.
 
 ### Clients (hostapd mode)
@@ -135,6 +140,19 @@ sudo apsta clients unblock aa:bb:cc:dd:ee:ff
 sudo apsta clients limit 192.168.42.17 8000 # Kbps, upload and download
 sudo apsta clients unlimit 192.168.42.17
 ```
+
+To let only your own devices join, list their MAC addresses. Anyone else is
+refused even with the password. This needs hostapd mode; apsta won't start a
+hotspot it can't restrict.
+
+```bash
+sudo apsta config --set allowed_macs="aa:bb:cc:dd:ee:ff, 11:22:33:44:55:66"
+sudo apsta config --set allowed_macs=      # anyone with the password again
+```
+
+Phones often use a random MAC per network: look up the one they use for your
+hotspot (Android: *Wi-Fi → your hotspot → Privacy*, or set it to the device
+MAC; iPhone: *Private Wi-Fi Address*).
 
 ### Scripting
 

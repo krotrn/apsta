@@ -39,6 +39,20 @@ class HostapdTests(unittest.TestCase):
         self.assertIn("ieee80211ac=1\n", text)
         self.assertNotIn("country_code", text)
 
+    def test_open_broadcast_by_default(self):
+        text = hostapd.render(conf())
+        self.assertIn("ignore_broadcast_ssid=0\n", text)
+        self.assertIn("macaddr_acl=0\n", text)
+        self.assertNotIn("accept_mac_file", text)
+
+    def test_hidden_and_allowlist(self):
+        text = hostapd.render(conf(hidden=True, accept_file="/run/apsta/hostapd.accept"))
+        self.assertIn("ignore_broadcast_ssid=1\n", text)
+        self.assertIn("macaddr_acl=1\naccept_mac_file=/run/apsta/hostapd.accept\n", text)
+        self.assertEqual(
+            hostapd.render_accept(["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"]), "aa:bb:cc:dd:ee:ff\n11:22:33:44:55:66\n"
+        )
+
     def test_raw_psk(self):
         psk = "AB" * 32
         self.assertIn(f"wpa_psk={psk.lower()}\n", hostapd.render(conf(password=psk)))
@@ -85,6 +99,11 @@ class KeyfileTests(unittest.TestCase):
     def test_render_without_mac(self):
         text = nm.render_keyfile(interface="wlo1", ssid="a", password="12345678", channel=Channel(1, "bg"))
         self.assertNotIn("cloned-mac-address", text)
+        self.assertNotIn("hidden=", text)
+
+    def test_render_hidden(self):
+        text = nm.render_keyfile(interface="wlo1", ssid="a", password="12345678", channel=Channel(1, "bg"), hidden=True)
+        self.assertIn("hidden=true\n", text)
 
 
 class UnmanagedConfTests(unittest.TestCase):

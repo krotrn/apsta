@@ -36,6 +36,7 @@ class HotspotState:
     # client management
     client_limits: Dict[str, Dict[str, int]] = field(default_factory=dict)  # mac -> {pref, kbps}
     blocked: List[str] = field(default_factory=list)
+    allowed_macs: List[str] = field(default_factory=list)  # hostapd MAC allowlist; empty = none
 
     def to_dict(self) -> dict:
         return asdict(self)

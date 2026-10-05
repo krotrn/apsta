@@ -18,6 +18,8 @@ class HostapdConfig:
     channel: Channel
     country: Optional[str]
     ctrl_dir: str
+    hidden: bool = False
+    accept_file: Optional[str] = None  # set: only the MACs listed there may join
 
 
 def render(cfg: HostapdConfig) -> str:
@@ -45,8 +47,14 @@ def render(cfg: HostapdConfig) -> str:
         lines += [f"country_code={cfg.country}", "ieee80211d=1"]
     lines += [
         "auth_algs=1",
-        "ignore_broadcast_ssid=0",
-        "macaddr_acl=0",
+        # 1: beacons carry an empty SSID; clients must know the name to join.
+        f"ignore_broadcast_ssid={1 if cfg.hidden else 0}",
+    ]
+    if cfg.accept_file:
+        lines += ["macaddr_acl=1", f"accept_mac_file={cfg.accept_file}"]
+    else:
+        lines.append("macaddr_acl=0")
+    lines += [
         "wpa=2",
         "wpa_key_mgmt=WPA-PSK",
         "rsn_pairwise=CCMP",
@@ -100,9 +108,18 @@ def deauthenticate(ap_iface: str, mac: str) -> bool:
     return _ok(_cli(ap_iface, "deauthenticate", mac))
 
 
+def render_accept(macs: List[str]) -> str:
+    return "".join(f"{m}\n" for m in macs)
+
+
 def deny(ap_iface: str, mac: str) -> bool:
+    # hostapd checks the accept list before the deny list, so an allowlisted
+    # device must leave the accept list too or the block wouldn't hold.
+    _cli(ap_iface, "accept_acl", "DEL_MAC", mac)
     return _ok(_cli(ap_iface, "deny_acl", "ADD_MAC", mac))
 
 
-def allow(ap_iface: str, mac: str) -> bool:
+def allow(ap_iface: str, mac: str, allowlisted: bool = False) -> bool:
+    if allowlisted:
+        _cli(ap_iface, "accept_acl", "ADD_MAC", mac)
     return _ok(_cli(ap_iface, "deny_acl", "DEL_MAC", mac))

@@ -143,11 +143,12 @@ class ApstaWindow(Adw.ApplicationWindow):
             if not result.ok:
                 self.toast(result.message)
                 return
-            ssid, password = result.data.get("settings", {}).get("ssid"), result.data.get("password")
+            settings = result.data.get("settings", {})
+            ssid, password = settings.get("ssid"), result.data.get("password")
             if not password:
                 self.toast("No password is set yet; start the hotspot once to generate one.")
                 return
-            ShareDialog(self, ssid, password).present()
+            ShareDialog(self, ssid, password, bool(settings.get("hidden"))).present()
 
         self.run_async(self.backend.secrets, done)
 

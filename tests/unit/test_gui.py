@@ -20,6 +20,7 @@ class HelperTests(unittest.TestCase):
     def test_wifi_share_string_escapes(self):
         self.assertEqual(helpers.wifi_share_string("My;Net", 'pa:ss,"w'), r"WIFI:T:WPA;S:My\;Net;P:pa\:ss\,\"w;;")
         self.assertEqual(helpers.wifi_share_string("", "x"), "")
+        self.assertEqual(helpers.wifi_share_string("N", "p", hidden=True), "WIFI:T:WPA;S:N;P:p;H:true;;")
 
     def test_rates_and_client_text(self):
         self.assertEqual(helpers.format_rate(8000), "8 Mbit/s")
@@ -78,10 +79,12 @@ class BackendTests(unittest.TestCase):
         self.assertIn("--password-stdin", argv)
         self.assertIn("band=a", argv)
         self.assertIn("interface=auto", argv)
+        self.assertIn("hidden=no", argv)
         self.assertEqual(run.call_args.kwargs["input"], "secret123\n")
         with mock.patch.object(backend.subprocess, "run", return_value=completed()) as run:
-            self.b.save_config("Cafe", "", "bg", "wlan1")
+            self.b.save_config("Cafe", "", "bg", "wlan1", hidden=True)
         self.assertIsNone(run.call_args.kwargs["input"])
+        self.assertIn("hidden=yes", run.call_args[0][0])
 
     def test_pkexec_failures(self):
         cases = [

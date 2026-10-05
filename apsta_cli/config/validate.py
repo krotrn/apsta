@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
+from typing import List, Optional
 
 from ..core.errors import UsageError
 
 _IFACE_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,15}$")
 _PROFILE_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,32}$")
 _HEX64_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_MAC_RE = re.compile(r"^[0-9a-f]{2}(:[0-9a-f]{2}){5}$")
+_TRUE, _FALSE = ("yes", "true", "on", "1"), ("no", "false", "off", "0")
 BANDS = ("bg", "a")
 
 
@@ -53,6 +55,31 @@ def interface(value: Optional[str]) -> Optional[str]:
     return value
 
 
+def flag(value: str) -> bool:
+    lowered = value.strip().lower()
+    if lowered in _TRUE:
+        return True
+    if lowered in _FALSE:
+        return False
+    raise UsageError(f"Expected yes or no, got {value!r}.")
+
+
+def mac(value: str) -> str:
+    normalized = value.strip().lower().replace("-", ":")
+    if not _MAC_RE.match(normalized):
+        raise UsageError(f"Invalid MAC address: {value!r}", hints=["Use the form aa:bb:cc:dd:ee:ff"])
+    return normalized
+
+
+def mac_list(value: str) -> Optional[List[str]]:
+    """Comma- or space-separated MACs; an empty list means "no allowlist"."""
+    macs: List[str] = []
+    for item in re.split(r"[,\s]+", value.strip()):
+        if item and mac(item) not in macs:
+            macs.append(mac(item))
+    return macs or None
+
+
 def profile_name(value: str) -> str:
     value = value.strip()
     if not _PROFILE_RE.match(value):
@@ -66,6 +93,8 @@ VALIDATORS = {
     "band": band,
     "channel": channel,
     "interface": interface,
+    "hidden": flag,
+    "allowed_macs": mac_list,
 }
 
 
@@ -75,5 +104,5 @@ def profile_value(key: str, value: Optional[str]):
     if value is None or (key != "interface" and value.lower() in ("none", "null", "")):
         if key in ("ssid", "band"):
             raise UsageError(f"{key} cannot be empty.")
-        return None
+        return False if key == "hidden" else None
     return VALIDATORS[key](value)

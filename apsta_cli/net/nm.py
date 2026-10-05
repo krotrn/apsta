@@ -38,6 +38,7 @@ def render_keyfile(
     channel: Channel,
     cloned_mac: Optional[str] = None,
     connection_uuid: Optional[str] = None,
+    hidden: bool = False,
 ) -> str:
     # SSIDs are written as a byte list, the keyfile form that needs no escaping.
     ssid_bytes = ";".join(str(b) for b in ssid.encode("utf-8")) + ";"
@@ -57,6 +58,8 @@ def render_keyfile(
     ]
     if cloned_mac:
         lines.append(f"cloned-mac-address={cloned_mac}")
+    if hidden:
+        lines.append("hidden=true")
     lines += [
         "",
         "[wifi-security]",

@@ -139,6 +139,8 @@ def build_context(config: dict, opts: StartOptions) -> StartContext:
         sta_ssid=link.ssid if link else None,
         allow_disconnect=opts.allow_disconnect,
         sta_channel_usable=sta_channel_usable,
+        hidden=bool(config.get("hidden")),
+        allowed_macs=list(config.get("allowed_macs") or []),
     )
 
 
@@ -214,6 +216,8 @@ def status() -> dict:
             "band": config["band"],
             "channel": config["channel"],
             "interface": config["interface"],
+            "hidden": config["hidden"],
+            "allowed_macs": config["allowed_macs"],
         },
     }
 

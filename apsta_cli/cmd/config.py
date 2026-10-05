@@ -36,6 +36,15 @@ def parse_assignment(text: str):
     return key, value
 
 
+def display(key: str, value) -> Optional[str]:
+    """A profile value as text, or None for "not set"."""
+    if key == "hidden":
+        return "yes" if value else "no"
+    if key == "allowed_macs":
+        return ", ".join(value) if value else None
+    return value or None
+
+
 def apply_settings(settings: Dict[str, Optional[str]], quiet: bool = False) -> dict:
     """Validate everything first, then save once, under the lock."""
     with lock.command_lock("config"):
@@ -47,7 +56,12 @@ def apply_settings(settings: Dict[str, Optional[str]], quiet: bool = False) -> d
         store.save(config)
     if not quiet:
         for key in settings:
-            shown = "(hidden)" if key == "password" else config.get(key) or "(auto)"
+            if key == "password":
+                shown = "(hidden)"
+            else:
+                shown = display(key, config.get(key)) or (
+                    "(anyone with the password)" if key == "allowed_macs" else "(auto)"
+                )
             output.ok(f"Set {key} = {shown} for profile '{model.active_name(config)}'")
     return config
 
@@ -61,8 +75,10 @@ def show_profile(name: str, values: dict, reveal: bool) -> None:
                 shown = f"{C.DIM}(not set or not readable — use sudo){C.RESET}"
             else:
                 shown = value if reveal else f"{C.DIM}(hidden — --show-password){C.RESET}"
+        elif display(key, value):
+            shown = f"{C.YELLOW}{display(key, value)}{C.RESET}"
         else:
-            shown = f"{C.YELLOW}{value}{C.RESET}" if value else f"{C.DIM}(auto){C.RESET}"
+            shown = f"{C.DIM}{'(anyone with the password)' if key == 'allowed_macs' else '(auto)'}{C.RESET}"
         output.detail(f"{key:<12} {shown}")
 
 

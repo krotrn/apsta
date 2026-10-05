@@ -4,7 +4,8 @@ Shape on disk (config.json, world-readable)::
 
     {
       "active_profile": "default",
-      "profiles": {"default": {"ssid": ..., "band": ..., "channel": ..., "interface": ...}}
+      "profiles": {"default": {"ssid": ..., "band": ..., "channel": ..., "interface": ...,
+                               "hidden": false, "allowed_macs": null}}
     }
 
 Passwords are stored separately (see :mod:`.store`). Runtime facts such as the
@@ -21,7 +22,7 @@ from typing import Dict, List, Optional
 from ..core.errors import UsageError
 from . import validate
 
-PROFILE_KEYS = ("ssid", "password", "band", "channel", "interface")
+PROFILE_KEYS = ("ssid", "password", "band", "channel", "interface", "hidden", "allowed_macs")
 
 DEFAULT_PROFILE: Dict[str, Optional[str]] = {
     "ssid": "apsta-hotspot",
@@ -29,6 +30,8 @@ DEFAULT_PROFILE: Dict[str, Optional[str]] = {
     "band": "bg",
     "channel": "6",  # used only when the STA isn't connected and no scan is possible
     "interface": None,  # auto-detect
+    "hidden": False,  # don't broadcast the network name
+    "allowed_macs": None,  # None: anyone with the password; else only these devices
 }
 
 # Passwords shipped as defaults by apsta <= 0.6. Anyone in radio range could
@@ -47,8 +50,22 @@ def _normalize_profile(values: dict) -> dict:
             val = None
         if key == "password" and val in INSECURE_PASSWORDS:
             val = None
+        if key in ("hidden", "allowed_macs"):
+            val = _coerce(key, val)
         profile[key] = val
     return profile
+
+
+def _coerce(key: str, val):
+    """Hand-edited files may hold strings for these; fall back to the default if invalid."""
+    try:
+        if key == "hidden":
+            return val if isinstance(val, bool) else validate.flag(str(val))
+        if isinstance(val, list):
+            val = ",".join(str(v) for v in val)
+        return validate.mac_list(val) if isinstance(val, str) else None
+    except UsageError:
+        return DEFAULT_PROFILE[key]
 
 
 def normalize(raw: Optional[dict]) -> dict:

@@ -30,6 +30,7 @@ STATE_PATH = RUN_DIR / "state.json"
 LOCK_PATH = RUN_DIR / "lock"
 RESUME_MARKER = RUN_DIR / "resume-pending"
 HOSTAPD_CONF = RUN_DIR / "hostapd.conf"
+HOSTAPD_ACCEPT = RUN_DIR / "hostapd.accept"  # MAC allowlist
 HOSTAPD_CTRL_DIR = RUN_DIR / "hostapd"
 HOSTAPD_PID = RUN_DIR / "hostapd.pid"
 DNSMASQ_CONF = RUN_DIR / "dnsmasq.conf"

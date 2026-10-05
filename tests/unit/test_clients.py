@@ -107,6 +107,19 @@ class ActionTests(unittest.TestCase):
         clients.unblock(state, PHONE)
         self.assertEqual(state.blocked, [])
 
+    def test_block_with_allowlist_leaves_and_rejoins_the_accept_list(self):
+        sh = FakeShell().on("hostapd_cli", stdout="OK").install(self)
+        state = st()
+        state.allowed_macs = [PHONE]
+        clients.disconnect(state, PHONE, block=True)
+        self.assertTrue(any(c[-3:] == ["accept_acl", "DEL_MAC", PHONE] for c in sh.calls))
+        clients.unblock(state, PHONE)
+        self.assertTrue(any(c[-3:] == ["accept_acl", "ADD_MAC", PHONE] for c in sh.calls))
+        sh.calls.clear()
+        state.allowed_macs = []
+        clients.unblock(state, PHONE)  # not allowlisted: must not be added to the accept list
+        self.assertFalse(any("ADD_MAC" in c and "accept_acl" in c for c in sh.calls))
+
     def test_block_failure(self):
         FakeShell().on("hostapd_cli", stdout="FAIL").install(self)
         with self.assertRaises(SetupError):

@@ -45,7 +45,9 @@ flowchart TD
     D -- "no: marked no IR" --> FAIL["No hotspot ✘<br/>apsta explains and suggests fixes"]
 ```
 
-The firmware enforces this; apsta can't and shouldn't override it.
+The firmware enforces this, and apsta doesn't override it. On Intel cards the
+firmware is often stricter than the law where you are; see
+[fix 4](#fixes) if you want to change that yourself.
 
 Common situations:
 
@@ -166,10 +168,62 @@ Pick whichever suits you:
 
    `apsta recommend` lists adapters with in-kernel Linux drivers.
 
+4. **Intel cards: let the kernel decide (advanced).** Intel cards keep their
+   own copy of the radio rules in firmware (*LAR*, location-aware regulatory)
+   and are often stricter than the law. For example, India allows hosting on
+   5 GHz channels 36–48, but an Intel AX201 still marks them "no IR":
+
+   ```sh
+   iw reg get          # "global" = the kernel's rules, "phy#0 (self-managed)" = the firmware's
+   ```
+
+   ```
+   global
+   country IN: DFS-UNSET
+   	(5150 - 5250 @ 80), (N/A, 30), (N/A)        ← channels 36–48: allowed, no radar rules
+   phy#0 (self-managed)
+   	* 5220.0 MHz [44] (22.0 dBm) (no IR)         ← the firmware says no
+   ```
+
+   If the kernel's rules for your country allow a channel the firmware
+   blocks, a patched driver can hand the decision back to the kernel. The
+   iwlwifi driver used to have a `lar_disable=1` option for this; it was
+   removed. The
+   [linux-wifi-hotspot project](https://github.com/lakinduakash/linux-wifi-hotspot/blob/master/docs/howto/intel-5ghz-lar.md)
+   keeps a patch and scripts that restore it. Follow their guide; in short:
+
+   ```sh
+   lsmod | grep -E '^iwl(dvm|mvm|mld)'   # must say iwlmvm (AX2xx and older); iwlmld is not supported
+   cd util/iwlwifi-lar-disable && ./build.sh
+   sudo COUNTRY=IN ./install.sh          # your own two-letter country code
+   sudo reboot
+   ```
+
+   Afterwards `iw phy phy0 info` shows no "(no IR)" on the channels your
+   country allows, and `sudo apsta start` works on them with no other change.
+
+   Before you do this:
+
+   - **You become responsible for the radio rules.** Set the country you are
+     actually in. The patch doesn't grant spectrum, it only stops the
+     firmware being more careful than the law.
+   - **It replaces a kernel module.** It has to be rebuilt after every kernel
+     update (on rolling distributions such as Arch, that's often), and with
+     Secure Boot on you must enroll a signing key first.
+   - **Radar channels (52–144) stay off-limits.** Hosting there needs radar
+     detection, which client cards don't do.
+   - apsta doesn't ship or run this patch; it's a change to your system's
+     driver, so it stays your decision.
+
 ## Why apsta doesn't work around it
 
-- **Hosting on the "no IR" channel anyway**: the firmware refuses, and doing so
-  would break radio regulations.
+- **Hosting on the "no IR" channel anyway**: the firmware refuses. Where the
+  firmware is stricter than the law, the fix is in the driver
+  ([fix 4](#fixes)), not something a
+  hotspot tool should do behind your back. The kernel's "IR-concurrent"
+  exception (hosting on a no-IR channel you are already connected on) applies
+  only to Wi-Fi Direct groups, not to a normal hotspot, and distributions
+  don't enable it.
 - **Using a different channel for the hotspot**: some cards (Intel included)
   can run a *Wi-Fi Direct* group on a second channel. We tested this on an
   Intel AX201: the card does it, but NetworkManager immediately removes any

@@ -77,6 +77,12 @@ class AvailabilityTests(unittest.TestCase):
         self.assertIsNone(strategies.NmVirtualStrategy().unavailable(ctx()))
         self.assertIn("cannot run", strategies.NmVirtualStrategy().unavailable(ctx(ap_sta=False)))
         self.assertIn("--allow-disconnect", strategies.NmSingleStrategy().unavailable(ctx()))
+
+    def test_networkmanager_refuses_an_allowlist(self):
+        c = ctx(allow=True)
+        c.allowed_macs = ["aa:bb:cc:dd:ee:ff"]
+        for strategy in (strategies.NmVirtualStrategy(), strategies.NmSingleStrategy()):
+            self.assertIn("allowed_macs needs hostapd", strategy.unavailable(c))
         self.assertIsNone(strategies.NmSingleStrategy().unavailable(ctx(allow=True)))
         self.assertIsNone(strategies.NmSingleStrategy().unavailable(ctx(sta_ssid=None)))
         self.assertIn("AP mode", strategies.NmSingleStrategy().unavailable(ctx(supports_ap=False)))
@@ -141,6 +147,21 @@ class HostapdStrategyTests(unittest.TestCase):
         self.assertFalse(paths.HOSTAPD_CONF.exists())
         self.assertFalse(nm_conf.exists())
         self.assertEqual(paths.IP_FORWARD.read_text().strip(), "0")
+
+    def test_allowlist_and_hidden(self):
+        ap_mode_shell(self)
+        c = ctx()
+        c.hidden, c.allowed_macs = True, ["aa:bb:cc:dd:ee:ff"]
+        with Transaction() as tx:
+            state = strategies.HostapdStrategy().start(c, tx)
+            tx.commit()
+        conf = paths.HOSTAPD_CONF.read_text()
+        self.assertIn("ignore_broadcast_ssid=1", conf)
+        self.assertIn(f"accept_mac_file={paths.HOSTAPD_ACCEPT}", conf)
+        self.assertEqual(paths.HOSTAPD_ACCEPT.read_text(), "aa:bb:cc:dd:ee:ff\n")
+        self.assertEqual(state.allowed_macs, ["aa:bb:cc:dd:ee:ff"])
+        strategies.HostapdStrategy().stop(state)
+        self.assertFalse(paths.HOSTAPD_ACCEPT.exists())
 
     def test_hostapd_not_coming_up_rolls_back(self):
         ap_mode_shell(self, ap_up=False)

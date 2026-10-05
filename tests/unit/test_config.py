@@ -40,6 +40,22 @@ class ValidateTests(unittest.TestCase):
             with self.assertRaises(UsageError):
                 fn(bad)
 
+    def test_flag_and_macs(self):
+        self.assertTrue(validate.flag("Yes"))
+        self.assertFalse(validate.flag("off"))
+        with self.assertRaises(UsageError):
+            validate.flag("maybe")
+        self.assertEqual(validate.mac("AA-BB-CC-DD-EE-FF"), "aa:bb:cc:dd:ee:ff")
+        with self.assertRaises(UsageError):
+            validate.mac("aa:bb:cc")
+        self.assertEqual(
+            validate.mac_list("AA:BB:CC:DD:EE:FF, 11-22-33-44-55-66 aa:bb:cc:dd:ee:ff"),
+            ["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"],
+        )
+        self.assertIsNone(validate.mac_list(" , "))
+        self.assertFalse(validate.profile_value("hidden", "none"))
+        self.assertIsNone(validate.profile_value("allowed_macs", ""))
+
     def test_profile_value(self):
         self.assertIsNone(validate.profile_value("password", ""))
         self.assertIsNone(validate.profile_value("interface", "none"))
@@ -54,6 +70,17 @@ class ModelTests(unittest.TestCase):
         cfg = model.normalize({})
         self.assertIsNone(cfg["password"])
         self.assertEqual(cfg["active_profile"], "default")
+
+    def test_hidden_and_allowlist_defaults_and_coercion(self):
+        config = model.normalize({})
+        self.assertEqual((config["hidden"], config["allowed_macs"]), (False, None))
+        config = model.normalize({"hidden": "yes", "allowed_macs": ["AA:BB:CC:DD:EE:FF"]})
+        self.assertEqual((config["hidden"], config["allowed_macs"]), (True, ["aa:bb:cc:dd:ee:ff"]))
+        config = model.normalize({"hidden": "bogus", "allowed_macs": "not-a-mac"})  # hand-edited junk
+        self.assertEqual((config["hidden"], config["allowed_macs"]), (False, None))
+        model.set_field(config, "allowed_macs", "aa:bb:cc:dd:ee:ff")
+        model.set_field(config, "hidden", "yes")
+        self.assertEqual((config["hidden"], config["allowed_macs"]), (True, ["aa:bb:cc:dd:ee:ff"]))
 
     def test_legacy_top_level_values_become_default_profile(self):
         cfg = model.normalize({"ssid": "Old", "password": "changeme123", "ap_interface": "x"})
