@@ -34,6 +34,7 @@ uninstall() {
           /usr/lib/systemd/system-sleep/apsta-sleep \
           /usr/share/polkit-1/actions/com.github.apsta.policy \
           /usr/share/applications/com.github.apsta.Gtk.desktop \
+          /usr/share/metainfo/com.github.apsta.Gtk.metainfo.xml \
           /usr/share/icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg \
           /usr/share/icons/hicolor/symbolic/apps/com.github.apsta.Gtk-symbolic.svg \
           /etc/bash_completion.d/apsta \
@@ -84,6 +85,7 @@ if [[ -d /usr/share/polkit-1/actions ]]; then
 fi
 
 install -Dm644 "$SRC/apsta_gui/data/com.github.apsta.Gtk.desktop" /usr/share/applications/com.github.apsta.Gtk.desktop
+install -Dm644 "$SRC/apsta_gui/data/com.github.apsta.Gtk.metainfo.xml" /usr/share/metainfo/com.github.apsta.Gtk.metainfo.xml
 for kind in scalable symbolic; do
     for icon in "$SRC"/apsta_gui/data/icons/hicolor/"$kind"/apps/*.svg; do
         install -Dm644 "$icon" "/usr/share/icons/hicolor/$kind/apps/$(basename "$icon")"

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata: lists the app in GNOME Software, KDE Discover and other software centers. -->
+<component type="desktop-application">
+  <id>com.github.apsta.Gtk</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Hotspot (apsta)</name>
+  <summary>Share your internet over Wi-Fi while staying connected</summary>
+  <developer id="io.github.krotrn">
+    <name>krotrn</name>
+  </developer>
+
+  <description>
+    <p>
+      Run a Wi-Fi hotspot on Linux while your Wi-Fi card stays connected
+      to your Wi-Fi network (AP+STA). apsta checks what your card can do, sets the
+      hotspot up the right way for it, keeps it running after suspend or a
+      channel change, and removes everything it added when you stop it.
+    </p>
+    <ul>
+      <li>One button to start and stop the hotspot</li>
+      <li>A QR code phones can scan to join</li>
+      <li>See connected devices; limit their speed, disconnect or block them</li>
+      <li>Wi-Fi Direct fallback when your Wi-Fi is on a channel the card can't host on</li>
+      <li>Profiles, a hidden network option and start at boot</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">com.github.apsta.Gtk.desktop</launchable>
+  <provides>
+    <binary>apsta</binary>
+    <binary>apsta-gtk</binary>
+  </provides>
+
+  <categories>
+    <category>Network</category>
+    <category>Settings</category>
+  </categories>
+  <keywords>
+    <keyword>hotspot</keyword>
+    <keyword>wifi</keyword>
+    <keyword>wi-fi</keyword>
+    <keyword>access point</keyword>
+    <keyword>tethering</keyword>
+    <keyword>share internet</keyword>
+    <keyword>AP+STA</keyword>
+    <keyword>Wi-Fi Direct</keyword>
+  </keywords>
+
+  <url type="homepage">https://krotrn.github.io/apsta/</url>
+  <url type="bugtracker">https://github.com/krotrn/apsta/issues</url>
+  <url type="vcs-browser">https://github.com/krotrn/apsta</url>
+  <url type="donation">https://www.buymeacoffee.com/krotrn</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Hotspot running while Wi-Fi stays connected</caption>
+      <image>https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/hotspot.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Connected devices</caption>
+      <image>https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/devices.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Share the hotspot with a QR code</caption>
+      <image>https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/share.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Settings</caption>
+      <image>https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/settings.png</image>
+    </screenshot>
+  </screenshots>
+
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.9.0" date="2026-10-05">
+      <description>
+        <p>Wi-Fi Direct fallback: when your Wi-Fi is on a channel the card can't host on, the hotspot gets a channel of its own. New Method and Channel settings, and a section that explains why the hotspot runs the way it does.</p>
+      </description>
+    </release>
+    <release version="0.8.0" date="2026-10-05"/>
+    <release version="0.7.1" date="2026-10-04"/>
+    <release version="0.7.0" date="2026-10-04"/>
+    <release version="0.6.2" date="2026-09-26"/>
+  </releases>
+</component>

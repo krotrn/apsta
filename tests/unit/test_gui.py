@@ -221,6 +221,16 @@ class PortabilityTests(unittest.TestCase):
         desktop = (GUI_DIR / "data" / f"{helpers.APP_ID}.desktop").read_text()
         self.assertIn(f"StartupWMClass={helpers.APP_ID}", desktop)
 
+    def test_metainfo_matches_app_id_and_version(self):
+        import xml.etree.ElementTree as ET
+
+        from apsta_cli import __version__
+
+        root = ET.parse(GUI_DIR / "data" / f"{helpers.APP_ID}.metainfo.xml").getroot()
+        self.assertEqual(root.findtext("id"), helpers.APP_ID)
+        self.assertEqual(root.findtext("launchable"), f"{helpers.APP_ID}.desktop")
+        self.assertEqual(root.find("releases/release").get("version"), __version__)
+
 
 if __name__ == "__main__":
     unittest.main()

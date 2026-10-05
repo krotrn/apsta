@@ -15,6 +15,21 @@ TARGETS = [
 
 CHANGELOG = Path("debian/changelog")
 PROJECT_CHANGELOG = Path("CHANGELOG.md")
+METAINFO = Path("apsta_gui/data/com.github.apsta.Gtk.metainfo.xml")
+
+
+def add_metainfo_release(new_version: str) -> None:
+    """Add ``<release version="X.Y.Z" date="DATE"/>`` at the top of the AppStream releases."""
+    text = METAINFO.read_text(encoding="utf-8")
+    if f'<release version="{new_version}"' in text:
+        return  # already listed
+    if "<releases>\n" not in text:
+        raise ValueError(f"{METAINFO} has no <releases> element")
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    METAINFO.write_text(
+        text.replace("<releases>\n", f'<releases>\n    <release version="{new_version}" date="{today}"/>\n', 1),
+        encoding="utf-8",
+    )
 
 
 def release_project_changelog(new_version: str) -> None:
@@ -65,6 +80,7 @@ def bump_version(new_version: str) -> int:
 
     bump_debian_changelog(new_version)
     release_project_changelog(new_version)
+    add_metainfo_release(new_version)
     print(f"Updated version to {new_version}")
     return 0
 

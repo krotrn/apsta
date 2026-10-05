@@ -4,3 +4,4 @@ apsta_cli/data/com.github.apsta.policy usr/share/polkit-1/actions/
 apsta_gui/data/com.github.apsta.Gtk.desktop usr/share/applications/
 apsta_gui/data/icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg usr/share/icons/hicolor/scalable/apps/
 apsta_gui/data/icons/hicolor/symbolic/apps/com.github.apsta.Gtk-symbolic.svg usr/share/icons/hicolor/symbolic/apps/
+apsta_gui/data/com.github.apsta.Gtk.metainfo.xml usr/share/metainfo/

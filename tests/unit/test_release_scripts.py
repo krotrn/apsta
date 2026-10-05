@@ -51,7 +51,13 @@ class BumpVersionTests(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
-        for rel in ("pyproject.toml", "apsta_cli/__init__.py", "packaging/arch/PKGBUILD", "debian/changelog"):
+        for rel in (
+            "pyproject.toml",
+            "apsta_cli/__init__.py",
+            "packaging/arch/PKGBUILD",
+            "debian/changelog",
+            "apsta_gui/data/com.github.apsta.Gtk.metainfo.xml",
+        ):
             (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / rel, self.root / rel)
         (self.root / "CHANGELOG.md").write_text(CHANGELOG)
@@ -64,12 +70,17 @@ class BumpVersionTests(unittest.TestCase):
         changelog = (self.root / "CHANGELOG.md").read_text()
         self.assertRegex(changelog, r"## \[Unreleased\]\n\n## \[9\.8\.7\] - \d{4}-\d{2}-\d{2}\n\n### Fixed")
         self.assertIn("apsta (9.8.7-1)", (self.root / "debian/changelog").read_text())
+        metainfo = (self.root / "apsta_gui/data/com.github.apsta.Gtk.metainfo.xml").read_text()
+        self.assertRegex(metainfo, r'<releases>\n    <release version="9\.8\.7" date="\d{4}-\d{2}-\d{2}"/>\n')
 
     def test_bump_is_idempotent_for_changelog(self):
         bump_version.bump_version("9.8.7")
         once = (self.root / "CHANGELOG.md").read_text()
+        metainfo = (self.root / "apsta_gui/data/com.github.apsta.Gtk.metainfo.xml").read_text()
         bump_version.release_project_changelog("9.8.7")
+        bump_version.add_metainfo_release("9.8.7")
         self.assertEqual((self.root / "CHANGELOG.md").read_text(), once)
+        self.assertEqual((self.root / "apsta_gui/data/com.github.apsta.Gtk.metainfo.xml").read_text(), metainfo)
 
     def test_rejects_bad_versions(self):
         self.assertEqual(bump_version.bump_version("not-a-version"), 2)

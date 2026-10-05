@@ -221,7 +221,7 @@ jobs:
 
           for package, names in (
               (apsta_cli, ["apsta.service", "apsta-sleep", "apsta.openrc", "apsta.runit", "com.github.apsta.policy"]),
-              (apsta_gui, ["com.github.apsta.Gtk.desktop", "icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg"]),
+              (apsta_gui, ["com.github.apsta.Gtk.desktop", "com.github.apsta.Gtk.metainfo.xml", "icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg"]),
           ):
               data = pathlib.Path(package.__file__).parent / "data"
               for name in names:
