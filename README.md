@@ -327,6 +327,10 @@ language, with the common problems and fixes. For the design, see
 - *"apsta is not installed"* window: the desktop app can't find the `apsta`
   command. Install the CLI (it's in the same package) or put it on `PATH`.
 - Settings changes apply to the next start; stop and start the hotspot.
+- *No tray icon*: your panel needs StatusNotifierItem support. On GNOME,
+  install and turn on the *AppIndicator and KStatusNotifierItem Support*
+  extension; on i3bar or polybar, run `snixembed`. Without a tray the app
+  still works, it just quits when you close the window.
 
 If your card can't do AP+STA, `apsta recommend` suggests USB adapters with
 in-kernel drivers that can (MediaTek mt7921au, mt7612u, mt7610u, mt7925u).
@@ -396,6 +400,15 @@ Any Linux distribution with NetworkManager, `iw` and `iproute2`, and
 Python 3.10 or newer. There are packages for Ubuntu and Pop!\_OS (PPA) and
 Arch Linux, a package on PyPI, and an installer for everything else. CI
 tests Ubuntu 22.04 and 24.04, Debian 12, Fedora and Arch.
+
+### Can I control the hotspot from the system tray?
+
+Yes. While the desktop app runs it shows an icon in the panel: the menu
+starts and stops the hotspot, shares it, switches profile or band and opens
+Settings. Turn on *Show in the tray at login* in Settings to have it there
+after every login. It works on KDE Plasma, Xfce, Cinnamon, MATE, Budgie,
+LXQt, waybar and other Wayland bars, and on GNOME with the AppIndicator
+extension.
 
 ### Is apsta an alternative to create_ap?
 

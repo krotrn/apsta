@@ -131,6 +131,14 @@ restarts the hotspot when:
 - it shares the WiFi's channel and the WiFi has been gone for 20 s.
   The AP may be what stops NetworkManager reconnecting on another channel.
 
+When the watcher is stopped (SIGTERM) it stops the hotspot, unless
+`/run/apsta/keep-hotspot` exists. `apsta disable` writes that marker while it
+stops the service (`cmd/service.py: keeping_hotspot()`), so turning off *Start
+automatically* leaves a running hotspot up; on systemd it then launches
+`apsta-watch.service` to keep watching it. The watcher removes the marker as
+it reads it, and `disable` removes it after a synchronous stop, so it never
+outlives that one stop.
+
 ```mermaid
 flowchart TD
     Poll(["every 5 s"]) --> St{"state.json present?"}
@@ -185,13 +193,17 @@ can't put the system into states the CLI can't explain.
 
 ```
 app.py        Adw.Application: actions (refresh, about, quit), shortcuts,
-              startup fixes (bundled icons, missing font DPI)
+              startup fixes (bundled icons, missing font DPI), --background,
+              AppTray (tray menu actions → window)
 window.py     main window: header, tabs, toasts, busy spinner, 5 s refresh loop,
-              run_async / run_privileged helpers used by every page
+              run_async / run_privileged helpers used by every page,
+              close-to-tray, notifications instead of toasts while hidden
+tray.py       system tray icon: StatusNotifierItem + com.canonical.dbusmenu
+              over Gio D-Bus (no GTK)
 pages/        one class per tab, each builds its widgets and exposes update(data)
   hotspot.py    status hero + start/stop, connection details, profile switcher
   clients.py    device rows with a menu (speed limit, disconnect, block), blocked list
-  settings.py   network settings, profiles, start at boot, hardware report
+  settings.py   network settings, profiles, start at boot and login, hardware report
 share.py      Share dialog (QR code + password)
 compat.py     newest libadwaita widget when available, fallback otherwise
 backend.py    runs `apsta … --json` and `pkexec apsta …` (no GTK, unit-tested)
@@ -228,6 +240,19 @@ and refreshes. Only one privileged action runs at a time. Secrets (new
 passwords, the password fetched for Share) travel over stdin and stdout,
 never argv. The polkit action `com.github.apsta.manage` (`auth_admin_keep`)
 names apsta in the prompt and remembers authentication for a few minutes.
+
+**System tray.** `libayatana-appindicator` is built on GTK 3 and can't load
+next to GTK 4, so `tray.py` implements the two D-Bus interfaces itself: it
+owns `org.kde.StatusNotifierItem-<pid>-1`, exports the item at
+`/StatusNotifierItem` and the menu at `/MenuBar`, and registers with
+`org.kde.StatusNotifierWatcher` (or `org.freedesktop.StatusNotifierWatcher`)
+whenever one appears on the session bus. The menu is described by
+`helpers.tray_state(data, busy)` (pure, unit-tested) and refreshed with the
+window's 5-second status, so the tray is just another view of the same data.
+Menu clicks go through the same `run_privileged` path as the window's
+buttons. With no tray on the bus nothing is registered, and closing the
+window quits as before; if the tray goes away while the window is hidden,
+the window comes back.
 
 **Rules the pages follow:**
 
@@ -299,7 +324,8 @@ flags are completable without extra work.
   uses only libadwaita 1.1 API.
 - `scripts/gui_smoke.py`: builds every GUI state (on, empty, off, single-radio
   card, CLI unavailable, narrow window, dialogs) against a fake backend on a
-  headless display (Broadway, or Xvfb where GTK lacks Broadway), with GTK
+  headless display, and drives the tray icon over D-Bus against a fake tray
+  (menu layout, start/stop, Settings, close-to-tray, Quit) (Broadway, or Xvfb where GTK lacks Broadway), with GTK
   criticals made fatal. It saves a screenshot of each view. CI runs it on
   Ubuntu 22.04, Debian 12, Ubuntu 24.04, Fedora and Arch.
 

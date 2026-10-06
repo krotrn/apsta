@@ -23,6 +23,7 @@
       <li>A QR code phones can scan to join</li>
       <li>See connected devices; limit their speed, disconnect or block them</li>
       <li>Wi-Fi Direct fallback when your Wi-Fi is on a channel the card can't host on</li>
+      <li>A system tray icon to start, stop and switch the hotspot</li>
       <li>Profiles, a hidden network option and start at boot</li>
     </ul>
   </description>

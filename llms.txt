@@ -12,6 +12,7 @@ Key facts:
 - Requirements: NetworkManager, `iw`, `iproute2`, Python ≥ 3.10. Recommended: `hostapd`, `dnsmasq`, and one of iptables/nftables/firewalld. Optional: `jeepney` for Wi-Fi Direct on Fedora, openSUSE, Alpine, Void.
 - Install: Ubuntu/Pop!_OS PPA `ppa:krotrn/apsta`; Arch pacman repo (see README); PyPI `apsta` (`sudo pipx install --global apsta`); `sudo ./install.sh` from source.
 - Client management (hostapd mode): `apsta clients`, disconnect, block, per-client speed limits, MAC allow-list. QR code to join: `apsta qr`.
+- Desktop app: `apsta-gtk` (GTK 4/libadwaita) with a system tray icon (StatusNotifierItem: KDE, Xfce, Cinnamon, MATE, Budgie, LXQt, waybar; GNOME needs the AppIndicator extension); `apsta-gtk --background` starts in the tray.
 - Scripting: `status`, `detect`, `config`, `clients` and `start` accept `--json`.
 - Alternative to: create_ap (archived in September 2021), linux-wifi-hotspot, manual hostapd + dnsmasq setups.
 
