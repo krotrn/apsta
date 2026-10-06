@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- AppStream metainfo (`com.github.apsta.Gtk.metainfo.xml`), installed by the
+  .deb, the Arch package, `install.sh` and the wheel, so software centers such
+  as GNOME Software and KDE Discover list the app.
+- Documentation website at [krotrn.github.io/apsta](https://krotrn.github.io/apsta/).
+
+### Changed
+
+- README: a one-line definition, a comparison with other hotspot tools, a
+  supported-hardware table and an FAQ; it now renders correctly on PyPI.
+
 ## [0.9.0] - 2026-10-05
 
 ### Added

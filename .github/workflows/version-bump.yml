@@ -42,7 +42,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           python scripts/release_check.py "$VERSION"
-          git add pyproject.toml apsta_cli/__init__.py packaging/arch/PKGBUILD debian/changelog CHANGELOG.md
+          git add pyproject.toml apsta_cli/__init__.py packaging/arch/PKGBUILD debian/changelog CHANGELOG.md \
+            apsta_gui/data/com.github.apsta.Gtk.metainfo.xml
           git commit -m "chore: bump version to $VERSION"
           git tag "v$VERSION"
           git push origin HEAD
