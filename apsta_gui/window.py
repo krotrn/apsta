@@ -23,6 +23,8 @@ class ApstaWindow(Adw.ApplicationWindow):
         self.detect: dict = {}
         self.busy = False
         self._refreshing = False
+        self.tray = None  # set by the app when a system tray shows its icon
+        self._told_about_tray = False
 
         self.hotspot_page = HotspotPage(self)
         self.clients_page = ClientsPage(self)
@@ -77,6 +79,7 @@ class ApstaWindow(Adw.ApplicationWindow):
         self.busy = busy
         self.spinner.set_busy(busy)
         self.hotspot_page.toggle.set_sensitive(not busy)
+        self.update_tray()
 
     def run_privileged(self, work, on_success=None) -> None:
         """Run a privileged backend call, show its outcome as a toast and refresh."""
@@ -112,6 +115,7 @@ class ApstaWindow(Adw.ApplicationWindow):
         self.data = data or {}
         for page in self.pages:
             page.update(self.data, self.detect)
+        self.update_tray()
 
     def _on_detect(self, detect: dict) -> None:
         self.detect = detect or {}
@@ -119,12 +123,40 @@ class ApstaWindow(Adw.ApplicationWindow):
         self.hotspot_page.update(self.data, self.detect)
 
     def _on_close(self, *_):
+        if self.tray is not None and self.tray.available:
+            # Keep running in the tray; Quit (menu, tray or Ctrl+Q) exits.
+            self.set_visible(False)
+            if not self._told_about_tray:
+                self._told_about_tray = True
+                self.toast("apsta keeps running in the system tray. Choose Quit there to close it.")
+            return True
         GLib.source_remove(self._poll_id)
         return False
+
+    # ── system tray ───────────────────────────────────────────────────────────
+
+    def update_tray(self) -> None:
+        if self.tray is not None:
+            self.tray.update(self.data, self.busy)
+
+    def toggle_visible(self, token=None) -> None:
+        """Tray click: hide the window if it's in front, otherwise bring it up."""
+        if self.get_visible() and self.is_active():
+            self.set_visible(False)
+            return
+        if token:
+            self.set_startup_id(token)  # xdg-activation on Wayland
+        self.present()
 
     # ── helpers for pages ─────────────────────────────────────────────────────
 
     def toast(self, message: str) -> None:
+        if not self.get_visible():
+            # Hidden in the tray: a desktop notification instead of a toast.
+            notification = Gio.Notification.new("Hotspot")
+            notification.set_body(message)
+            self.get_application().send_notification("apsta", notification)
+            return
         toast = Adw.Toast.new(esc(message))
         toast.set_timeout(4)
         self.toasts.add_toast(toast)

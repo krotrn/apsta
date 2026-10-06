@@ -70,7 +70,8 @@ Verdict
 - **Safe by default**: a random password on first start (never a shared
   default), passwords never on a command line, a scoped polkit action for the
   GUI.
-- **Desktop app** (GTK 4/libadwaita) with device management and QR-code sharing.
+- **Desktop app** (GTK 4/libadwaita) with device management, QR-code sharing
+  and a system tray icon.
 
 ## Install
 
@@ -212,11 +213,25 @@ Open **Hotspot (apsta)** from your app menu, or run `apsta-gtk`.
 - **Devices**: everything connected, with a menu per device to limit its
   speed, disconnect it, or block it. Blocked devices can be unblocked here.
 - **Settings**: network name, password, band, interface, profiles, *Start
-  automatically* (boot + recovery after sleep), and what your WiFi card supports.
+  automatically* (boot + recovery after sleep), *Show in the tray at login*,
+  and what your WiFi card supports.
 
 The window adapts to its size (tabs move to the bottom on narrow windows),
 and follows your light/dark preference. Shortcuts: <kbd>Ctrl</kbd>+<kbd>R</kbd>
 or <kbd>F5</kbd> refresh, <kbd>Ctrl</kbd>+<kbd>Q</kbd> quit.
+
+**System tray.** While the app runs, an icon in the panel shows whether the
+hotspot is on and how many devices are connected. Right-click it to start or
+stop the hotspot, share it, open the device list, switch profile or band, turn
+*Start automatically* on or off, or open Settings. Clicking the icon shows or
+hides the window, and closing the window keeps the app in the tray. Turn on
+*Show in the tray at login* in Settings (or run `apsta-gtk --background`) to
+start straight into the tray. It works wherever the panel supports
+StatusNotifierItem: KDE Plasma, Xfce, Cinnamon, MATE, Budgie, LXQt, waybar and
+other Wayland bars, and GNOME with the AppIndicator extension (included in
+Ubuntu). Bars that only support the old XEmbed tray, such as i3bar and polybar,
+need [snixembed](https://git.sr.ht/~steef/snixembed). Without a tray, the app
+works as before: closing the window quits it.
 
 Starting, stopping and changing settings ask for your password through
 polkit. It's remembered for a few minutes, so you aren't asked on every click.

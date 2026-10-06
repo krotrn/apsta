@@ -92,12 +92,14 @@ ignore = [
 [tool.coverage.run]
 branch = true
 source = ["apsta_cli", "apsta_gui"]
-# GTK widget code needs a display; scripts/gui_smoke.py exercises it in the CI "gui" job.
+# GTK widget code needs a display, and the tray needs PyGObject and a D-Bus
+# session; scripts/gui_smoke.py exercises both in the CI "gui" job.
 omit = [
   "*/__main__.py",
   "apsta_gui/app.py",
   "apsta_gui/compat.py",
   "apsta_gui/share.py",
+  "apsta_gui/tray.py",
   "apsta_gui/window.py",
   "apsta_gui/pages/*",
 ]

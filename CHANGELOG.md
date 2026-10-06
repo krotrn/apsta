@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- System tray icon for the desktop app (StatusNotifierItem, so it works on KDE
+  Plasma, Xfce, Cinnamon, MATE, Budgie, LXQt, waybar and other Wayland bars,
+  and GNOME with the AppIndicator extension). It shows the hotspot's state and
+  device count; its menu starts/stops and shares the hotspot, switches profile
+  and band, turns *Start automatically* on or off, and opens the device list or
+  Settings. With a tray, closing the window keeps the app running there.
+- *Show in the tray at login* (Settings), or `apsta-gtk --background`, starts
+  the app straight into the tray.
+
+### Fixed
+
+- Turning off *Start automatically* (`apsta disable`) no longer stops a
+  hotspot the service had started. On systemd the watcher `apsta start` uses
+  takes over; on OpenRC and runit the hotspot keeps running unwatched until
+  you stop it.
+
 ## [0.10.0] - 2026-10-06
 
 ### Added

@@ -26,7 +26,7 @@ class HotspotPage:
         self.toggle = Gtk.Button(halign=Gtk.Align.CENTER, margin_top=12)
         self.toggle.add_css_class("pill")
         self.toggle.set_size_request(200, -1)
-        self.toggle.connect("clicked", self._on_toggle)
+        self.toggle.connect("clicked", lambda *_: self.toggle_hotspot())
         self.note = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER, margin_top=4)
         for w in (self.icon, self.title, self.subtitle, self.toggle, self.note):
             hero.append(w)
@@ -165,7 +165,7 @@ class HotspotPage:
 
     # ── actions ───────────────────────────────────────────────────────────────
 
-    def _on_toggle(self, _btn) -> None:
+    def toggle_hotspot(self) -> None:
         if not self.window.data:
             self.window.refresh()
         elif self.window.data.get("hotspot"):

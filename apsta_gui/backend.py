@@ -147,6 +147,13 @@ class ApstaBackend:
             args.append("--password-stdin")
         return self.privileged(*args, stdin=password + "\n" if password else None, success="Settings saved.")
 
+    def set_config(self, changes: dict, success: str = "Settings saved.") -> Result:
+        """Save some settings of the active profile, e.g. {"band": "a"}."""
+        args = ["config"]
+        for key, value in changes.items():
+            args += ["--set", f"{key}={value}"]
+        return self.privileged(*args, success=success)
+
     def use_profile(self, name: str) -> Result:
         return self.privileged("profile", "use", name, success=f"Using profile “{name}”.")
 

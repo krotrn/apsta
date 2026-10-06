@@ -57,7 +57,7 @@ import gi  # noqa: E402
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from apsta_gui import compat  # noqa: E402
 
@@ -66,7 +66,9 @@ from apsta_gui import compat  # noqa: E402
 if gi.version_info < (3, 44, 0):
     print(f"note: PyGObject {gi.__version__} is too old for screenshots; building views only")
     SCREENSHOTS["enabled"] = False
+from apsta_gui.app import AppTray  # noqa: E402
 from apsta_gui.backend import Result  # noqa: E402
+from apsta_gui.tray import register_object  # noqa: E402
 from apsta_gui.window import ApstaWindow, MissingApstaWindow  # noqa: E402
 
 HOTSPOT = {
@@ -81,7 +83,7 @@ HOTSPOT = {
     "blocked": ["de:ad:be:ef:00:01"],
     "notes": [
         "Method hostapd: the best one for this card and setup.",
-        "Your band setting is 5 GHz, but the hotspot is on 2.4 GHz because it shares your WiFi's channel. "
+        "Your band setting is 5 GHz, but the hotspot is on 2.4 GHz because it shares your WiFi's channel. ",
         "To always use your band, set method to p2p (Wi-Fi Direct; shares the radio's speed).",
         "Channel 6 (2.4 GHz): the same as your WiFi's (this card uses one channel for both).",
     ],
@@ -222,6 +224,99 @@ def capture_dialog(main, path: Path) -> None:
         window.close()
 
 
+WATCHER_XML = """<node><interface name="org.kde.StatusNotifierWatcher">
+  <method name="RegisterStatusNotifierItem"><arg type="s" direction="in"/></method>
+</interface></node>"""
+
+
+def fake_tray_watcher(bus: Gio.DBusConnection) -> list:
+    """Stand in for a panel's tray: own the watcher name and record registrations."""
+    items = []
+
+    def call(_bus, _sender, _path, _iface, _method, params, invocation):
+        items.append(params.unpack()[0])
+        invocation.return_value(None)
+
+    iface = Gio.DBusNodeInfo.new_for_xml(WATCHER_XML).interfaces[0]
+    register_object(bus, "/StatusNotifierWatcher", iface, call)
+    Gio.bus_own_name_on_connection(bus, "org.kde.StatusNotifierWatcher", Gio.BusNameOwnerFlags.NONE, None, None)
+    return items
+
+
+def check_tray(app: Adw.Application) -> None:
+    """The tray icon registers, its menu drives the window, and closing hides to it."""
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    registered = fake_tray_watcher(bus)
+    backend = FakeBackend(*SCENARIOS["on"])
+    win = ApstaWindow(app, backend)
+    win.present()
+
+    class AppStub:
+        quit_called = False
+
+        def on_tray_change(self, available):
+            pass
+
+        def quit(self):
+            AppStub.quit_called = True
+
+    tray = AppTray(AppStub(), win)
+    for _ in range(100):
+        pump(0.05)
+        if tray.available:
+            break
+    assert tray.available and registered == [tray.icon.name], registered
+
+    def call(path, iface, method, args):
+        """Call the tray like a panel would; async, as the tray answers on this main loop."""
+        reply = []
+        bus.call(
+            tray.icon.name, path, iface, method, args, None, 0, 2000, None, lambda b, r: reply.append(b.call_finish(r))
+        )
+        for _ in range(100):
+            pump(0.02)
+            if reply:
+                return reply[0].unpack()
+        raise RuntimeError(f"no reply to {method}")
+
+    def click(item_id):
+        call(
+            "/MenuBar",
+            "com.canonical.dbusmenu",
+            "Event",
+            GLib.Variant("(isvu)", (item_id, "clicked", GLib.Variant("s", ""), 0)),
+        )
+        pump(0.5)
+
+    _revision, (_root, _props, children) = call(
+        "/MenuBar", "com.canonical.dbusmenu", "GetLayout", GLib.Variant("(iias)", (0, -1, []))
+    )
+    labels = {props.get("label"): item_id for item_id, props, _ in children if "label" in props}
+    assert "Stop Hotspot" in labels and "Quit" in labels, labels
+    submenus = {props.get("label"): sub for _, props, sub in children if sub}
+    profiles = {props["label"]: props.get("toggle-state") for _, props, _ in submenus["Profile"]}
+    assert profiles == {"default": 1, "travel": 0}, profiles
+    assert len(submenus["Band"]) == 2, submenus
+    click(labels["Settings…"])
+    assert win.stack.get_visible_child_name() == "settings"
+    click(labels["Stop Hotspot"])
+    assert "stop" in backend.calls, backend.calls
+
+    win.close()  # with a tray: hide, don't quit
+    pump(0.2)
+    assert not win.get_visible(), "closing with a tray should hide the window"
+    call("/StatusNotifierItem", "org.kde.StatusNotifierItem", "Activate", GLib.Variant("(ii)", (0, 0)))
+    pump(0.3)
+    assert win.get_visible(), "clicking the tray icon should show the window"
+    click(labels["Quit"])
+    assert AppStub.quit_called
+
+    tray.close()
+    win.tray = None
+    win.close()
+    pump(0.2)
+
+
 def run(app: Adw.Application, out: Path) -> None:
     compat.register_bundled_icons("com.github.apsta.Gtk")
     compat.ensure_font_dpi()  # same startup steps as apsta_gui.app
@@ -286,6 +381,9 @@ def run(app: Adw.Application, out: Path) -> None:
     compat.show_about(host, "0.0.0", "com.github.apsta.Gtk")
     capture_dialog(host, out / "about.png")
     host.close()
+
+    print("system tray", flush=True)
+    check_tray(app)
 
     missing = MissingApstaWindow(app, "/usr/bin/apsta")
     missing.present()

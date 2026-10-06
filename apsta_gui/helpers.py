@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Optional
+import os
+import shutil
+from pathlib import Path
+from typing import NamedTuple, Optional
 
 APP_ID = "com.github.apsta.Gtk"
 POLL_INTERVAL = 5  # seconds between status refreshes
@@ -114,3 +117,105 @@ def capability_rows(detect: dict) -> list:
         )
         rows.append((label, "Ready" if state == "ready" else state.capitalize(), state == "ready"))
     return rows
+
+
+class MenuItem(NamedTuple):
+    """One tray menu entry; key "-" is a separator."""
+
+    key: str
+    label: str = ""
+    enabled: bool = True
+    visible: bool = True
+    toggle: str = ""  # "radio" or "checkmark" to show ``checked``
+    checked: bool = False
+    children: tuple = ()
+
+
+SEPARATOR = MenuItem("-")
+AUTOSTART_INITS = ("systemd", "openrc", "runit")
+
+
+def tray_state(data: dict, busy: bool = False) -> tuple:
+    """(icon, tooltip title, tooltip body, menu items) for the tray icon.
+
+    Like the window, profile and band can be changed only while the hotspot is
+    off. Keys: "toggle", "share", "devices", "profile:<name>", "band:<band>",
+    "autostart", "settings", "show", "quit".
+    """
+    title, subtitle, icon = hero_text(data)
+    hotspot = bool(data.get("hotspot"))
+    config = data.get("config") or {}
+    autostart = data.get("autostart") or {}
+    if busy:
+        title = "Working…"
+    idle = bool(data) and not busy
+    profiles = tuple(
+        MenuItem(f"profile:{name}", name, idle and not hotspot, True, "radio", name == config.get("active_profile"))
+        for name in config.get("profiles") or []
+    )
+    bands = tuple(
+        MenuItem(f"band:{band}", label, idle and not hotspot, True, "radio", (config.get("band") or "bg") == band)
+        for band, label in BANDS
+    )
+    items = [
+        MenuItem("status", title, enabled=False),
+        SEPARATOR,
+        MenuItem("toggle", "Stop Hotspot" if hotspot else "Start Hotspot", idle),
+        MenuItem("share", "Share…", not busy, hotspot),
+        MenuItem("devices", "Connected Devices", visible=hotspot),
+        SEPARATOR,
+        MenuItem("profiles", "Profile", visible=len(profiles) > 1, children=profiles),
+        MenuItem("bands", "Band", visible=bool(config), children=bands),
+        MenuItem(
+            "autostart",
+            "Start Automatically",
+            idle,
+            autostart.get("init") in AUTOSTART_INITS,
+            "checkmark",
+            bool(autostart.get("enabled")),
+        ),
+        MenuItem("settings", "Settings…"),
+        SEPARATOR,
+        MenuItem("show", "Open Hotspot Window"),
+        MenuItem("quit", "Quit"),
+    ]
+    return icon, title, subtitle, items
+
+
+def band_change(config: dict, band: str) -> dict:
+    """Settings to save for a band switch; a fixed channel the new band lacks becomes automatic."""
+    changes = {"band": band}
+    channel = config.get("channel") or "auto"
+    if channel != "auto" and channel not in CHANNELS.get(band, []):
+        changes["channel"] = "auto"
+    return changes
+
+
+def login_entry_path(env=os.environ) -> Path:
+    """The XDG autostart entry that starts the app in the tray at login."""
+    config = env.get("XDG_CONFIG_HOME") or os.path.join(env.get("HOME") or os.path.expanduser("~"), ".config")
+    return Path(config) / "autostart" / f"{APP_ID}.desktop"
+
+
+def login_entry(exe: Optional[str] = None) -> str:
+    exe = exe or shutil.which("apsta-gtk") or "apsta-gtk"
+    return (
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Hotspot (apsta)\n"
+        "Comment=Show the hotspot in the system tray\n"
+        f"Exec={exe} --background\n"
+        f"Icon={APP_ID}\n"
+        "Terminal=false\n"
+        "X-GNOME-Autostart-enabled=true\n"
+    )
+
+
+def set_login_start(enabled: bool, path: Optional[Path] = None) -> None:
+    """Add or remove the login autostart entry (raises OSError)."""
+    path = path or login_entry_path()
+    if enabled:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(login_entry(), encoding="utf-8")
+    elif path.exists():
+        path.unlink()

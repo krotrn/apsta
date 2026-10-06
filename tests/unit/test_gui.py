@@ -3,6 +3,7 @@
 import json
 import re
 import subprocess
+import tempfile
 import unittest
 import unittest.mock as mock
 from pathlib import Path
@@ -35,6 +36,62 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(helpers.hero_text({"hotspot": None, "config": {}})[0], "Hotspot is off")
         title, subtitle, _ = helpers.hero_text({"hotspot": {"ssid": "S"}, "clients": [{}]})
         self.assertEqual((title, subtitle), ("Hotspot is on", "S · 1 device connected"))
+
+    def menu(self, items):
+        """key -> MenuItem, submenus included."""
+        flat = {}
+        for item in items:
+            flat[item.key] = item
+            flat.update(self.menu(item.children))
+        return flat
+
+    def test_tray_state(self):
+        data = {
+            "hotspot": {"ssid": "S"},
+            "clients": [],
+            "config": {"profiles": ["default", "travel"], "active_profile": "travel", "band": "a"},
+            "autostart": {"init": "systemd", "enabled": True},
+        }
+        icon, title, body, items = helpers.tray_state(data)
+        self.assertEqual(
+            (icon, title, body), ("network-wireless-hotspot-symbolic", "Hotspot is on", "S · 0 devices connected")
+        )
+        menu = self.menu(items)
+        self.assertEqual((menu["toggle"].label, menu["toggle"].enabled), ("Stop Hotspot", True))
+        self.assertTrue(menu["share"].visible and menu["devices"].visible)
+        self.assertTrue(menu["profile:travel"].checked and not menu["profile:default"].checked)
+        self.assertTrue(menu["band:a"].checked)
+        self.assertFalse(menu["band:a"].enabled)  # like the window: only while the hotspot is off
+        self.assertTrue(menu["autostart"].visible and menu["autostart"].checked)
+        self.assertEqual(menu["autostart"].toggle, "checkmark")
+
+        off = {**data, "hotspot": None, "config": {"profiles": ["default"], "band": "bg"}, "autostart": {}}
+        _, title, _, items = helpers.tray_state(off, busy=True)
+        menu = self.menu(items)
+        self.assertEqual(title, "Working…")
+        self.assertEqual((menu["toggle"].label, menu["toggle"].enabled), ("Start Hotspot", False))
+        self.assertFalse(menu["share"].visible or menu["devices"].visible)
+        self.assertFalse(menu["profiles"].visible)  # one profile: nothing to switch
+        self.assertFalse(menu["autostart"].visible)  # unknown init system
+        self.assertTrue(self.menu(helpers.tray_state(off)[3])["band:a"].enabled)
+        self.assertFalse(self.menu(helpers.tray_state({})[3])["toggle"].enabled)
+
+    def test_band_change_resets_a_channel_the_band_lacks(self):
+        self.assertEqual(helpers.band_change({"channel": "6"}, "a"), {"band": "a", "channel": "auto"})
+        self.assertEqual(helpers.band_change({"channel": "6"}, "bg"), {"band": "bg"})
+        self.assertEqual(helpers.band_change({}, "a"), {"band": "a"})
+
+    def test_login_entry(self):
+        path = helpers.login_entry_path({"XDG_CONFIG_HOME": "/cfg"})
+        self.assertEqual(path, Path("/cfg/autostart/com.github.apsta.Gtk.desktop"))
+        self.assertIn("Exec=/x/apsta-gtk --background\n", helpers.login_entry("/x/apsta-gtk"))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "autostart" / "a.desktop"
+            helpers.set_login_start(True, path)
+            self.assertIn("--background", path.read_text())
+            helpers.set_login_start(False, path)
+            self.assertFalse(path.exists())
+            helpers.set_login_start(False, path)  # already off
 
     def test_method_and_channel_choices(self):
         self.assertEqual([m[0] for m in helpers.METHODS], ["auto", "hostapd", "nmcli", "p2p", "nmcli-single"])
@@ -158,6 +215,10 @@ class BackendTests(unittest.TestCase):
                 (lambda: self.b.set_autostart(True), ["enable"]),
                 (lambda: self.b.set_autostart(False), ["disable"]),
                 (lambda: self.b.stop(), ["stop"]),
+                (
+                    lambda: self.b.set_config({"band": "a", "channel": "auto"}),
+                    ["config", "--set", "band=a", "--set", "channel=auto"],
+                ),
             ):
                 call()
                 self.assertEqual(run.call_args[0][0][2:], tail)

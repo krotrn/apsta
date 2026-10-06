@@ -1,11 +1,20 @@
-"""Settings tab: network settings, profiles, start at boot, and the hardware report."""
+"""Settings tab: network settings, profiles, start at boot and login, and the hardware report."""
 
 from __future__ import annotations
 
 from gi.repository import Adw, Gtk
 
 from ..compat import EntryField, button_row, esc, switch_row
-from ..helpers import BANDS, METHODS, capability_rows, channel_options, index_of
+from ..helpers import (
+    AUTOSTART_INITS,
+    BANDS,
+    METHODS,
+    capability_rows,
+    channel_options,
+    index_of,
+    login_entry_path,
+    set_login_start,
+)
 
 
 class SettingsPage:
@@ -73,6 +82,12 @@ class SettingsPage:
         )
         self.autostart.connect("notify::active", self._on_autostart)
         startup.add(self.autostart_row)
+        self.login_row, self.login = switch_row(
+            "Show in the tray at login", "Open this app in the system tray when you log in"
+        )
+        self.login.set_active(login_entry_path().exists())
+        self.login.connect("notify::active", self._on_login_start)
+        startup.add(self.login_row)
         self.widget.add(startup)
 
         # ── hardware ──────────────────────────────────────────────────────────
@@ -146,7 +161,7 @@ class SettingsPage:
             self._sync("hidden", self.hidden.get_active(), bool(config.get("hidden")), self.hidden.set_active)
 
             autostart = data.get("autostart") or {}
-            self.autostart_row.set_sensitive(autostart.get("init") in ("systemd", "openrc", "runit"))
+            self.autostart_row.set_sensitive(autostart.get("init") in AUTOSTART_INITS)
             self.autostart.set_active(bool(autostart.get("enabled")))
         finally:
             self._updating = False
@@ -212,6 +227,12 @@ class SettingsPage:
             return
         enabled = switch.get_active()
         self.window.run_privileged(lambda: self.window.backend.set_autostart(enabled))
+
+    def _on_login_start(self, switch, _pspec) -> None:
+        try:
+            set_login_start(switch.get_active())
+        except OSError as exc:
+            self.window.toast(f"Could not change the login setting: {exc.strerror or exc}")
 
     def _run_text(self, args) -> None:
         self.usb_label.set_label("Working…")
