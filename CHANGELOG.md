@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-06
+
 ### Added
 
 - System tray icon for the desktop app (StatusNotifierItem, so it works on KDE
