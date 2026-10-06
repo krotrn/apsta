@@ -1,6 +1,8 @@
+import tempfile
 import threading
 import unittest
 import unittest.mock as mock
+from pathlib import Path
 
 from apsta_cli import state as state_store
 from apsta_cli.config import store
@@ -273,6 +275,26 @@ class WatcherTests(unittest.TestCase):
         ):
             self.assertEqual(watcher.run(), 0)
         stop.assert_called_once()
+
+    def test_keep_marker_leaves_the_hotspot_up(self):
+        watcher = watch.Watcher(hotspot.StartOptions(), poll=0.001)
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp) / "keep-hotspot"
+            marker.write_text("")
+            with (
+                mock.patch.object(watch.paths, "KEEP_MARKER", marker),
+                mock.patch.object(watch.hotspot, "start", side_effect=AlreadyRunning("x")),
+                mock.patch.object(watch.hotspot, "stop") as stop,
+                mock.patch.object(watch.state_store, "load", return_value=make_state()),
+                mock.patch.object(
+                    watch,
+                    "observe",
+                    side_effect=lambda st: (watcher.stop_event.set(), watch.Observation(True, True, None))[1],
+                ),
+            ):
+                self.assertEqual(watcher.run(), 0)
+            stop.assert_not_called()
+            self.assertFalse(marker.exists())  # used up: the next stop stops the hotspot again
 
     def test_retry_backoff_until_stopped(self):
         watcher = watch.Watcher(hotspot.StartOptions())

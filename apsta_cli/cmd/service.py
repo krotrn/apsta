@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional
 
-from ..core import fsutil, output, shell
+from ..core import fsutil, output, paths, shell
 from ..core.errors import ApstaError
-from ..services import hotspot
+from ..services import guard, hotspot
 from ..services.autostart import detect_init
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -62,9 +63,37 @@ def _enable_systemd(binary: str) -> None:
     _run(["systemctl", "enable", "--now", "apsta.service"], "Enabled and started apsta.service")
 
 
+@contextmanager
+def keeping_hotspot():
+    """Stop the service inside this block without stopping its hotspot.
+
+    The service's watcher sees the marker as it exits and leaves the hotspot
+    up. Yields whether a hotspot is running. The stop must be synchronous: the
+    marker is removed afterwards in case no watcher was there to read it.
+    """
+    running = hotspot.current() is not None
+    if running:
+        fsutil.atomic_write(paths.KEEP_MARKER, "")
+    try:
+        yield running
+    finally:
+        fsutil.remove(paths.KEEP_MARKER)
+
+
+def _kept(running: bool, watched: bool) -> None:
+    if running:
+        output.ok("The running hotspot stays on; `apsta stop` stops it.")
+        if not watched:
+            output.info("It isn't restarted after sleep or Wi-Fi changes until you start it again.")
+
+
 def _disable_systemd() -> None:
-    shell.run(["systemctl", "disable", "--now", "apsta.service"])
+    # Turning off the boot service shouldn't take down the hotspot it started:
+    # hand it to the watcher `apsta start` uses instead.
+    with keeping_hotspot() as running:
+        shell.run(["systemctl", "disable", "--now", "apsta.service"])
     output.ok("Disabled apsta.service")
+    _kept(running, running and (guard.active() or guard.launch(apsta_binary(), hotspot.StartOptions())))
     if SYSTEMD_LOCAL_UNIT.exists():
         fsutil.remove(SYSTEMD_LOCAL_UNIT)
         output.ok(f"Removed {SYSTEMD_LOCAL_UNIT}")
@@ -81,7 +110,9 @@ def _enable_openrc(binary: str) -> None:
 
 
 def _disable_openrc() -> None:
-    shell.run(["rc-service", "apsta", "stop"])
+    with keeping_hotspot() as running:
+        shell.run(["rc-service", "apsta", "stop"])
+    _kept(running, False)
     shell.run(["rc-update", "del", "apsta", "default"])
     fsutil.remove(OPENRC_SCRIPT)
     output.ok("Removed the OpenRC service")
@@ -105,6 +136,9 @@ def _enable_runit(binary: str) -> None:
 def _disable_runit() -> None:
     service_dir = _runit_service_dir()
     if service_dir and (service_dir / "apsta").is_symlink():
+        with keeping_hotspot() as running:
+            shell.run(["sv", "-w", "30", "down", str(service_dir / "apsta")])  # waits, unlike the unlink
+        _kept(running, False)
         (service_dir / "apsta").unlink()
     for path in (RUNIT_DIR / "run",):
         fsutil.remove(path)

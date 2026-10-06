@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from apsta_cli import cli
 from apsta_cli.cmd import completion, detect, service, usb
 from apsta_cli.core import paths
+from apsta_cli.core.shell import Result as shell_result
 from apsta_cli.hw import capability
 from apsta_cli.hw.capability import HardwareCapability
 from apsta_cli.hw.interfaces import WifiInterface
@@ -269,6 +270,38 @@ class ServiceCommandTests(unittest.TestCase):
         self.assertIn("/opt/apsta/bin/apsta", service.SLEEP_HOOK.read_text())
         self.disable("systemd")
         self.assertFalse(service.SYSTEMD_LOCAL_UNIT.exists())
+
+    def keeping(self, init, running=True):
+        """Disable with a hotspot up; returns whether the marker was there while the service stopped."""
+        seen = []
+        stop = {"systemd": ("systemctl", "disable"), "openrc": ("rc-service",), "runit": ("sv",)}[init]
+        self.sh.on(*stop, fn=lambda argv: (seen.append(paths.KEEP_MARKER.exists()), shell_result(argv, 0, "", ""))[1])
+        with (
+            mock.patch.object(paths, "KEEP_MARKER", self.root / "run" / "keep-hotspot"),
+            mock.patch.object(service.hotspot, "current", return_value=object() if running else None),
+            mock.patch.object(service.guard, "active", return_value=False),
+            mock.patch.object(service.guard, "launch", return_value=True) as launch,
+            mock.patch.object(service, "apsta_binary", return_value="/usr/bin/apsta"),
+        ):
+            self.disable(init)
+            self.assertFalse(paths.KEEP_MARKER.exists())
+        return seen, launch
+
+    def test_disable_keeps_the_running_hotspot(self):
+        seen, launch = self.keeping("systemd")
+        self.assertEqual(seen, [True])
+        launch.assert_called_once()  # the watcher `apsta start` uses takes over
+
+    def test_disable_without_a_hotspot_just_stops_the_service(self):
+        seen, launch = self.keeping("systemd", running=False)
+        self.assertEqual(seen, [False])
+        launch.assert_not_called()
+
+    def test_disable_keeps_the_hotspot_on_openrc_and_runit(self):
+        self.assertEqual(self.keeping("openrc")[0], [True])
+        (self.root / "runsvdir").mkdir()
+        self.enable("runit")
+        self.assertEqual(self.keeping("runit")[0], [True])
 
     def test_systemd_packaged_unit_is_not_shadowed(self):
         service.SYSTEMD_PACKAGED_UNIT.parent.mkdir(parents=True, exist_ok=True)

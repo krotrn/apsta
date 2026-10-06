@@ -29,6 +29,7 @@ RUN_DIR = _env("APSTA_RUN_DIR", "/run/apsta")
 STATE_PATH = RUN_DIR / "state.json"
 LOCK_PATH = RUN_DIR / "lock"
 RESUME_MARKER = RUN_DIR / "resume-pending"
+KEEP_MARKER = RUN_DIR / "keep-hotspot"  # `apsta disable`: the stopping service leaves the hotspot up
 HOSTAPD_CONF = RUN_DIR / "hostapd.conf"
 HOSTAPD_ACCEPT = RUN_DIR / "hostapd.accept"  # MAC allowlist
 HOSTAPD_CTRL_DIR = RUN_DIR / "hostapd"

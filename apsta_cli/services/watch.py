@@ -25,7 +25,7 @@ from typing import Optional
 
 from .. import state as state_store
 from ..config import store
-from ..core import output
+from ..core import fsutil, output, paths
 from ..core.errors import AlreadyRunning, ApstaError
 from ..hw import interfaces
 from ..net import channels
@@ -149,5 +149,10 @@ class Watcher:
                 hotspot.stop()
                 if not self._start_with_retry():
                     break
-        hotspot.stop()
+        if paths.KEEP_MARKER.exists():
+            # `apsta disable` is stopping the service, not the hotspot.
+            fsutil.remove(paths.KEEP_MARKER)
+            output.info("No longer watching; the hotspot keeps running.")
+        else:
+            hotspot.stop()
         return 0
