@@ -261,11 +261,12 @@ def check_tray(app: Adw.Application) -> None:
             AppStub.quit_called = True
 
     tray = AppTray(AppStub(), win)
-    for _ in range(100):
+    for _ in range(200):  # registered, and the first status is in (slow runners need a while)
         pump(0.05)
-        if tray.available:
+        if tray.available and win.data:
             break
     assert tray.available and registered == [tray.icon.name], registered
+    assert win.data, "no status after 10 s"
 
     def call(path, iface, method, args):
         """Call the tray like a panel would; async, as the tray answers on this main loop."""
