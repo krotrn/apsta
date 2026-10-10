@@ -13,6 +13,7 @@ from apsta_cli.hw import capability
 from apsta_cli.hw.capability import HardwareCapability
 from apsta_cli.hw.interfaces import WifiInterface
 from apsta_cli.hw.usb import USB_CHIPSET_DB, UsbWifiDevice
+from apsta_cli.services import detect as detect_service
 from tests.support import FakeShell, as_root, isolate_paths
 
 
@@ -76,25 +77,25 @@ class DetectVerdictTests(unittest.TestCase):
     def test_verdict_warns_when_wifi_channel_cannot_host(self):
         cap = self.cap(True, True)
         cap.ap_frequencies = [2437, 5745]
-        result = detect.verdict(cap, sta_freq=5220)
+        result = detect_service.verdict(cap, sta_freq=5220)
         self.assertEqual(result["level"], "warn")
         self.assertIn("channel 44", " ".join(result["warnings"]))
-        self.assertEqual(detect.verdict(cap, sta_freq=2437)["level"], "ok")
+        self.assertEqual(detect_service.verdict(cap, sta_freq=2437)["level"], "ok")
 
     def test_verdicts(self):
-        self.assertEqual(detect.verdict(self.cap(True, True))["mode"], "ap+sta")
-        self.assertEqual(detect.verdict(self.cap(True, False))["mode"], "single")
-        self.assertEqual(detect.verdict(self.cap(False, False))["mode"], "unsupported")
+        self.assertEqual(detect_service.verdict(self.cap(True, True))["mode"], "ap+sta")
+        self.assertEqual(detect_service.verdict(self.cap(True, False))["mode"], "single")
+        self.assertEqual(detect_service.verdict(self.cap(False, False))["mode"], "unsupported")
 
     def test_text_output_for_single_radio_with_usb_adapter(self):
         iface = WifiInterface("wlo1", "aa", "phy0", "managed", "UP", None)
         dongle = UsbWifiDevice("0e8d", "7961", "MediaTek", "wlx1", "mt7921u", USB_CHIPSET_DB[0])
         FakeShell([]).install(self)
         with (
-            mock.patch.object(detect.interfaces, "client_interfaces", return_value=[iface]),
-            mock.patch.object(detect.capability, "probe", return_value=self.cap(True, False)),
-            mock.patch.object(detect.usb, "scan_usb_wifi", return_value=[dongle]),
-            mock.patch.object(detect.shell, "have", return_value=False),
+            mock.patch.object(detect_service.interfaces, "client_interfaces", return_value=[iface]),
+            mock.patch.object(detect_service.capability, "probe", return_value=self.cap(True, False)),
+            mock.patch.object(detect_service.usb, "scan_usb_wifi", return_value=[dongle]),
+            mock.patch.object(detect_service.shell, "have", return_value=False),
         ):
             with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
                 code = detect.cmd_detect(SimpleNamespace(json=False))
@@ -105,9 +106,9 @@ class DetectVerdictTests(unittest.TestCase):
         iface = WifiInterface("wlo1", "aa", "phy0", "managed", "UP", "Home")
         for cap, scan in ((self.cap(True, False), []), (self.cap(False, False), [])):
             with (
-                mock.patch.object(detect.interfaces, "client_interfaces", return_value=[iface]),
-                mock.patch.object(detect.capability, "probe", return_value=cap),
-                mock.patch.object(detect.usb, "scan_usb_wifi", return_value=scan),
+                mock.patch.object(detect_service.interfaces, "client_interfaces", return_value=[iface]),
+                mock.patch.object(detect_service.capability, "probe", return_value=cap),
+                mock.patch.object(detect_service.usb, "scan_usb_wifi", return_value=scan),
                 redirect_stdout(io.StringIO()) as out,
                 redirect_stderr(io.StringIO()),
             ):
@@ -115,7 +116,7 @@ class DetectVerdictTests(unittest.TestCase):
             self.assertIn("Verdict", out.getvalue())
 
     def test_no_interfaces(self):
-        with mock.patch.object(detect.interfaces, "client_interfaces", return_value=[]):
+        with mock.patch.object(detect_service.interfaces, "client_interfaces", return_value=[]):
             from apsta_cli.core.errors import HardwareError
 
             with self.assertRaises(HardwareError):
@@ -184,20 +185,20 @@ class UsbCommandTests(unittest.TestCase):
         iface = WifiInterface("wlo1", "aa", "phy0", "managed", "UP", None)
         good = mock.Mock(ap_sta=True)
         bad = mock.Mock(ap_sta=False)
-        with mock.patch.object(usb.interfaces, "client_interfaces", return_value=[iface]):
-            with mock.patch.object(usb.capability, "probe", return_value=good):
+        with mock.patch.object(detect_service.interfaces, "client_interfaces", return_value=[iface]):
+            with mock.patch.object(detect_service.capability, "probe", return_value=good):
                 usb.cmd_recommend(SimpleNamespace())
             self.assertIn("already supports", self.out.getvalue())
             known = UsbWifiDevice("0e8d", "7961", "MediaTek", None, None, USB_CHIPSET_DB[0])
             with (
-                mock.patch.object(usb.capability, "probe", return_value=bad),
-                mock.patch.object(usb, "scan_usb_wifi", return_value=[known]),
+                mock.patch.object(detect_service.capability, "probe", return_value=bad),
+                mock.patch.object(detect_service.usb, "scan_usb_wifi", return_value=[known]),
             ):
                 usb.cmd_recommend(SimpleNamespace())
             self.assertIn("already have a compatible", self.out.getvalue())
             with (
-                mock.patch.object(usb.capability, "probe", return_value=bad),
-                mock.patch.object(usb, "scan_usb_wifi", return_value=[]),
+                mock.patch.object(detect_service.capability, "probe", return_value=bad),
+                mock.patch.object(detect_service.usb, "scan_usb_wifi", return_value=[]),
             ):
                 usb.cmd_recommend(SimpleNamespace())
             self.assertIn("Recommended USB Adapters", self.out.getvalue())

@@ -32,10 +32,10 @@ uv sync && . .venv/bin/activate
 # or with pip >= 25.1
 python3 -m venv .venv && . .venv/bin/activate && make dev
 
-make check      # lint + format check + tests with coverage
+make check      # lint + format check + type check + tests with coverage
 ```
 
-`make dev` installs the dev tools (ruff, coverage) into whichever environment
+`make dev` installs the dev tools (ruff, mypy, coverage) into whichever environment
 is active, using uv when available. The dev tools are a PEP 735 dependency
 group (`[dependency-groups]` in `pyproject.toml`), so `uv sync` installs them
 by default. For the desktop app inside a venv, create it with
@@ -49,6 +49,7 @@ The test suite needs **no root and no WiFi hardware**:
 make test       # python -m unittest discover -s tests -t .
 make coverage   # same, with a coverage report (CI requires ≥ 94 %)
 make lint       # ruff check + ruff format --check
+make typecheck  # mypy (the CLI and the GUI's non-GTK modules)
 make fmt        # apply formatting
 make gui        # run the desktop app from this checkout
 make gui-smoke  # build every GUI view headlessly (see below)

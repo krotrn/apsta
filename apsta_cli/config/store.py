@@ -11,6 +11,7 @@ replaced with defaults, so profiles are never destroyed by a bad write.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets as _secrets
 import string
@@ -18,8 +19,10 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Optional
 
-from ..core import fsutil, output, paths
+from ..core import fsutil, paths
 from . import model
+
+logger = logging.getLogger(__name__)
 
 
 class _Unreadable:
@@ -43,7 +46,7 @@ def _load_secrets():
     except PermissionError:
         return UNREADABLE
     except (json.JSONDecodeError, UnicodeDecodeError):
-        output.warn(f"{paths.SECRETS_PATH} is corrupted; passwords must be set again.")
+        logger.warning("%s is corrupted; passwords must be set again.", paths.SECRETS_PATH)
         return {}
 
 
@@ -54,7 +57,7 @@ def _backup_corrupt(path) -> None:
     backup = path.with_name(f"{path.name}.corrupt-{stamp}")
     try:
         os.replace(path, backup)
-        output.warn(f"Moved the unreadable file to {backup}")
+        logger.warning("Moved the unreadable file to %s", backup)
     except OSError:
         pass  # couldn't move it aside; the warning above still tells the user
 
@@ -67,7 +70,7 @@ def load() -> dict:
     except FileNotFoundError:
         pass  # first run: no config yet, defaults apply
     except (json.JSONDecodeError, UnicodeDecodeError):
-        output.warn(f"{paths.CONFIG_PATH} is corrupted; using defaults.")
+        logger.warning("%s is corrupted; using defaults.", paths.CONFIG_PATH)
         _backup_corrupt(paths.CONFIG_PATH)
 
     config = model.normalize(raw)
@@ -87,7 +90,9 @@ def load() -> dict:
 
 
 def _has_plaintext_password(raw: dict) -> bool:
-    profiles = raw.get("profiles") if isinstance(raw.get("profiles"), dict) else {}
+    profiles = raw.get("profiles")
+    if not isinstance(profiles, dict):
+        profiles = {}
     return "password" in raw or any(isinstance(p, dict) and "password" in p for p in profiles.values())
 
 

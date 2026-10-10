@@ -77,11 +77,12 @@ class TransactionTests(unittest.TestCase):
 
     def test_failing_undo_does_not_stop_others(self):
         later = mock.Mock()
-        with mock.patch("sys.stderr"):
+        with self.assertLogs("apsta_cli.net.transaction", "WARNING") as logs:
             with Transaction() as tx:
                 tx.on_rollback("first", later)
                 tx.on_rollback("broken", mock.Mock(side_effect=OSError("x")))
         later.assert_called_once()
+        self.assertIn("Cleanup step 'broken' failed: x", logs.output[0])
 
 
 if __name__ == "__main__":

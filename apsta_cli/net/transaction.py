@@ -11,9 +11,12 @@ reverse order. A failing undo step is reported and doesn't stop the others.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable, List, Tuple
 
 from ..core import output
+
+logger = logging.getLogger(__name__)
 
 
 class Transaction:
@@ -35,12 +38,11 @@ class Transaction:
             try:
                 action()
             except Exception as exc:  # noqa: BLE001 - keep undoing the rest
-                output.warn(f"Cleanup step '{description}' failed: {exc}")
+                logger.warning("Cleanup step '%s' failed: %s", description, exc)
 
     def __enter__(self) -> Transaction:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> bool:
+    def __exit__(self, exc_type, exc, tb) -> None:
         if exc_type is not None or not self._committed:
             self.rollback()
-        return False

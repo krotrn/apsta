@@ -176,18 +176,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         parser.print_help()
         return 0
     args.parser = parser  # for `completion`, which describes the whole CLI
-    output.machine_output(bool(getattr(args, "json", False)))
-    try:
-        _check_tools(args.command)
-        return _handler(args.command)(args) or 0
-    except ApstaError as exc:
-        output.err(exc.message)
-        for hint in exc.hints:
-            output.hint(hint)
-        return exc.exit_code
-    except KeyboardInterrupt:
-        print("\nInterrupted.", file=sys.stderr)
-        return 130
+    output.show_library_messages()
+    with output.machine_output(bool(getattr(args, "json", False))):
+        try:
+            _check_tools(args.command)
+            return _handler(args.command)(args) or 0
+        except ApstaError as exc:
+            output.err(exc.message)
+            for hint in exc.hints:
+                output.hint(hint)
+            return exc.exit_code
+        except KeyboardInterrupt:
+            print("\nInterrupted.", file=sys.stderr)
+            return 130
 
 
 def run() -> None:

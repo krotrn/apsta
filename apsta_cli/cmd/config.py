@@ -52,7 +52,10 @@ def apply_settings(settings: Dict[str, Optional[str]], quiet: bool = False) -> d
     with lock.command_lock("config"):
         config = store.load()
         if "active_profile" in settings:
-            model.use_profile(config, settings.pop("active_profile"))
+            name = settings.pop("active_profile")
+            if not name:
+                raise UsageError("active_profile needs a profile name.", hints=["List profiles: apsta profile list"])
+            model.use_profile(config, name)
         for key, value in settings.items():
             model.set_field(config, key, value)
         store.save(config)

@@ -45,6 +45,7 @@ class IptablesTests(unittest.TestCase):
         sh = FakeShell(["iptables"]).install(self)
         record = firewall.apply(AP, NET)
         self.assertEqual(record["backend"], "iptables")
+        self.assertEqual(firewall.caveats(AP, record), [])
         inserts = sh.matching("iptables", "-w", "-t")
         self.assertTrue(all(c[4] == "-I" and c[6] == "1" for c in inserts))
         firewall.revert(AP, NET, record)
@@ -100,7 +101,7 @@ class NftablesTests(unittest.TestCase):
     def setUp(self):
         isolate_paths(self)
 
-    def test_used_without_iptables_and_warns_about_drop_policy(self):
+    def test_used_without_iptables_and_notes_drop_policy(self):
         sh = FakeShell(["nft"]).install(self)
         sh.on(
             "nft",
@@ -108,15 +109,18 @@ class NftablesTests(unittest.TestCase):
             "ruleset",
             stdout="table inet filter {\n chain forward {\n  type filter hook forward priority 0; policy drop;\n }\n}",
         )
-        import unittest.mock as mock
-
-        with mock.patch("sys.stderr"), mock.patch("sys.stdout"):
-            record = firewall.apply(AP, NET)
+        record = firewall.apply(AP, NET)
         self.assertEqual(record["backend"], "nftables")
+        [caveat] = firewall.caveats(AP, record)
+        self.assertIn(f"allow forwarding from {AP}", caveat)
         loaded = sh.inputs[sh.calls.index(["nft", "-f", "-"])]
         self.assertIn(f"ip saddr {NET}", loaded)
         firewall.revert(AP, NET, record)
         self.assertTrue(sh.called("nft", "delete", "table", "ip", "apsta"))
+
+    def test_no_note_when_forwarding_is_allowed(self):
+        FakeShell(["nft"]).install(self).on("nft", "list", "ruleset", stdout="table ip apsta {\n}")
+        self.assertEqual(firewall.caveats(AP, firewall.apply(AP, NET)), [])
 
     def test_no_backend(self):
         FakeShell([]).install(self)

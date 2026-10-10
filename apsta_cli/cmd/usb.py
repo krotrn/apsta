@@ -5,8 +5,8 @@ import platform
 from typing import List, Tuple
 
 from ..core.output import C, head, info, ok, warn
-from ..hw import capability, interfaces
 from ..hw.usb import USB_CHIPSET_DB, UsbWifiDevice, scan_usb_wifi
+from ..services import detect
 
 
 def _kernel_version() -> str:
@@ -94,26 +94,19 @@ def cmd_recommend(args):
     head("apsta — USB Adapter Recommendations")
     print()
 
-    ifaces = interfaces.client_interfaces()
-    builtin_has_ap_sta = False
-    if ifaces:
-        target = next((i for i in ifaces if i.state == "UP"), ifaces[0])
-        builtin_has_ap_sta = capability.probe(target.name).ap_sta
-
-    if builtin_has_ap_sta:
+    if detect.builtin_supports_ap_sta():
         ok("Your built-in card already supports AP+STA simultaneously.")
         ok("You don't need a USB dongle.")
         info("Run:  sudo apsta start")
         print()
         return
 
-    usb_devices = scan_usb_wifi()
-    capable_plugged = [d for d in usb_devices if d.chipset_db and d.chipset_db.ap_sta]
+    capable_plugged = detect.capable_usb_adapters()
     if capable_plugged:
         ok("You already have a compatible USB adapter plugged in:")
-        for dev in capable_plugged:
+        for dev, chipset in capable_plugged:
             print(
-                f"     {C.BOLD}{dev.chipset_db.chipset}{C.RESET}  [{dev.vid}:{dev.pid}]"
+                f"     {C.BOLD}{chipset.chipset}{C.RESET}  [{dev.vid}:{dev.pid}]"
                 f"  iface: {dev.interface or C.DIM + 'not yet assigned' + C.RESET}"
             )
         print()

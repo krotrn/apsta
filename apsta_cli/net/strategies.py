@@ -13,6 +13,7 @@ and register it in ``STRATEGIES``.
 
 from __future__ import annotations
 
+import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -27,6 +28,8 @@ from ..state import HotspotState
 from . import dnsmasq, firewall, hostapd, iface, nm, subnet, supervisor, wpa
 from .channels import Channel
 from .transaction import Transaction
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -130,6 +133,7 @@ def share_connection(ap: str, tx: Transaction, state: HotspotState) -> None:
     state.gateway = gateway
     state.supervisor = sup.kind
     state.firewall = fw
+    state.notes.extend(firewall.caveats(ap, fw))
 
 
 def unshare_connection(state: HotspotState) -> None:
@@ -319,7 +323,7 @@ class _NmStrategy(Strategy):
             tx.on_rollback(f"delete {ap}", lambda: iface.delete(ap))
             nm.set_managed(ap, True)
             if not nm.wait_until_available(ap):
-                output.warn(f"NetworkManager hasn't adopted {ap} yet; trying anyway.")
+                logger.warning("NetworkManager hasn't adopted %s yet; trying anyway.", ap)
         else:
             ap, mac = ctx.base.name, None
 
@@ -400,12 +404,3 @@ def candidates(method: str) -> List[Strategy]:
     if method not in BY_NAME:
         raise UsageError(f"Unknown method '{method}'. Choose from: auto, {', '.join(s.name for s in STRATEGIES)}")
     return [BY_NAME[method]]
-
-
-def describe_unavailable(reasons: Dict[str, str]) -> List[str]:
-    return [f"{name}: {reason}" for name, reason in reasons.items()]
-
-
-def warn_disconnect(ctx: StartContext) -> None:
-    if ctx.sta_ssid:
-        output.warn(f"Your WiFi connection to '{ctx.sta_ssid}' will drop while the hotspot runs.")

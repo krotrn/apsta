@@ -10,7 +10,7 @@ flowchart TD
     CLI["<b>apsta_cli/cli.py</b><br/>argparse, errors → exit codes"]
     GUI["<b>apsta_gui</b> (GTK 4 / libadwaita)<br/>a client of the CLI:<br/>--json reads, pkexec writes"]
     CMD["<b>cmd/*</b> · present<br/>thin: print results"]
-    SVC["<b>services/</b> · use cases<br/>hotspot.py: start / stop / status, strategy selection<br/>watch.py: apsta run keeps the hotspot healthy<br/>guard.py: runs it behind apsta start"]
+    SVC["<b>services/</b> · use cases<br/>hotspot.py: start / stop / status, strategy selection<br/>detect.py: what the card can do, which methods are ready<br/>watch.py: apsta run keeps the hotspot healthy<br/>guard.py: runs it behind apsta start"]
     CFG["<b>config/</b><br/>model, store, validate<br/>state.py"]
     NET["<b>net/</b><br/>strategies, transaction<br/>hostapd, dnsmasq, nm<br/>firewall, supervisor<br/>iface, subnet, channels, clients<br/>wpa (wpa_supplicant: socket or D-Bus)"]
     HW["<b>hw/</b><br/>combinations, capability<br/>interfaces, usb"]
@@ -24,9 +24,20 @@ flowchart TD
 ```
 
 Dependencies only point downwards. `core` imports nothing from apsta.
-`hw`, `net` and `config` don't print user-facing guidance; they raise
-`ApstaError` subclasses that carry `hints`, and `cli.py` renders them and maps
-them to exit codes.
+Decisions live in `services`; a `cmd` handler only presents results. It may
+still call `config` (settings are edited through `config.model`, which
+validates) and `hw` read-only helpers for display directly.
+
+`hw`, `net` and `config` never decide what the user sees:
+
+- **Failures** raise `ApstaError` subclasses that carry `hints`; `cli.py`
+  renders them and maps them to exit codes.
+- **Problems worked around** (a MAC that couldn't be set, a cleanup step that
+  failed, a corrupt config file) go to `logging.getLogger(__name__).warning`.
+  `cli.py` installs the handler (`output.show_library_messages()`) that shows
+  them as warnings and mirrors them to the log.
+- **Caveats about the running hotspot** become its `notes` (below), so
+  `status` and the GUI show them for as long as it runs.
 
 ## Key decisions
 
@@ -92,7 +103,8 @@ can't follow, it explains:
   (`p2p`, `nmcli-single`) follow `band` and `channel` instead of sharing.
 - `hotspot.start()` puts a note about the method first (chosen in the
   settings, or which methods were skipped and why), and a strategy may add
-  its own (`p2p`: the radio's speed is shared).
+  its own (`p2p`: the radio's speed is shared; hostapd and p2p: the
+  firewall's caveats).
 
 The notes are stored in `HotspotState.notes`, printed by `apsta start` and
 `apsta status`, exposed as `hotspot.notes` in `status --json` (so the GUI shows
@@ -167,7 +179,9 @@ error until the network moves back. See [5ghz-wifi.md](5ghz-wifi.md) and
 `net/firewall.py` chooses firewalld (if running), then iptables, then
 nftables. Each backend's `apply` returns data its `revert` uses, so teardown
 only removes what apsta added. For example, masquerading is removed only from
-zones where apsta enabled it.
+zones where apsta enabled it. Its `caveats` name rules outside apsta's that
+may still block clients (another nftables chain with `policy drop`); they are
+added to the hotspot's notes.
 
 ### No shell, no secrets in argv
 
@@ -329,6 +343,8 @@ flags are completable without extra work.
   criticals made fatal. It saves a screenshot of each view. CI runs it on
   Ubuntu 22.04, Debian 12, Ubuntu 24.04, Fedora and Arch.
 
-Run `make test`, `make coverage` or `make gui-smoke`. CI enforces ≥ 94 %
-coverage of `apsta_cli` and the GUI's non-GTK modules. GTK widget code is
-covered by the smoke test instead.
+Run `make test`, `make coverage`, `make typecheck` or `make gui-smoke`
+(`make check` runs lint, type check and coverage, as CI does). CI enforces
+≥ 94 % coverage of `apsta_cli` and the GUI's non-GTK modules, and mypy
+(`check_untyped_defs`) over the same code. GTK widget code is covered by the
+smoke test instead.

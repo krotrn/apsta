@@ -79,6 +79,13 @@ class PasswordPromptTests(unittest.TestCase):
             self.assertEqual(config_cmd.read_password_stdin(), "from-a-pipe")
 
 
+class ApplySettingsTests(unittest.TestCase):
+    def test_empty_active_profile_is_a_usage_error(self):
+        isolate_paths(self)
+        with self.assertRaisesRegex(UsageError, "needs a profile name"):
+            config_cmd.apply_settings({"active_profile": None})
+
+
 STUBBORN = """#!{python}
 import os, signal, sys, time
 pid = os.fork()
@@ -171,12 +178,12 @@ class InterfaceTests(unittest.TestCase):
         root = isolate_paths(self)
         (root / "sys/class/net/wlo1_ap").mkdir(parents=True)
         sh = FakeShell().on("ip", "link", "set", "wlo1_ap", "address", rc=2, stderr="busy").install(self)
-        with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+        with self.assertLogs("apsta_cli.net.iface", "WARNING") as logs:
             name, mac = iface.create_virtual_ap("wlo1")
         self.assertEqual(name, "wlo1_ap")
         self.assertTrue(mac.startswith("02:"))
         self.assertTrue(sh.called("iw", "dev", "wlo1_ap", "del"))
-        self.assertIn("separate MAC", err.getvalue())
+        self.assertIn("separate MAC", logs.output[0])
 
 
 HOOK = Path(__file__).resolve().parents[2] / "apsta_cli" / "data" / "apsta-sleep"

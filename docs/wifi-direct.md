@@ -309,7 +309,7 @@ $W list_networks                        # remove wpa_supplicant's copy too: $W r
 | `apsta_cli/net/wpa.py` | `ControlSocket` and `DBus` backends, `connect()` picks one |
 | `apsta_cli/net/strategies.py` | `P2pStrategy`: start/stop, and `share_connection()` shared with hostapd |
 | `apsta_cli/services/hotspot.py` | `build_context()`: lets p2p take over when the WiFi's channel can't host |
-| `apsta_cli/cmd/detect.py` | the "Wi-Fi Direct" row and the `p2p` method status |
+| `apsta_cli/services/detect.py` | the `p2p` method status (`methods()`); `cmd/detect.py` shows the "Wi-Fi Direct" row |
 
 Tests run without root, WiFi hardware or a real wpa_supplicant:
 

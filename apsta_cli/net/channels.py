@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, FrozenSet, Iterable, Optional, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
 
 from ..core.errors import HardwareError
 
@@ -109,67 +109,92 @@ def plan(
     ``notes``.
     """
     if sta is not None and same_channel_required:
-        if sta.band == "6g":
-            raise HardwareError(
-                f"Your WiFi is connected on 6 GHz (channel {sta.number}), and this card can "
-                "only run the hotspot on the same channel. Linux drivers don't allow AP mode on 6 GHz.",
-                hints=["Connect to the 2.4 GHz or 5 GHz network of your router, then retry."],
-            )
-        if sta.is_dfs:
-            raise HardwareError(
-                f"Your WiFi is connected on DFS channel {sta.number}, and this card can only run "
-                "the hotspot on the same channel. AP mode needs radar detection there, which "
-                "client cards don't do.",
-                hints=[
-                    "Connect to a 2.4 GHz network, or a 5 GHz one on channel 36–48 or 149–165,",
-                    "or ask the router admin to move off channels 52–144.",
-                ],
-            )
-        if allowed is not None and sta not in allowed:
-            raise HardwareError(
-                f"Your WiFi is connected on {sta.label} channel {sta.number}, where this card isn't allowed "
-                'to start a network (marked "no IR" by its firmware/regulatory rules). It can only run '
-                "the hotspot on the same channel as your WiFi.",
-                hints=[
-                    "Switch the network you're connected to to 2.4 GHz (e.g. your phone's hotspot: AP band 2.4 GHz),",
-                    "or connect to a 2.4 GHz network,",
-                    "or run with --allow-disconnect to drop WiFi and host on an allowed channel.",
-                    f"Why: {DOCS_5GHZ}",
-                ],
-            )
+        _require_can_host(sta, allowed)
         return ChannelPlan(sta, "the same as your WiFi's (this card uses one channel for both)")
+    return _own_channel(band, configured_channel, scan, allowed)
 
-    notes = []
+
+def _require_can_host(sta: Channel, allowed: Optional[FrozenSet[Channel]]) -> None:
+    """Raise :class:`HardwareError` explaining why an AP can't share ``sta``'s channel, if it can't."""
+    if sta.band == "6g":
+        raise HardwareError(
+            f"Your WiFi is connected on 6 GHz (channel {sta.number}), and this card can "
+            "only run the hotspot on the same channel. Linux drivers don't allow AP mode on 6 GHz.",
+            hints=["Connect to the 2.4 GHz or 5 GHz network of your router, then retry."],
+        )
+    if sta.is_dfs:
+        raise HardwareError(
+            f"Your WiFi is connected on DFS channel {sta.number}, and this card can only run "
+            "the hotspot on the same channel. AP mode needs radar detection there, which "
+            "client cards don't do.",
+            hints=[
+                "Connect to a 2.4 GHz network, or a 5 GHz one on channel 36–48 or 149–165,",
+                "or ask the router admin to move off channels 52–144.",
+            ],
+        )
+    if allowed is not None and sta not in allowed:
+        raise HardwareError(
+            f"Your WiFi is connected on {sta.label} channel {sta.number}, where this card isn't allowed "
+            'to start a network (marked "no IR" by its firmware/regulatory rules). It can only run '
+            "the hotspot on the same channel as your WiFi.",
+            hints=[
+                "Switch the network you're connected to to 2.4 GHz (e.g. your phone's hotspot: AP band 2.4 GHz),",
+                "or connect to a 2.4 GHz network,",
+                "or run with --allow-disconnect to drop WiFi and host on an allowed channel.",
+                f"Why: {DOCS_5GHZ}",
+            ],
+        )
+
+
+def _own_channel(
+    band: str,
+    configured_channel: Optional[str],
+    scan: Iterable[Tuple[int, int]],
+    allowed: Optional[FrozenSet[Channel]],
+) -> ChannelPlan:
+    """A channel of the hotspot's own: the configured one if allowed, else the least crowded."""
+    notes: List[str] = []
     if allowed is not None and not any(c.band == band for c in allowed):
         notes.append(f"This card can't start a network on {Channel(1, band).label}, so the hotspot uses 2.4 GHz.")
         band = "bg"  # e.g. all of 5 GHz is "no IR" on this card
-    usable = None if allowed is None else {c.number for c in allowed if c.band == band}
+    usable = None if allowed is None else frozenset(c.number for c in allowed if c.band == band)
 
     wanted = int(configured_channel) if configured_channel and configured_channel.isdigit() else None
     if wanted is not None:
-        if not valid_for_band(wanted, band):
-            label = Channel(1, band).label
-            notes.append(
-                f"Your channel setting ({wanted}) isn't a {label} channel, so apsta picks one "
-                f"(set channel to auto or a {label} channel)."
-            )
-        elif usable is not None and wanted not in usable:
-            notes.append(
-                f"This card isn't allowed to start a network on channel {wanted} "
-                '(radar or "no IR" rules), so apsta picks another.'
-            )
-        else:
+        refusal = _refusal(wanted, band, usable)
+        if refusal is None:
             return ChannelPlan(Channel(wanted, band), "your channel setting", tuple(notes))
+        notes.append(refusal)
 
-    picked = least_congested(band, scan, None if usable is None else frozenset(usable))
+    picked = least_congested(band, scan, usable)
     if picked is not None:
         return ChannelPlan(Channel(picked, band), "the least crowded nearby", tuple(notes))
+    return ChannelPlan(Channel(_default(band, usable), band), "the default (no scan available)", tuple(notes))
+
+
+def _refusal(wanted: int, band: str, usable: Optional[FrozenSet[int]]) -> Optional[str]:
+    """Why the configured channel can't be used, or None if it can."""
+    if not valid_for_band(wanted, band):
+        label = Channel(1, band).label
+        return (
+            f"Your channel setting ({wanted}) isn't a {label} channel, so apsta picks one "
+            f"(set channel to auto or a {label} channel)."
+        )
+    if usable is not None and wanted not in usable:
+        return (
+            f"This card isn't allowed to start a network on channel {wanted} "
+            '(radar or "no IR" rules), so apsta picks another.'
+        )
+    return None
+
+
+def _default(band: str, usable: Optional[FrozenSet[int]]) -> int:
+    """Without a scan: 6 or 36 when the card may use it, else the first safe (or any usable) channel."""
     safe = [ch for ch in (SAFE_5G if band == "a" else SAFE_24G) if usable is None or ch in usable]
     if not safe and usable:
         safe = sorted(usable)
     default = 36 if band == "a" else 6
-    chosen = default if default in safe or not safe else safe[0]
-    return ChannelPlan(Channel(chosen, band), "the default (no scan available)", tuple(notes))
+    return default if default in safe or not safe else safe[0]
 
 
 def parse_nmcli_scan(text: str) -> Iterable[Tuple[int, int]]:

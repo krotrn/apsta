@@ -13,11 +13,14 @@ nothing the user configured.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Dict, List, Tuple
 
-from ..core import output, paths, shell
+from ..core import paths, shell
 from ..core.errors import SetupError
+
+logger = logging.getLogger(__name__)
 
 COMMENT = "apsta"
 
@@ -41,7 +44,7 @@ def restore_forwarding(previous: str) -> None:
         try:
             paths.IP_FORWARD.write_text(previous + "\n")
         except OSError as exc:
-            output.warn(f"Could not restore ip_forward={previous}: {exc}")
+            logger.warning("Could not restore ip_forward=%s: %s", previous, exc)
 
 
 # ── Backends ──────────────────────────────────────────────────────────────────
@@ -49,6 +52,10 @@ def restore_forwarding(previous: str) -> None:
 
 class IptablesBackend:
     name = "iptables"
+
+    @staticmethod
+    def caveats(ap_iface: str) -> List[str]:
+        return []
 
     @staticmethod
     def rules(ap_iface: str, subnet: str) -> List[Tuple[str, str, List[str]]]:
@@ -106,11 +113,17 @@ class NftablesBackend:
 
     def apply(self, ap_iface: str, subnet: str) -> Dict:
         shell.run(["nft", "-f", "-"], input=self.ruleset(ap_iface, subnet)).check("Loading nftables rules")
+        return {}
+
+    @staticmethod
+    def caveats(ap_iface: str) -> List[str]:
         ruleset = shell.out(["nft", "list", "ruleset"])
         if re.search(r"hook forward[^\n]*\n?[^}]*policy drop", ruleset):
-            output.warn("Another nftables forward chain has 'policy drop'; clients may get no internet.")
-            output.hint("Allow forwarding from the hotspot interface in your nftables config.")
-        return {}
+            return [
+                "Another nftables forward chain has 'policy drop', so clients may get no internet: "
+                f"allow forwarding from {ap_iface} in your nftables config."
+            ]
+        return []
 
     def revert(self, ap_iface: str, subnet: str, data: Dict) -> None:
         shell.run(["nft", "delete", "table", "ip", self.TABLE])
@@ -118,6 +131,10 @@ class NftablesBackend:
 
 class FirewalldBackend:
     name = "firewalld"
+
+    @staticmethod
+    def caveats(ap_iface: str) -> List[str]:
+        return []
 
     @staticmethod
     def _fw(*args: str) -> shell.Result:
@@ -181,6 +198,11 @@ def apply(ap_iface: str, subnet: str) -> Dict:
         restore_forwarding(previous)
         raise
     return {"backend": backend.name, "ip_forward_prev": previous, "data": data}
+
+
+def caveats(ap_iface: str, record: Dict) -> List[str]:
+    """Problems outside apsta's rules that may stop clients reaching the internet, in words for the user."""
+    return by_name(record["backend"]).caveats(ap_iface)
 
 
 def revert(ap_iface: str, subnet: str, record: Dict) -> None:

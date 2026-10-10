@@ -73,4 +73,4 @@ def clear() -> None:
 
 
 def interface_exists(name: Optional[str]) -> bool:
-    return bool(name) and (paths.SYSFS_NET / name).exists()
+    return name is not None and name != "" and (paths.SYSFS_NET / name).exists()

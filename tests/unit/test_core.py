@@ -1,4 +1,6 @@
+import io
 import json
+import logging
 import os
 import stat
 import subprocess
@@ -190,19 +192,42 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class LibraryMessagesTests(unittest.TestCase):
+    def setUp(self):
+        isolate_paths(self)
+        logger = logging.getLogger("apsta_cli")
+        saved = logger.handlers[:], logger.level, logger.propagate
+        self.addCleanup(self._restore, logger, *saved)
+
+    @staticmethod
+    def _restore(logger, handlers, level, propagate):
+        logger.handlers = handlers
+        logger.setLevel(level)
+        logger.propagate = propagate
+
+    def test_lower_layer_warnings_render_once_as_terminal_warnings(self):
+        output.show_library_messages()
+        output.show_library_messages()  # idempotent: one handler, one line per record
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            logging.getLogger("apsta_cli.net.iface").warning("Could not set a MAC on %s", "wlo1_ap")
+            logging.getLogger("apsta_cli.net.iface").info("not shown")
+        self.assertEqual(err.getvalue().count("Could not set a MAC on wlo1_ap"), 1)
+        self.assertNotIn("not shown", err.getvalue())
+
+
 class MachineOutputTests(unittest.TestCase):
     def test_json_mode_moves_messages_to_stderr(self):
         with (
-            mock.patch.object(output, "_MESSAGES_TO_STDERR", False),
-            mock.patch("sys.stdout", new_callable=__import__("io").StringIO) as out,
-            mock.patch("sys.stderr", new_callable=__import__("io").StringIO) as err,
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+            mock.patch("sys.stderr", new_callable=io.StringIO) as err,
         ):
-            output.machine_output()
-            output.info("progress")
-            output.ok("done")
-            output.head("Title")
-            output.detail("more")
-            output.blank()
-        self.assertEqual(out.getvalue(), "")
+            with output.machine_output():
+                output.info("progress")
+                output.ok("done")
+                output.head("Title")
+                output.detail("more")
+                output.blank()
+            output.info("after the block")  # the mode doesn't outlive the command
+        self.assertEqual(out.getvalue().strip(), "→  after the block")
         self.assertIn("progress", err.getvalue())
         self.assertIn("done", err.getvalue())

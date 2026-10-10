@@ -7,22 +7,30 @@ callers must never pass secrets to these functions.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
+import logging
 import os
 import sys
+from typing import Iterator
 
 from . import log
 
-_MESSAGES_TO_STDERR = False
+_messages_to_stderr = contextvars.ContextVar("messages_to_stderr", default=False)
 
 
-def machine_output(enabled: bool = True) -> None:
-    """``--json`` mode: stdout carries only the JSON document; messages go to stderr."""
-    global _MESSAGES_TO_STDERR
-    _MESSAGES_TO_STDERR = enabled
+@contextlib.contextmanager
+def machine_output(enabled: bool = True) -> Iterator[None]:
+    """``--json`` mode while in this block: stdout carries only the JSON document; messages go to stderr."""
+    token = _messages_to_stderr.set(enabled)
+    try:
+        yield
+    finally:
+        _messages_to_stderr.reset(token)
 
 
 def _stream():
-    return sys.stderr if _MESSAGES_TO_STDERR else sys.stdout
+    return sys.stderr if _messages_to_stderr.get() else sys.stdout
 
 
 def _use_color() -> bool:
@@ -105,3 +113,24 @@ def dbg(msg: str, **fields) -> None:
     log.event("DEBUG", "debug", message=msg, **fields)
     if log.debug_enabled():
         print(f"  {C.DIM}· {msg}{C.RESET}", file=sys.stderr)
+
+
+# ── Messages from the lower layers ────────────────────────────────────────────
+#
+# hw/, net/ and config/ don't decide what the user sees: they report problems
+# they work around with ``logging.getLogger(__name__).warning(...)``. The CLI
+# renders those records like its own warnings (and so mirrors them to the log).
+
+
+class _TerminalHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        warn(record.getMessage())
+
+
+def show_library_messages() -> None:
+    """Render warnings logged under ``apsta_cli.*`` on the terminal. Idempotent."""
+    logger = logging.getLogger("apsta_cli")
+    if not any(isinstance(h, _TerminalHandler) for h in logger.handlers):
+        logger.addHandler(_TerminalHandler())
+    logger.setLevel(logging.WARNING)
+    logger.propagate = False

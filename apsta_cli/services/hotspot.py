@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .. import state as state_store
 from ..config import model, store
@@ -112,7 +112,84 @@ def resolve_method(config: dict, opts: StartOptions) -> str:
 OWN_CHANNEL_METHODS = ("p2p", "nmcli-single")
 
 
-def build_context(config: dict, opts: StartOptions, method: str = "auto") -> StartContext:
+@dataclass
+class ChannelChoice:
+    plan: channels.ChannelPlan
+    notes: List[str]  # the hotspot's channel explained, in words for the user
+    problem: Optional[HardwareError] = None  # why the WiFi's channel can't host, if it can't
+
+    @property
+    def sta_channel_usable(self) -> bool:
+        return self.problem is None
+
+
+def choose_channel(
+    cap: capability.HardwareCapability,
+    sta_channel: Optional[channels.Channel],
+    config: dict,
+    method: str,
+    allow_disconnect: bool,
+    scan: Callable[[], Iterable[Tuple[int, int]]],
+) -> ChannelChoice:
+    """Share the WiFi's channel when the card needs to, else pick one; ``scan`` runs only for the latter."""
+    allowed = channels.allowed_channels(cap.ap_frequencies)
+    band, wanted = config["band"], config.get("channel")
+    problem = None
+    try:
+        plan = channels.plan(sta_channel, cap.same_channel_required, band, wanted, (), allowed)
+    except HardwareError as exc:
+        if not (allow_disconnect or cap.p2p_go_own_channel or method in OWN_CHANNEL_METHODS):
+            raise
+        # The WiFi's channel can't host an AP. A Wi-Fi Direct group on a channel
+        # of its own still can, or (if the user accepts dropping WiFi) the
+        # single-interface method: either way, on a channel the card allows.
+        problem = exc
+
+    def own_channel() -> channels.ChannelPlan:
+        return channels.plan(None, cap.same_channel_required, band, wanted, scan(), allowed)
+
+    notes = [f"{problem.message.split('. ')[0]}."] if problem else []
+    # The WiFi's channel, when the hotspot has to share it.
+    tied = sta_channel if problem is None and cap.same_channel_required else None
+    if tied is None:
+        plan = own_channel()  # not tied to the WiFi: scan and pick
+    elif method in OWN_CHANNEL_METHODS:
+        # Forced to a method with its own channel: keep the WiFi's channel only
+        # when it is what the settings ask for anyway (no radio switching then).
+        if wanted not in (None, "auto") or tied.band != band:
+            plan = own_channel()
+        else:
+            plan = channels.ChannelPlan(tied, "the same as your WiFi's, so the radio doesn't have to switch")
+    else:
+        notes.extend(_sharing_notes(cap, tied, band, wanted))
+    notes.extend(plan.notes)  # what couldn't be followed, before what was done instead
+    notes.append(f"Channel {plan.channel.number} ({plan.channel.label}): {plan.reason}.")
+    return ChannelChoice(plan, notes, problem)
+
+
+def _sharing_notes(
+    cap: capability.HardwareCapability, tied: channels.Channel, band: str, wanted: Optional[str]
+) -> List[str]:
+    """Settings the hotspot can't follow because it shares the WiFi's channel."""
+    if tied.band != band:
+        hint = (
+            "To always use your band, set method to p2p (Wi-Fi Direct; shares the radio's speed)."
+            if cap.p2p_go_own_channel
+            else "This card can't run the hotspot on another channel while connected."
+        )
+        return [
+            f"Your band setting is {channels.Channel(1, band).label}, but the hotspot is on "
+            f"{tied.label} because it shares your WiFi's channel. {hint}"
+        ]
+    if wanted not in (None, "auto") and int(wanted) != tied.number:
+        return [f"Your channel setting ({wanted}) is not used: the hotspot shares your WiFi's channel."]
+    return []
+
+
+def _hardware(
+    config: dict, opts: StartOptions
+) -> Tuple[interfaces.WifiInterface, capability.HardwareCapability, Optional[interfaces.StaLink]]:
+    """The interface to host on, what it can do, and its WiFi connection (waiting for it if asked)."""
     base = select_interface(config, opts.interface)
     cap = capability.probe(base.name)
     if not cap.supports_ap:
@@ -121,56 +198,21 @@ def build_context(config: dict, opts: StartOptions, method: str = "auto") -> Sta
             hints=["See which USB adapters work: apsta recommend"],
         )
     link = interfaces.wait_for_sta(base.name, opts.wait_sta) if opts.wait_sta else interfaces.sta_link(base.name)
+    return base, cap, link
+
+
+def build_context(config: dict, opts: StartOptions, method: str = "auto") -> StartContext:
+    base, cap, link = _hardware(config, opts)
     sta_channel = channels.from_freq(link.freq) if link else None
-    allowed = channels.allowed_channels(cap.ap_frequencies)
-    band, wanted = config["band"], config.get("channel")
-    scan: list = []
-
-    def own_channel_plan() -> channels.ChannelPlan:
-        if not scan:
-            scan.extend(channels.parse_nmcli_scan(nm.scan(base.name)))
-        return channels.plan(None, cap.same_channel_required, band, wanted, scan, allowed)
-
-    sta_channel_usable = True
-    channel_problem = None
-    notes: List[str] = []
-    try:
-        plan = channels.plan(sta_channel, cap.same_channel_required, band, wanted, (), allowed)
-        if sta_channel is None or not cap.same_channel_required:
-            plan = own_channel_plan()  # not tied to the WiFi: scan and pick
-    except HardwareError as exc:
-        if not (opts.allow_disconnect or cap.p2p_go_own_channel or method in OWN_CHANNEL_METHODS):
-            raise
-        # The WiFi's channel can't host an AP. A Wi-Fi Direct group on a channel
-        # of its own still can, or (if the user accepts dropping WiFi) the
-        # single-interface method: either way, on a channel the card allows.
-        sta_channel_usable = False
-        channel_problem = exc
-        notes.append(f"{exc.message.split('. ')[0]}.")
-        plan = own_channel_plan()
-
-    tied = sta_channel_usable and sta_channel is not None and cap.same_channel_required
-    if tied and method in OWN_CHANNEL_METHODS:
-        # Forced to a method with its own channel: keep the WiFi's channel only
-        # when it is what the settings ask for anyway (no radio switching then).
-        if wanted not in (None, "auto") or sta_channel.band != band:
-            plan = own_channel_plan()
-        else:
-            plan = channels.ChannelPlan(sta_channel, "the same as your WiFi's, so the radio doesn't have to switch")
-    elif tied and sta_channel.band != band:
-        hint = (
-            "To always use your band, set method to p2p (Wi-Fi Direct; shares the radio's speed)."
-            if cap.p2p_go_own_channel
-            else "This card can't run the hotspot on another channel while connected."
-        )
-        notes.append(
-            f"Your band setting is {channels.Channel(1, band).label}, but the hotspot is on "
-            f"{sta_channel.label} because it shares your WiFi's channel. {hint}"
-        )
-    elif tied and wanted not in (None, "auto") and int(wanted) != sta_channel.number:
-        notes.append(f"Your channel setting ({wanted}) is not used: the hotspot shares your WiFi's channel.")
-    notes.extend(plan.notes)  # what couldn't be followed, before what was done instead
-    notes.append(f"Channel {plan.channel.number} ({plan.channel.label}): {plan.reason}.")
+    choice = choose_channel(
+        cap,
+        sta_channel,
+        config,
+        method,
+        opts.allow_disconnect,
+        scan=lambda: list(channels.parse_nmcli_scan(nm.scan(base.name))),
+    )
+    plan = choice.plan
     output.dbg("Channel plan", channel=plan.channel.number, band=plan.channel.band, reason=plan.reason)
     return StartContext(
         base=base,
@@ -181,11 +223,11 @@ def build_context(config: dict, opts: StartOptions, method: str = "auto") -> Sta
         country=interfaces.reg_country(cap.phy or base.phy),
         sta_ssid=link.ssid if link else None,
         allow_disconnect=opts.allow_disconnect,
-        sta_channel_usable=sta_channel_usable,
+        sta_channel_usable=choice.sta_channel_usable,
         hidden=bool(config.get("hidden")),
         allowed_macs=list(config.get("allowed_macs") or []),
-        channel_problem=channel_problem,
-        notes=notes,
+        channel_problem=choice.problem,
+        notes=choice.notes,
         sta_channel=sta_channel,
     )
 
@@ -208,8 +250,8 @@ def start(opts: StartOptions, candidates: Optional[Sequence[Strategy]] = None) -
                 output.dbg("Strategy unavailable", strategy=strategy.name, reason=reason)
                 continue
             output.info(f"Using {strategy.description}")
-            if not strategy.keeps_wifi:
-                strategies.warn_disconnect(ctx)
+            if not strategy.keeps_wifi and ctx.sta_ssid:
+                output.warn(f"Your WiFi connection to '{ctx.sta_ssid}' will drop while the hotspot runs.")
             try:
                 with Transaction() as tx:
                     st = strategy.start(ctx, tx)
@@ -275,13 +317,13 @@ def current() -> Optional[HotspotState]:
 
 def status() -> dict:
     st = state_store.load()
-    alive = st is not None and is_alive(st)
+    live = st if st is not None and is_alive(st) else None
     config = store.load()
     return {
-        "active": alive,
-        "stale": st is not None and not alive,
-        "hotspot": st.to_dict() if alive else None,
-        "clients": [c.to_dict() for c in clients.list_clients(st)] if alive else [],
+        "active": live is not None,
+        "stale": st is not None and live is None,
+        "hotspot": live.to_dict() if live else None,
+        "clients": [c.to_dict() for c in clients.list_clients(live)] if live else [],
         "interfaces": [interfaces.to_json(i) for i in interfaces.list_wifi_interfaces()],
         "autostart": autostart.info(),
         "config": {

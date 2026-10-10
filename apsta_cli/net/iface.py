@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 from typing import Tuple
 
-from ..core import output, paths, shell
+from ..core import paths, shell
+
+logger = logging.getLogger(__name__)
 
 
 def ap_name(base_iface: str) -> str:
@@ -39,7 +42,7 @@ def create_virtual_ap(base_iface: str) -> Tuple[str, str]:
     mac = random_mac()
     shell.run(["ip", "link", "set", name, "down"])
     if not shell.run(["ip", "link", "set", name, "address", mac]).ok:
-        output.warn(f"Could not set a separate MAC on {name}; some drivers reject duplicate MACs.")
+        logger.warning("Could not set a separate MAC on %s; some drivers reject duplicate MACs.", name)
     return name, mac
 
 

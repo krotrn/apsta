@@ -49,7 +49,7 @@ p2p = ["jeepney>=0.7"]
 # Development tools (PEP 735): `uv sync` installs them automatically;
 # with pip >= 25.1: `pip install -e . --group dev`. Or just `make dev`.
 [dependency-groups]
-dev = ["coverage[toml]>=7.16", "ruff>=0.16", "jeepney>=0.7"]
+dev = ["coverage[toml]>=7.16", "ruff>=0.16", "mypy>=2.4", "jeepney>=0.7"]
 
 [project.urls]
 Homepage = "https://krotrn.github.io/apsta/"
@@ -88,6 +88,19 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501", "SIM117"]
+
+[tool.mypy]
+python_version = "3.10"
+# The GUI's GTK modules need PyGObject from the distribution; its non-GTK
+# logic (unit-tested like the CLI) is checked.
+files = ["apsta_cli", "apsta_gui/backend.py", "apsta_gui/helpers.py"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[[tool.mypy.overrides]]
+module = ["jeepney.*", "qrcode.*"]  # optional extras without type information
+ignore_missing_imports = true
 
 [tool.coverage.run]
 branch = true

@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- When another nftables chain drops forwarded traffic, the warning that clients
+  may get no internet is now one of the hotspot's notes, so `apsta status`
+  (and `status --json`, and so the desktop app) shows it for as long as the
+  hotspot runs, not only `apsta start`.
+- `apsta recommend` checks the same card as `apsta detect` (the one connected
+  to WiFi first), instead of possibly a different one.
+- `apsta config --set active_profile=` (empty) says a profile name is needed.
+
 ## [0.11.0] - 2026-10-06
 
 ### Added

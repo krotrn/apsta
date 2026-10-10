@@ -17,14 +17,14 @@ readers don't need to understand profiles.
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ..core.errors import UsageError
 from . import validate
 
 PROFILE_KEYS = ("ssid", "password", "band", "channel", "method", "interface", "hidden", "allowed_macs")
 
-DEFAULT_PROFILE: Dict[str, Optional[str]] = {
+DEFAULT_PROFILE: Dict[str, Any] = {
     "ssid": "apsta-hotspot",
     "password": None,  # generated randomly on first start; never a shared default
     "band": "bg",
