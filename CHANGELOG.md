@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-10
+
 ### Changed
 
 - When another nftables chain drops forwarded traffic, the warning that clients

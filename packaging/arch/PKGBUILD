@@ -1,6 +1,6 @@
 # Maintainer: krotrn <krotrn.ks@gmail.com>
 pkgname=apsta
-pkgver=0.11.0
+pkgver=0.11.1
 pkgrel=1
 pkgdesc="Run a Wi-Fi hotspot while staying connected to Wi-Fi (AP+STA)"
 arch=('any')
