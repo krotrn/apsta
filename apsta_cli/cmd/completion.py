@@ -9,7 +9,14 @@ from __future__ import annotations
 import argparse
 from typing import Dict, List, Tuple
 
+from ..config import model, store
+from ..core.errors import UsageError
+
 Spec = Dict[str, Tuple[str, List[str], List[str]]]  # command -> (help, options, subcommands)
+
+# `apsta profile <action> NAME` actions whose NAME is an existing profile.
+PROFILE_ACTIONS = ("show", "use", "delete")
+PROFILE_NAMES = "apsta completion --profile-names 2>/dev/null"
 
 
 def _subparsers(parser: argparse.ArgumentParser):
@@ -68,6 +75,11 @@ def bash(s: Spec) -> str:
             "    if [[ $COMP_CWORD -eq 1 ]]; then",
             f'        COMPREPLY=( $(compgen -W "{" ".join(s)}" -- "$cur") ); return 0',
             "    fi",
+            "    if [[ ${COMP_WORDS[1]} == profile ]] && { [[ $COMP_CWORD -eq 3 && "
+            f"${{COMP_WORDS[2]}} =~ ^({'|'.join(PROFILE_ACTIONS)})$ ]] || "
+            "[[ ${COMP_WORDS[COMP_CWORD-1]} == --from ]]; }; then",
+            f'        COMPREPLY=( $(compgen -W "$({PROFILE_NAMES})" -- "$cur") ); return 0',
+            "    fi",
             '    case "${COMP_WORDS[1]}" in',
             *cases,
             "    esac",
@@ -100,6 +112,10 @@ def zsh(s: Spec) -> str:
             "        _describe 'command' commands; return",
             "    fi",
             "    shift words; (( CURRENT-- ))",
+            "    if [[ $words[1] == profile ]] && { (( CURRENT == 3 )) && "
+            f"[[ $words[2] == ({'|'.join(PROFILE_ACTIONS)}) ]] || [[ $words[CURRENT-1] == --from ]] }}; then",
+            f'        compadd -- ${{(f)"$({PROFILE_NAMES})"}}; return',
+            "    fi",
             "    case $words[1] in",
             *cases,
             "    esac",
@@ -117,6 +133,9 @@ def fish(s: Spec) -> str:
             lines.append(f'complete -c apsta -n "__fish_seen_subcommand_from {name}" -a "{" ".join(subs)}"')
         for opt in opts:
             lines.append(f'complete -c apsta -n "__fish_seen_subcommand_from {name}" -l {opt[2:]}')
+    profile = "__fish_seen_subcommand_from profile; and __fish_seen_subcommand_from"
+    lines.append(f'complete -c apsta -n "{profile} {" ".join(PROFILE_ACTIONS)}" -a "({PROFILE_NAMES})"')
+    lines.append(f'complete -c apsta -n "{profile} create" -l from -x -a "({PROFILE_NAMES})"')
     return "\n".join(lines)
 
 
@@ -124,5 +143,10 @@ GENERATORS = {"bash": bash, "zsh": zsh, "fish": fish}
 
 
 def cmd_completion(args) -> int:
+    if args.profile_names:
+        print("\n".join(model.profile_names(store.load())))
+        return 0
+    if not args.shell:
+        raise UsageError("Choose a shell: apsta completion bash|zsh|fish")
     print(GENERATORS[args.shell](spec(args.parser)))
     return 0

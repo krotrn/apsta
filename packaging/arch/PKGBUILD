@@ -53,5 +53,8 @@ package() {
   install -Dm644 apsta_gui/data/com.github.apsta.Gtk.metainfo.xml -t "$pkgdir/usr/share/metainfo/"
   install -Dm644 apsta_gui/data/icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg -t "$pkgdir/usr/share/icons/hicolor/scalable/apps/"
   install -Dm644 apsta_gui/data/icons/hicolor/symbolic/apps/com.github.apsta.Gtk-symbolic.svg -t "$pkgdir/usr/share/icons/hicolor/symbolic/apps/"
+  python -m apsta_cli completion bash | install -Dm644 /dev/stdin "$pkgdir/usr/share/bash-completion/completions/apsta"
+  python -m apsta_cli completion zsh | install -Dm644 /dev/stdin "$pkgdir/usr/share/zsh/site-functions/_apsta"
+  python -m apsta_cli completion fish | install -Dm644 /dev/stdin "$pkgdir/usr/share/fish/vendor_completions.d/apsta.fish"
   install -Dm644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname/"
 }

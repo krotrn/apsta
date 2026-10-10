@@ -23,6 +23,8 @@ examples:
   sudo apsta config --set ssid=MyHotspot
   sudo apsta config --password-stdin
   sudo apsta enable                    start at boot, recover after sleep
+  sudo apsta update                    update to the latest release
+  sudo apsta uninstall                 remove apsta and its settings
 """
 
 
@@ -125,8 +127,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("scan-usb", help="Detect USB WiFi adapters")
     sub.add_parser("recommend", help="Suggest a USB adapter to buy")
 
+    sub.add_parser("update", aliases=["upgrade"], help="Update apsta to the latest release (root)")
+    p = sub.add_parser("uninstall", help="Remove apsta, its settings and its log (root)")
+    p.add_argument("--keep-config", action="store_true", help="Keep profiles and passwords in /etc/apsta")
+    p.add_argument("-y", "--yes", action="store_true", help="Don't ask for confirmation")
+
     p = sub.add_parser("completion", help="Print a shell completion script")
-    p.add_argument("shell", choices=["bash", "zsh", "fish"])
+    p.add_argument("shell", nargs="?", choices=["bash", "zsh", "fish"])
+    # Used by the generated scripts to complete profile names.
+    p.add_argument("--profile-names", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
@@ -140,7 +149,7 @@ REQUIRED_TOOLS = {
 
 
 def _handler(command: str):
-    from .cmd import clients, completion, config, detect, hotspot, profile, qr, service, status, usb
+    from .cmd import clients, completion, config, detect, hotspot, install, profile, qr, service, status, usb
 
     return {
         "detect": detect.cmd_detect,
@@ -156,6 +165,9 @@ def _handler(command: str):
         "disable": service.cmd_disable,
         "scan-usb": usb.cmd_scan_usb,
         "recommend": usb.cmd_recommend,
+        "update": install.cmd_update,
+        "upgrade": install.cmd_update,
+        "uninstall": install.cmd_uninstall,
         "completion": completion.cmd_completion,
     }[command]
 

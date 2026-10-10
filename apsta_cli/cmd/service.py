@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from ..core import fsutil, output, paths, shell
 from ..core.errors import ApstaError
-from ..services import guard, hotspot
+from ..services import autostart, guard, hotspot
 from ..services.autostart import detect_init
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -173,13 +173,24 @@ def cmd_enable(args) -> int:
     return 0
 
 
-def cmd_disable(args) -> int:
-    hotspot.require_root("Disabling the service")
-    output.head("apsta — Disabling the hotspot service")
+def boot_service_present() -> bool:
+    """Whether `apsta enable` (or a package's enabled unit) set anything up to undo."""
+    if any(p.exists() for p in (SYSTEMD_LOCAL_UNIT, OPENRC_SCRIPT, RUNIT_DIR, PM_SLEEP_HOOK)):
+        return True
+    return autostart.info().get("enabled") is True
+
+
+def disable_boot_service() -> None:
     init = detect_init()
     if init in DISABLE:
         DISABLE[init]()
     if PM_SLEEP_HOOK.exists():
         fsutil.remove(PM_SLEEP_HOOK)
+
+
+def cmd_disable(args) -> int:
+    hotspot.require_root("Disabling the service")
+    output.head("apsta — Disabling the hotspot service")
+    disable_boot_service()
     output.blank()
     return 0

@@ -15,6 +15,13 @@ from datetime import datetime, timezone
 from . import paths
 
 MAX_BYTES = 1024 * 1024
+_stopped = False
+
+
+def stop() -> None:
+    """Write nothing more in this process (`apsta uninstall` has deleted the log)."""
+    global _stopped
+    _stopped = True
 
 
 def debug_enabled() -> bool:
@@ -40,7 +47,7 @@ def _rotate_if_needed(path) -> None:
 
 
 def event(level: str, name: str, **fields) -> None:
-    if os.geteuid() != 0 and not os.environ.get("APSTA_LOG_PATH"):
+    if _stopped or (os.geteuid() != 0 and not os.environ.get("APSTA_LOG_PATH")):
         return
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),

@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- One-command install for any distribution:
+  `curl -fsSL https://raw.githubusercontent.com/krotrn/apsta/main/get.sh | sh`.
+  It uses the pacman repository, the PPA or the release `.deb` where they
+  exist and otherwise installs from source with the distribution's
+  dependencies, adding hostapd, dnsmasq and (in a graphical session) the
+  desktop app's libraries.
+- The Arch and Debian/Ubuntu packages install bash, zsh and fish completions,
+  so `apsta <Tab>` works right after installing.
+- `sudo apsta update` (or `upgrade`) installs the latest release and
+  `sudo apsta uninstall` removes apsta completely: its boot service, package,
+  pacman repository or PPA, settings and log (`--keep-config` keeps the
+  settings). Both go through whatever installed apsta: the pacman repository,
+  the PPA, the release `.deb` (checked against `SHA256SUMS`) or `install.sh`.
+- Shell completion suggests your profile names for `apsta profile show`, `use`
+  and `delete`, and for `apsta profile create --from`.
+
 ## [0.11.1] - 2026-10-10
 
 ### Changed

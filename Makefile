@@ -34,7 +34,7 @@ typecheck: _require-dev
 
 # Same shellcheck/actionlint versions as CI (needs Docker).
 lint-ci:
-	docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 -s sh apsta_cli/data/apsta-sleep apsta_cli/data/apsta.runit
+	docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 -s sh get.sh apsta_cli/data/apsta-sleep apsta_cli/data/apsta.runit
 	docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 install.sh scripts/hardware_check.sh packaging/arch/ci-build.sh packaging/arch/ci-repo.sh packaging/deb/ci-build.sh
 	docker run --rm -v "$(CURDIR):/repo" -w /repo rhysd/actionlint:1.7.12
 

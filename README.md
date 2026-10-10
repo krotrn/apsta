@@ -75,6 +75,22 @@ Verdict
 
 ## Install
 
+One command for any distribution:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/krotrn/apsta/main/get.sh | sh
+```
+
+It uses the package below for your distribution (pacman repository, PPA, or
+the release `.deb` on Debian), and installs from source when there is none,
+with the dependencies from your package manager. It also installs `hostapd`
+and `dnsmasq`, and the desktop app's libraries when you're in a graphical
+session. Run it again to update. Options go after `sh -s --`, e.g.
+`curl -fsSL … | sh -s -- --cli-only`: `--cli-only`, `--gui`, `--source`
+(skip the packages), `--dry-run` (show what it would run).
+
+Or install it yourself:
+
 ### Ubuntu / Pop!\_OS (PPA)
 
 ```bash
@@ -104,6 +120,10 @@ sudo ./install.sh              # installs into /usr/local
 sudo ./install.sh --uninstall  # removes it again
 ```
 
+`sudo apsta update` and `sudo apsta uninstall` work the same way it was
+installed, whichever route that was: the pacman repository, the PPA, the
+`.deb`, or `install.sh`.
+
 Runtime requirements: Python ≥ 3.10, NetworkManager, `iw`, `iproute2`.
 Recommended: `hostapd` + `dnsmasq` (needed for client management), and one of
 `iptables`/`nftables`/`firewalld`. On Fedora, openSUSE, Alpine and Void, the
@@ -123,6 +143,9 @@ apsta status                         # --check: exit code only (0 running, 3 not
 
 sudo apsta enable                    # start at boot, recover after sleep (systemd/OpenRC/runit)
 sudo apsta disable
+
+sudo apsta update                    # update to the latest release (alias: upgrade)
+sudo apsta uninstall                 # remove apsta, its settings and its log (--keep-config keeps settings)
 ```
 
 ### Configuration
@@ -251,6 +274,9 @@ Ubuntu 24.04, Fedora and Arch. `python3-qrcode` is optional; without it,
 Share shows the name and password only.
 
 ### Shell completion
+
+The Arch and Debian/Ubuntu packages and `install.sh` install completions for
+bash, zsh and fish. To install them yourself (for example after `pip install`):
 
 ```bash
 apsta completion bash | sudo tee /etc/bash_completion.d/apsta >/dev/null

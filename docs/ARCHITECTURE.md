@@ -10,7 +10,7 @@ flowchart TD
     CLI["<b>apsta_cli/cli.py</b><br/>argparse, errors → exit codes"]
     GUI["<b>apsta_gui</b> (GTK 4 / libadwaita)<br/>a client of the CLI:<br/>--json reads, pkexec writes"]
     CMD["<b>cmd/*</b> · present<br/>thin: print results"]
-    SVC["<b>services/</b> · use cases<br/>hotspot.py: start / stop / status, strategy selection<br/>detect.py: what the card can do, which methods are ready<br/>watch.py: apsta run keeps the hotspot healthy<br/>guard.py: runs it behind apsta start"]
+    SVC["<b>services/</b> · use cases<br/>hotspot.py: start / stop / status, strategy selection<br/>detect.py: what the card can do, which methods are ready<br/>watch.py: apsta run keeps the hotspot healthy<br/>guard.py: runs it behind apsta start<br/>installation.py: how apsta was installed, for update / uninstall"]
     CFG["<b>config/</b><br/>model, store, validate<br/>state.py"]
     NET["<b>net/</b><br/>strategies, transaction<br/>hostapd, dnsmasq, nm<br/>firewall, supervisor<br/>iface, subnet, channels, clients<br/>wpa (wpa_supplicant: socket or D-Bus)"]
     HW["<b>hw/</b><br/>combinations, capability<br/>interfaces, usb"]

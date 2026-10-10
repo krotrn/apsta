@@ -57,6 +57,7 @@ echo "Installing apsta into $PREFIX ..."
 rm -rf "$LIB"
 install -d "$LIB"
 cp -R "$SRC/apsta_cli" "$SRC/apsta_gui" "$LIB/"
+install -m644 "$SRC/install.sh" "$LIB/install.sh"  # `apsta uninstall` runs its --uninstall
 find "$LIB" -name '__pycache__' -prune -exec rm -rf {} +
 say "✔" "Python packages → $LIB"
 

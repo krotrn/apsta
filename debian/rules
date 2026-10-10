@@ -3,3 +3,9 @@ export DH_VERBOSE = 1
 
 %:
 	dh $@ --with python3 --buildsystem=pybuild
+
+# Shell completions are generated from the CLI, so they always match it.
+execute_after_dh_auto_install:
+	python3 -m apsta_cli completion bash | install -Dm644 /dev/stdin debian/apsta/usr/share/bash-completion/completions/apsta
+	python3 -m apsta_cli completion zsh | install -Dm644 /dev/stdin debian/apsta/usr/share/zsh/vendor-completions/_apsta
+	python3 -m apsta_cli completion fish | install -Dm644 /dev/stdin debian/apsta/usr/share/fish/vendor_completions.d/apsta.fish

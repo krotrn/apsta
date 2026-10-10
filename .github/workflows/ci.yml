@@ -49,7 +49,7 @@ jobs:
       - name: Shell scripts (POSIX sh)
         uses: docker://koalaman/shellcheck:v0.11.0
         with:
-          args: -s sh apsta_cli/data/apsta-sleep apsta_cli/data/apsta.runit
+          args: -s sh get.sh apsta_cli/data/apsta-sleep apsta_cli/data/apsta.runit
 
       - name: Shell scripts (bash)
         uses: docker://koalaman/shellcheck:v0.11.0

@@ -67,6 +67,23 @@ class CompletionTests(unittest.TestCase):
         self.assertIn("complete -F _apsta apsta", run_cli("completion", "bash")[1])
         self.assertIn("#compdef apsta", run_cli("completion", "zsh")[1])
 
+    def test_profile_names_for_the_scripts(self):
+        isolate_paths(self)
+        paths.CONFIG_DIR.mkdir(parents=True)
+        paths.CONFIG_PATH.write_text('{"active_profile": "home", "profiles": {"work": {}, "home": {}}}')
+        self.assertEqual(run_cli("completion", "--profile-names")[:2], (0, "home\nwork\n"))
+        for shell_name in ("bash", "zsh", "fish"):
+            self.assertIn("apsta completion --profile-names", run_cli("completion", shell_name)[1])
+
+    def test_profile_actions_exist(self):
+        spec = completion.spec(cli.build_parser())
+        self.assertTrue(set(completion.PROFILE_ACTIONS) <= set(spec["profile"][2]))
+
+    def test_shell_required(self):
+        code, _, err = run_cli("completion")
+        self.assertEqual(code, 2)
+        self.assertIn("Choose a shell", err)
+
 
 class DetectVerdictTests(unittest.TestCase):
     def cap(self, ap, ap_sta):

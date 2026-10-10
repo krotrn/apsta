@@ -95,6 +95,19 @@ def run(
     return Result(argv, proc.returncode, proc.stdout, proc.stderr)
 
 
+def run_visible(argv: Sequence[str], *, env: Optional[dict] = None) -> Result:
+    """Run ``argv`` on the terminal, without a timeout: package managers show their own progress."""
+    argv = [str(a) for a in argv]
+    exe = argv[0] if os.path.isabs(argv[0]) else which(argv[0])
+    if exe is None:
+        return Result(argv, 127, "", f"{argv[0]}: command not found")
+    try:
+        proc = subprocess.run([exe, *argv[1:]], env={**os.environ, **(env or {})})
+    except FileNotFoundError:
+        return Result(argv, 127, "", f"{argv[0]}: command not found")
+    return Result(argv, proc.returncode, "", "")
+
+
 def _run_daemonizing(cmd: Sequence[str], argv: Sequence[str], timeout: float, env: dict) -> Result:
     with tempfile.TemporaryFile("w+") as out, tempfile.TemporaryFile("w+") as err:
         try:
