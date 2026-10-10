@@ -97,15 +97,14 @@ if command -v gtk-update-icon-cache >/dev/null; then
 fi
 say "✔" "desktop entry and icon"
 
-if "$BIN/apsta" completion bash > /etc/bash_completion.d/apsta 2>/dev/null; then
-    say "✔" "bash completion"
-fi
-if [[ -d /usr/local/share/zsh/site-functions ]]; then
-    "$BIN/apsta" completion zsh > /usr/local/share/zsh/site-functions/_apsta && say "✔" "zsh completion"
-fi
-if [[ -d /etc/fish/completions ]]; then
-    "$BIN/apsta" completion fish > /etc/fish/completions/apsta.fish && say "✔" "fish completion"
-fi
+completion() {  # completion <shell> <file>: install it when that shell is installed
+    if command -v "$1" >/dev/null 2>&1 && "$BIN/apsta" completion "$1" | install -Dm644 /dev/stdin "$2"; then
+        say "✔" "$1 completion"
+    fi
+}
+completion bash /etc/bash_completion.d/apsta
+completion zsh /usr/local/share/zsh/site-functions/_apsta
+completion fish /etc/fish/completions/apsta.fish
 
 echo
 echo "Done. Next: apsta detect"

@@ -276,13 +276,17 @@ Share shows the name and password only.
 ### Shell completion
 
 The Arch and Debian/Ubuntu packages and `install.sh` install completions for
-bash, zsh and fish. To install them yourself (for example after `pip install`):
+bash, zsh and fish. To install them yourself (for example after `pip install`),
+pick your shell (`install -D` creates the folder when it doesn't exist yet):
 
 ```bash
-apsta completion bash | sudo tee /etc/bash_completion.d/apsta >/dev/null
-apsta completion zsh  | sudo tee /usr/local/share/zsh/site-functions/_apsta >/dev/null
-apsta completion fish | sudo tee /etc/fish/completions/apsta.fish >/dev/null
+apsta completion bash | sudo install -Dm644 /dev/stdin /etc/bash_completion.d/apsta
+apsta completion zsh  | sudo install -Dm644 /dev/stdin /usr/local/share/zsh/site-functions/_apsta
+apsta completion fish | sudo install -Dm644 /dev/stdin /etc/fish/completions/apsta.fish
 ```
+
+Then open a new terminal. zsh caches completions; if `apsta <Tab>` still
+does nothing, run `rm -f ~/.zcompdump*` and open another one.
 
 ## How it works
 
