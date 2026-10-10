@@ -11,6 +11,8 @@ TARGETS = [
     (Path("pyproject.toml"), r'^(version\s*=\s*")([^"]+)(")', re.MULTILINE),
     (Path("apsta_cli/__init__.py"), r'(__version__\s*=\s*")([^"]+)(")', 0),
     (Path("packaging/arch/PKGBUILD"), r"^(pkgver=)([^\n]+)()", re.MULTILINE),
+    # uv rewrites this on every `uv sync`; bumping it here keeps the release commit complete.
+    (Path("uv.lock"), r'^(name = "apsta"\nversion = ")([^"]+)(")', re.MULTILINE),
 ]
 
 CHANGELOG = Path("debian/changelog")

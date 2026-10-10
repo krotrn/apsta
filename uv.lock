@@ -8,7 +8,7 @@ resolution-markers = [
 
 [[package]]
 name = "apsta"
-version = "0.11.0"
+version = "0.11.1"
 source = { editable = "." }
 
 [package.optional-dependencies]
@@ -38,7 +38,7 @@ provides-extras = ["gui", "p2p"]
 dev = [
     { name = "coverage", extras = ["toml"], specifier = ">=7.16" },
     { name = "jeepney", specifier = ">=0.7" },
-    { name = "mypy", specifier = ">=2.4.0" },
+    { name = "mypy", specifier = ">=2.4" },
     { name = "ruff", specifier = ">=0.16" },
 ]
 

@@ -55,6 +55,7 @@ class BumpVersionTests(unittest.TestCase):
             "pyproject.toml",
             "apsta_cli/__init__.py",
             "packaging/arch/PKGBUILD",
+            "uv.lock",
             "debian/changelog",
             "apsta_gui/data/com.github.apsta.Gtk.metainfo.xml",
         ):
@@ -70,6 +71,7 @@ class BumpVersionTests(unittest.TestCase):
         changelog = (self.root / "CHANGELOG.md").read_text()
         self.assertRegex(changelog, r"## \[Unreleased\]\n\n## \[9\.8\.7\] - \d{4}-\d{2}-\d{2}\n\n### Fixed")
         self.assertIn("apsta (9.8.7-1)", (self.root / "debian/changelog").read_text())
+        self.assertIn('name = "apsta"\nversion = "9.8.7"', (self.root / "uv.lock").read_text())
         metainfo = (self.root / "apsta_gui/data/com.github.apsta.Gtk.metainfo.xml").read_text()
         self.assertRegex(metainfo, r'<releases>\n    <release version="9\.8\.7" date="\d{4}-\d{2}-\d{2}"/>\n')
 

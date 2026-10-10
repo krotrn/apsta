@@ -19,6 +19,7 @@ SOURCES = {
     "pyproject.toml": r'^version\s*=\s*"([^"]+)"',
     "apsta_cli/__init__.py": r'__version__\s*=\s*"([^"]+)"',
     "packaging/arch/PKGBUILD": r"^pkgver=(\S+)",
+    "uv.lock": r'^name = "apsta"\nversion = "([^"]+)"',
     "debian/changelog": r"^apsta \(([^)-]+)",
     "apsta_gui/data/com.github.apsta.Gtk.metainfo.xml": r'<release version="([^"]+)"',
 }
