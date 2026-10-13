@@ -2,10 +2,10 @@ import os
 import unittest
 import unittest.mock as mock
 
-from apsta_cli.core import paths
-from apsta_cli.core.errors import SetupError
-from apsta_cli.net import wpa
 from tests.support import FakeBus, FakeWpaSupplicant, isolate_paths
+from twinfi_cli.core import paths
+from twinfi_cli.core.errors import SetupError
+from twinfi_cli.net import wpa
 
 
 class ControlSocketTests(unittest.TestCase):
@@ -76,7 +76,7 @@ class ControlSocketTests(unittest.TestCase):
         self.assertEqual(self.sup.persistent_groups("Cafe"), [])
 
     def test_unprivileged_callers_see_the_directory(self):
-        # /run/wpa_supplicant is root-only: `apsta detect` can't stat the socket inside.
+        # /run/wpa_supplicant is root-only: `twinfi detect` can't stat the socket inside.
         with mock.patch("pathlib.Path.is_socket", side_effect=PermissionError):
             self.assertTrue(wpa.socket_available("wlo1"))  # the directory exists in this test
             with mock.patch.object(paths, "WPA_CTRL_DIR", paths.RUN_DIR / "absent"):
@@ -219,7 +219,7 @@ class DBusTests(unittest.TestCase):
 
 @unittest.skipUnless(wpa.jeepney_installed(), "needs the jeepney D-Bus library")
 class DBusAvailableTests(unittest.TestCase):
-    """The unprivileged check behind `apsta detect`: does wpa_supplicant own its D-Bus name?"""
+    """The unprivileged check behind `twinfi detect`: does wpa_supplicant own its D-Bus name?"""
 
     def check(self, owner=True, connect_error=None, call_error=None):
         from jeepney import new_method_return
@@ -253,7 +253,7 @@ class ChoosingTests(unittest.TestCase):
         self.assertEqual(wpa.connect("wlo1").kind, "dbus")
         FakeWpaSupplicant(paths.WPA_CTRL_DIR / "p2p-dev-wlo1").install(self)
         self.assertEqual(wpa.connect("wlo1").kind, "socket")
-        with mock.patch.dict(os.environ, {"APSTA_WPA_BACKEND": "dbus"}):
+        with mock.patch.dict(os.environ, {"TWINFI_WPA_BACKEND": "dbus"}):
             self.assertEqual(wpa.connect("wlo1").kind, "dbus")
         self.assertEqual(wpa.connect("wlo1", "dbus").kind, "dbus")  # stop uses what start used
 

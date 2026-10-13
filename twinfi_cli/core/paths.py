@@ -1,0 +1,63 @@
+"""Every filesystem location twinfi touches, in one place.
+
+Configuration is persistent and lives in /etc. Runtime state lives in /run,
+which is a tmpfs: a reboot or crash can never leave a stale "hotspot is
+running" record behind. Environment overrides exist for tests and packaging.
+
+Always reference these as ``paths.NAME`` (not ``from paths import NAME``) so
+tests can patch them in one place.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+
+def _env(name: str, default: str) -> Path:
+    return Path(os.environ.get(name, default))
+
+
+# Persistent configuration (root-owned). config.json is world-readable so the
+# GUI and `twinfi status` work unprivileged; passwords live in secrets.json (0600).
+CONFIG_DIR = _env("TWINFI_CONFIG_DIR", "/etc/twinfi")
+CONFIG_PATH = CONFIG_DIR / "config.json"
+SECRETS_PATH = CONFIG_DIR / "secrets.json"
+
+# Volatile runtime state (tmpfs).
+RUN_DIR = _env("TWINFI_RUN_DIR", "/run/twinfi")
+STATE_PATH = RUN_DIR / "state.json"
+LOCK_PATH = RUN_DIR / "lock"
+RESUME_MARKER = RUN_DIR / "resume-pending"
+KEEP_MARKER = RUN_DIR / "keep-hotspot"  # `twinfi disable`: the stopping service leaves the hotspot up
+HOSTAPD_CONF = RUN_DIR / "hostapd.conf"
+HOSTAPD_ACCEPT = RUN_DIR / "hostapd.accept"  # MAC allowlist
+HOSTAPD_CTRL_DIR = RUN_DIR / "hostapd"
+HOSTAPD_PID = RUN_DIR / "hostapd.pid"
+DNSMASQ_CONF = RUN_DIR / "dnsmasq.conf"
+DNSMASQ_PID = RUN_DIR / "dnsmasq.pid"
+DNSMASQ_LEASES = RUN_DIR / "dnsmasq.leases"
+
+# wpa_supplicant's control sockets (NetworkManager starts it with -O here).
+WPA_CTRL_DIR = _env("TWINFI_WPA_CTRL_DIR", "/run/wpa_supplicant")
+
+# NetworkManager reads volatile keyfiles from /run too, so nmcli-mode
+# connections disappear on reboot instead of accumulating in /etc.
+NM_RUNTIME_KEYFILE_DIR = _env("TWINFI_NM_KEYFILE_DIR", "/run/NetworkManager/system-connections")
+NM_RUNTIME_CONF_DIR = _env("TWINFI_NM_CONF_DIR", "/run/NetworkManager/conf.d")
+
+LOG_PATH = _env("TWINFI_LOG_PATH", "/var/log/twinfi.log")
+
+# Where twinfi kept its files while it was called apsta (until 0.13).
+LEGACY_CONFIG_DIR = _env("TWINFI_LEGACY_CONFIG_DIR", "/etc/apsta")
+LEGACY_RUN_DIR = _env("TWINFI_LEGACY_RUN_DIR", "/run/apsta")
+
+# Kernel interfaces (overridable so integration tests can run without hardware).
+SYSFS_NET = _env("TWINFI_SYSFS_NET", "/sys/class/net")
+IP_FORWARD = _env("TWINFI_IP_FORWARD", "/proc/sys/net/ipv4/ip_forward")
+
+
+def ensure_run_dir() -> Path:
+    """Create the runtime dir: root-writable, world-readable (state has no secrets)."""
+    RUN_DIR.mkdir(mode=0o755, parents=True, exist_ok=True)
+    return RUN_DIR

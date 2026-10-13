@@ -2,8 +2,8 @@ __pycache__/
 *.py[cod]
 
 # Rust build output — do NOT ignore vendor/ (it's committed)
-cosmic-applet-apsta/target/
-cosmic-applet-apsta/vendor/
+cosmic-applet-twinfi/target/
+cosmic-applet-twinfi/vendor/
 .cargo-home/
 
 
@@ -26,7 +26,7 @@ packaging/arch/*.pkg.tar.*
 
 # Debian build output
 debian/.debhelper/
-debian/apsta/
+debian/twinfi/
 debian/*.debhelper
 debian/*.substvars
 debian/debhelper-build-stamp

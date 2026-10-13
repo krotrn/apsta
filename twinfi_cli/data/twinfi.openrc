@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+# twinfi hotspot service for OpenRC.
+
+description="twinfi WiFi hotspot (AP+STA)"
+command="/usr/bin/twinfi"
+command_args="run --wait-sta 30"
+supervisor="supervise-daemon"
+respawn_delay=10
+
+depend() {
+    need NetworkManager
+    after net
+}

@@ -1,0 +1,42 @@
+#!/bin/sh
+# twinfi sleep hook.
+#   systemd:  /usr/lib/systemd/system-sleep/twinfi-sleep   ($1 = pre|post)
+#   pm-utils: /etc/pm/sleep.d/10_twinfi                    ($1 = suspend|resume|...)
+#
+# When twinfi.service is running, the service notices the hotspot is gone after
+# resume and restarts it once WiFi reconnects, so this hook does nothing.
+# It only handles hotspots started by hand with `sudo twinfi start`.
+
+TWINFI="$(command -v twinfi || echo /usr/bin/twinfi)"
+MARKER="${TWINFI_RUN_DIR:-/run/twinfi}/resume-pending"
+
+case "$1" in
+    pre|suspend|hibernate) action="sleep" ;;
+    post|resume|thaw)      action="wake" ;;
+    *) exit 0 ;;
+esac
+
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet twinfi.service; then
+    exit 0
+fi
+
+case "$action" in
+    sleep)
+        if "$TWINFI" status --check; then
+            "$TWINFI" stop >/dev/null 2>&1 && touch "$MARKER"
+        fi
+        ;;
+    wake)
+        [ -f "$MARKER" ] || exit 0
+        rm -f "$MARKER"
+        # Don't block resume. Wait for WiFi to reassociate (--wait-sta) so the
+        # hotspot shares its channel. systemd-run puts the start outside the
+        # sleep unit, which would otherwise kill it once this hook returns.
+        if command -v systemd-run >/dev/null 2>&1; then
+            systemd-run --no-block --collect --unit=twinfi-resume "$TWINFI" start --wait-sta 30 >/dev/null 2>&1
+        else
+            ("$TWINFI" start --wait-sta 30 >/dev/null 2>&1 &)
+        fi
+        ;;
+esac
+exit 0

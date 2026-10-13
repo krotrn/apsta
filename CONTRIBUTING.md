@@ -1,4 +1,4 @@
-# Contributing to apsta
+# Contributing to twinfi
 
 Thanks for helping! Bug reports with hardware details are as valuable as code.
 
@@ -6,17 +6,17 @@ Thanks for helping! Bug reports with hardware details are as valuable as code.
 
 Please include:
 
-- `apsta --version` and your distribution
-- `apsta detect --json`
+- `twinfi --version` and your distribution
+- `twinfi detect --json`
 - `iw phy phy0 info` (use your card's phy)
-- the failing command with `APSTA_DEBUG=1`, plus `journalctl -u apsta -u apsta-hostapd -n 100` if relevant
+- the failing command with `TWINFI_DEBUG=1`, plus `journalctl -u twinfi -u twinfi-hostapd -n 100` if relevant
 
-If `apsta detect` gets your card wrong, the `iw phy` output is enough for us to
+If `twinfi detect` gets your card wrong, the `iw phy` output is enough for us to
 add a regression test (`tests/fixtures/iw/`).
 
 To test a checkout on real hardware, `sudo scripts/hardware_check.sh` starts
 the hotspot, keeps it up while you join from a phone, stops it, checks the
-system was restored, and writes `/tmp/apsta-hardware-report.txt` to attach.
+system was restored, and writes `/tmp/twinfi-hardware-report.txt` to attach.
 `sudo METHOD=p2p scripts/hardware_check.sh` tests the Wi-Fi Direct method on
 its own; reports from cards and distributions not yet listed in
 [docs/wifi-direct.md](docs/wifi-direct.md) are especially welcome.
@@ -24,7 +24,7 @@ its own; reports from cards and distributions not yet listed in
 ## Development setup
 
 ```bash
-git clone https://github.com/krotrn/apsta && cd apsta
+git clone https://github.com/krotrn/twinfi && cd twinfi
 
 # with uv (recommended): creates .venv with the package + dev tools
 uv sync && . .venv/bin/activate
@@ -41,7 +41,7 @@ group (`[dependency-groups]` in `pyproject.toml`), so `uv sync` installs them
 by default. For the desktop app inside a venv, create it with
 `--system-site-packages` so it can see your distribution's PyGObject.
 
-Run your checkout without installing: `./apsta.py detect`, `sudo ./apsta.py start`.
+Run your checkout without installing: `./twinfi.py detect`, `sudo ./twinfi.py start`.
 
 The test suite needs **no root and no WiFi hardware**:
 
@@ -59,10 +59,10 @@ make gui-smoke  # build every GUI view headlessly (see below)
 
 Read "The GUI" in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. In short:
 
-- The GUI talks to the CLI only (`apsta_gui/backend.py`). Add the operation
+- The GUI talks to the CLI only (`twinfi_gui/backend.py`). Add the operation
   to the CLI first, then call it from the GUI.
 - It must run on libadwaita 1.1 / GTK 4.6 (Ubuntu 22.04) and should look
-  current on the newest release. Outside `apsta_gui/compat.py`, use only
+  current on the newest release. Outside `twinfi_gui/compat.py`, use only
   libadwaita 1.1 API. For anything newer, add a helper to `compat.py` that
   checks `hasattr(Adw, "Widget")` and falls back. `tests/unit/test_gui.py`
   enforces this.
@@ -103,7 +103,7 @@ cp /tmp/shots/off-single-radio-settings.png docs/screenshots/settings.png
   pointing down the layers: `cmd` → `services` → `net`/`hw`/`config` → `core`.
 - Start processes only through `core.shell.run` with an argv list. Never
   `shell=True`, and never put secrets in argv.
-- Library code raises `ApstaError` subclasses with `hints`. It doesn't print
+- Library code raises `TwinfiError` subclasses with `hints`. It doesn't print
   advice or call `sys.exit`.
 - Any change to system state must be undoable: register a rollback step in the
   `Transaction`, and record what `stop` needs in `HotspotState`.
@@ -158,7 +158,7 @@ flowchart LR
 
 Targets whose secret is missing are skipped with a notice. Every release
 file carries a build-provenance attestation:
-`gh attestation verify apsta_X.Y.Z-1_all.deb --repo krotrn/apsta`.
+`gh attestation verify twinfi_X.Y.Z-1_all.deb --repo krotrn/twinfi`.
 
 Build packages locally with `packaging/arch/ci-build.sh local` (Arch) or
 `packaging/deb/ci-build.sh binary` (on Ubuntu).

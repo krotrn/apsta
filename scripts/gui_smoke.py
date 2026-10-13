@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Headless GUI smoke test and screenshot tool.
 
-Builds apsta-gtk in several states against a fake backend on a Broadway
+Builds twinfi-gtk in several states against a fake backend on a Broadway
 display (no desktop session needed), exercises the main interactions, and
 saves a PNG of every view. Exits non-zero on any exception; run with
 G_DEBUG=fatal-criticals to also fail on GTK criticals (CI does).
@@ -59,17 +59,17 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from apsta_gui import compat  # noqa: E402
+from twinfi_gui import compat  # noqa: E402
 
 # PyGObject < 3.44 can't return GskRenderNode from Gtk.Snapshot.to_node()
 # (3.42.1 even emits a GLib critical), so only the screenshots are skipped there.
 if gi.version_info < (3, 44, 0):
     print(f"note: PyGObject {gi.__version__} is too old for screenshots; building views only")
     SCREENSHOTS["enabled"] = False
-from apsta_gui.app import AppTray  # noqa: E402
-from apsta_gui.backend import Result  # noqa: E402
-from apsta_gui.tray import register_object  # noqa: E402
-from apsta_gui.window import ApstaWindow, MissingApstaWindow  # noqa: E402
+from twinfi_gui.app import AppTray  # noqa: E402
+from twinfi_gui.backend import Result  # noqa: E402
+from twinfi_gui.tray import register_object  # noqa: E402
+from twinfi_gui.window import MissingTwinfiWindow, TwinfiWindow  # noqa: E402
 
 HOTSPOT = {
     "method": "hostapd",
@@ -134,7 +134,7 @@ SCENARIOS = {
 
 
 class FakeBackend:
-    apsta = "/usr/bin/apsta"
+    twinfi = "/usr/bin/twinfi"
 
     def __init__(self, status, detect):
         self._status, self._detect = status, detect
@@ -248,7 +248,7 @@ def check_tray(app: Adw.Application) -> None:
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     registered = fake_tray_watcher(bus)
     backend = FakeBackend(*SCENARIOS["on"])
-    win = ApstaWindow(app, backend)
+    win = TwinfiWindow(app, backend)
     win.present()
 
     class AppStub:
@@ -319,15 +319,15 @@ def check_tray(app: Adw.Application) -> None:
 
 
 def run(app: Adw.Application, out: Path) -> None:
-    compat.register_bundled_icons("com.github.apsta.Gtk")
-    compat.ensure_font_dpi()  # same startup steps as apsta_gui.app
+    compat.register_bundled_icons("com.github.twinfi.Gtk")
+    compat.ensure_font_dpi()  # same startup steps as twinfi_gui.app
     # Headless displays have no frame clock driving animations, so dialogs would
     # stay at their first (transparent) frame. Real sessions are unaffected.
     Gtk.Settings.get_default().set_property("gtk-enable-animations", False)
     for name, (status, detect) in SCENARIOS.items():
         print(f"scenario {name}", flush=True)
         backend = FakeBackend(status, detect)
-        win = ApstaWindow(app, backend)
+        win = TwinfiWindow(app, backend)
         win.present()
         pump(0.8)
         for page in ("hotspot", "clients", "settings"):
@@ -360,7 +360,7 @@ def run(app: Adw.Application, out: Path) -> None:
         pump(0.2)
 
     print("narrow window", flush=True)
-    narrow = ApstaWindow(app, FakeBackend(*SCENARIOS["on"]))
+    narrow = TwinfiWindow(app, FakeBackend(*SCENARIOS["on"]))
     narrow.set_default_size(360, 700)
     narrow.present()
     pump(1.0)
@@ -368,7 +368,7 @@ def run(app: Adw.Application, out: Path) -> None:
     narrow.close()
 
     print("why it runs this way", flush=True)  # below the fold of the Hotspot tab
-    why = ApstaWindow(app, FakeBackend(*SCENARIOS["on"]))
+    why = TwinfiWindow(app, FakeBackend(*SCENARIOS["on"]))
     why.present()
     pump(1.0)
     assert why.hotspot_page.why.get_visible(), "notes of a running hotspot aren't shown"
@@ -376,26 +376,26 @@ def run(app: Adw.Application, out: Path) -> None:
     why.close()
 
     print("about window", flush=True)
-    host = ApstaWindow(app, FakeBackend(*SCENARIOS["off"]))
+    host = TwinfiWindow(app, FakeBackend(*SCENARIOS["off"]))
     host.present()
     pump(0.5)
-    compat.show_about(host, "0.0.0", "com.github.apsta.Gtk")
+    compat.show_about(host, "0.0.0", "com.github.twinfi.Gtk")
     capture_dialog(host, out / "about.png")
     host.close()
 
     print("system tray", flush=True)
     check_tray(app)
 
-    missing = MissingApstaWindow(app, "/usr/bin/apsta")
+    missing = MissingTwinfiWindow(app, "/usr/bin/twinfi")
     missing.present()
-    screenshot(missing, out / "missing-apsta.png")
+    screenshot(missing, out / "missing-twinfi.png")
     missing.close()
 
 
 def main() -> int:
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "gui-screenshots")
     out.mkdir(parents=True, exist_ok=True)
-    app = Adw.Application(application_id="com.github.apsta.Smoke")
+    app = Adw.Application(application_id="com.github.twinfi.Smoke")
     failure = []
 
     def activate(app):

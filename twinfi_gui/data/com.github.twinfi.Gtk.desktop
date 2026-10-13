@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Hotspot (twinfi)
+Name[en]=Hotspot (twinfi)
+Comment=Share your internet over Wi-Fi while staying connected
+Comment[en]=Share your internet over Wi-Fi while staying connected
+Type=Application
+Exec=twinfi-gtk
+Icon=com.github.twinfi.Gtk
+Terminal=false
+Categories=GNOME;GTK;Network;Settings;
+Keywords=wifi;wi-fi;hotspot;access point;tethering;share internet;wireless;network;AP+STA;Wi-Fi Direct;twinfi;
+StartupNotify=true
+StartupWMClass=com.github.twinfi.Gtk

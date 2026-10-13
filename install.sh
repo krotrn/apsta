@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install apsta from a source checkout into /usr/local (for distros without a package).
+# Install twinfi from a source checkout into /usr/local (for distros without a package).
 #
 #   sudo ./install.sh              install CLI, GUI, service files, polkit policy
 #   sudo ./install.sh --uninstall  remove everything this script installed
@@ -9,7 +9,7 @@ set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="${PREFIX:-/usr/local}"
-LIB="$PREFIX/lib/apsta"
+LIB="$PREFIX/lib/twinfi"
 BIN="$PREFIX/bin"
 
 say() { printf '  %s  %s\n' "$1" "$2"; }
@@ -20,18 +20,45 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 render() {  # render <data file>: point packaged paths at this prefix
-    sed "s|/usr/bin/apsta|$BIN/apsta|g" "$1"
+    sed "s|/usr/bin/twinfi|$BIN/twinfi|g" "$1"
 }
 
 uninstall() {
     if command -v systemctl >/dev/null 2>&1; then
-        systemctl disable --now apsta.service >/dev/null 2>&1 || true
+        systemctl disable --now twinfi.service >/dev/null 2>&1 || true
     fi
-    "$BIN/apsta" stop >/dev/null 2>&1 || true
+    "$BIN/twinfi" stop >/dev/null 2>&1 || true
     rm -rf "$LIB"
-    rm -f "$BIN/apsta" "$BIN/apsta-gtk" \
-          /etc/systemd/system/apsta.service \
-          /usr/lib/systemd/system-sleep/apsta-sleep \
+    rm -f "$BIN/twinfi" "$BIN/twinfi-gtk" "$BIN/apsta" \
+          /etc/systemd/system/twinfi.service \
+          /usr/lib/systemd/system-sleep/twinfi-sleep \
+          /usr/share/polkit-1/actions/com.github.twinfi.policy \
+          /usr/share/applications/com.github.twinfi.Gtk.desktop \
+          /usr/share/metainfo/com.github.twinfi.Gtk.metainfo.xml \
+          /usr/share/icons/hicolor/scalable/apps/com.github.twinfi.Gtk.svg \
+          /usr/share/icons/hicolor/symbolic/apps/com.github.twinfi.Gtk-symbolic.svg \
+          /etc/bash_completion.d/twinfi \
+          /usr/local/share/zsh/site-functions/_twinfi \
+          /etc/fish/completions/twinfi.fish
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload || true
+    fi
+    say "✔" "twinfi removed (configuration kept in /etc/twinfi)"
+}
+
+if [[ "${1:-}" == "--uninstall" ]]; then
+    uninstall
+    exit 0
+fi
+
+echo "Installing twinfi into $PREFIX ..."
+
+# twinfi was called apsta until 0.13: drop that install's code, GUI files and
+# completions. `twinfi` moves its settings and boot service on first use as root.
+if [[ -d "$PREFIX/lib/apsta" ]]; then
+    "$BIN/apsta" stop >/dev/null 2>&1 || true
+    rm -rf "$PREFIX/lib/apsta"
+    rm -f "$BIN/apsta-gtk" \
           /usr/share/polkit-1/actions/com.github.apsta.policy \
           /usr/share/applications/com.github.apsta.Gtk.desktop \
           /usr/share/metainfo/com.github.apsta.Gtk.metainfo.xml \
@@ -40,28 +67,18 @@ uninstall() {
           /etc/bash_completion.d/apsta \
           /usr/local/share/zsh/site-functions/_apsta \
           /etc/fish/completions/apsta.fish
-    if command -v systemctl >/dev/null 2>&1; then
-        systemctl daemon-reload || true
-    fi
-    say "✔" "apsta removed (configuration kept in /etc/apsta)"
-}
-
-if [[ "${1:-}" == "--uninstall" ]]; then
-    uninstall
-    exit 0
+    say "✔" "Removed the apsta install this replaces"
 fi
-
-echo "Installing apsta into $PREFIX ..."
 
 # Python packages go to a private directory, not onto the system site-packages.
 rm -rf "$LIB"
 install -d "$LIB"
-cp -R "$SRC/apsta_cli" "$SRC/apsta_gui" "$LIB/"
-install -m644 "$SRC/install.sh" "$LIB/install.sh"  # `apsta uninstall` runs its --uninstall
+cp -R "$SRC/twinfi_cli" "$SRC/twinfi_gui" "$LIB/"
+install -m644 "$SRC/install.sh" "$LIB/install.sh"  # `twinfi uninstall` runs its --uninstall
 find "$LIB" -name '__pycache__' -prune -exec rm -rf {} +
 say "✔" "Python packages → $LIB"
 
-for tool in apsta:apsta_cli apsta-gtk:apsta_gui; do
+for tool in twinfi:twinfi_cli twinfi-gtk:twinfi_gui; do
     name="${tool%%:*}" module="${tool##*:}"
     cat > "$BIN/$name" <<SH
 #!/bin/sh
@@ -70,25 +87,32 @@ SH
     chmod 755 "$BIN/$name"
     say "✔" "$BIN/$name"
 done
+# The old name keeps working for now, with a reminder.
+cat > "$BIN/apsta" <<SH
+#!/bin/sh
+echo "apsta is now called twinfi; please use 'twinfi' (the old name will go away)." >&2
+exec "$BIN/twinfi" "\$@"
+SH
+chmod 755 "$BIN/apsta"
 
 if [[ -d /usr/lib/systemd ]]; then
-    render "$SRC/apsta_cli/data/apsta.service" > /etc/systemd/system/apsta.service
+    render "$SRC/twinfi_cli/data/twinfi.service" > /etc/systemd/system/twinfi.service
     install -d /usr/lib/systemd/system-sleep
-    render "$SRC/apsta_cli/data/apsta-sleep" > /usr/lib/systemd/system-sleep/apsta-sleep
-    chmod 755 /usr/lib/systemd/system-sleep/apsta-sleep
+    render "$SRC/twinfi_cli/data/twinfi-sleep" > /usr/lib/systemd/system-sleep/twinfi-sleep
+    chmod 755 /usr/lib/systemd/system-sleep/twinfi-sleep
     systemctl daemon-reload || true
-    say "✔" "systemd service + sleep hook (enable with: sudo apsta enable)"
+    say "✔" "systemd service + sleep hook (enable with: sudo twinfi enable)"
 fi
 
 if [[ -d /usr/share/polkit-1/actions ]]; then
-    render "$SRC/apsta_cli/data/com.github.apsta.policy" > /usr/share/polkit-1/actions/com.github.apsta.policy
+    render "$SRC/twinfi_cli/data/com.github.twinfi.policy" > /usr/share/polkit-1/actions/com.github.twinfi.policy
     say "✔" "polkit policy"
 fi
 
-install -Dm644 "$SRC/apsta_gui/data/com.github.apsta.Gtk.desktop" /usr/share/applications/com.github.apsta.Gtk.desktop
-install -Dm644 "$SRC/apsta_gui/data/com.github.apsta.Gtk.metainfo.xml" /usr/share/metainfo/com.github.apsta.Gtk.metainfo.xml
+install -Dm644 "$SRC/twinfi_gui/data/com.github.twinfi.Gtk.desktop" /usr/share/applications/com.github.twinfi.Gtk.desktop
+install -Dm644 "$SRC/twinfi_gui/data/com.github.twinfi.Gtk.metainfo.xml" /usr/share/metainfo/com.github.twinfi.Gtk.metainfo.xml
 for kind in scalable symbolic; do
-    for icon in "$SRC"/apsta_gui/data/icons/hicolor/"$kind"/apps/*.svg; do
+    for icon in "$SRC"/twinfi_gui/data/icons/hicolor/"$kind"/apps/*.svg; do
         install -Dm644 "$icon" "/usr/share/icons/hicolor/$kind/apps/$(basename "$icon")"
     done
 done
@@ -98,13 +122,13 @@ fi
 say "✔" "desktop entry and icon"
 
 completion() {  # completion <shell> <file>: install it when that shell is installed
-    if command -v "$1" >/dev/null 2>&1 && "$BIN/apsta" completion "$1" | install -Dm644 /dev/stdin "$2"; then
+    if command -v "$1" >/dev/null 2>&1 && "$BIN/twinfi" completion "$1" | install -Dm644 /dev/stdin "$2"; then
         say "✔" "$1 completion"
     fi
 }
-completion bash /etc/bash_completion.d/apsta
-completion zsh /usr/local/share/zsh/site-functions/_apsta
-completion fish /etc/fish/completions/apsta.fish
+completion bash /etc/bash_completion.d/twinfi
+completion zsh /usr/local/share/zsh/site-functions/_twinfi
+completion fish /etc/fish/completions/twinfi.fish
 
 echo
-echo "Done. Next: apsta detect"
+echo "Done. Next: twinfi detect"

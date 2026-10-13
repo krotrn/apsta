@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bump apsta version across project metadata files."""
+"""Bump twinfi version across project metadata files."""
 
 import re
 import sys
@@ -9,15 +9,15 @@ from pathlib import Path
 
 TARGETS = [
     (Path("pyproject.toml"), r'^(version\s*=\s*")([^"]+)(")', re.MULTILINE),
-    (Path("apsta_cli/__init__.py"), r'(__version__\s*=\s*")([^"]+)(")', 0),
+    (Path("twinfi_cli/__init__.py"), r'(__version__\s*=\s*")([^"]+)(")', 0),
     (Path("packaging/arch/PKGBUILD"), r"^(pkgver=)([^\n]+)()", re.MULTILINE),
     # uv rewrites this on every `uv sync`; bumping it here keeps the release commit complete.
-    (Path("uv.lock"), r'^(name = "apsta"\nversion = ")([^"]+)(")', re.MULTILINE),
+    (Path("uv.lock"), r'^(name = "twinfi"\nversion = ")([^"]+)(")', re.MULTILINE),
 ]
 
 CHANGELOG = Path("debian/changelog")
 PROJECT_CHANGELOG = Path("CHANGELOG.md")
-METAINFO = Path("apsta_gui/data/com.github.apsta.Gtk.metainfo.xml")
+METAINFO = Path("twinfi_gui/data/com.github.twinfi.Gtk.metainfo.xml")
 
 
 def add_metainfo_release(new_version: str) -> None:
@@ -55,7 +55,9 @@ def bump_debian_changelog(new_version: str) -> None:
     maintainer = re.search(r"^ -- (.+?)  ", text, re.MULTILINE)
     if not head or not maintainer:
         raise ValueError(f"Could not parse {CHANGELOG}")
-    package, current, series = head.groups()
+    _, current, series = head.groups()
+    # From debian/control, not the top entry: entries before 0.13 say apsta.
+    package = re.search(r"^Source: (\S+)", Path("debian/control").read_text(encoding="utf-8"), re.MULTILINE).group(1)
     if current.rsplit("-", 1)[0] == new_version:
         return  # already has an entry for this version
     stamp = format_datetime(datetime.now(timezone.utc))

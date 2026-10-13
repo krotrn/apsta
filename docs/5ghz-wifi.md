@@ -1,6 +1,6 @@
 # Hotspot won't start while your WiFi is on 5 GHz
 
-You're connected to a 5 GHz network and `apsta start` refuses:
+You're connected to a 5 GHz network and `twinfi start` refuses:
 
 ```
 Your WiFi is connected on 5 GHz channel 44, where this card isn't allowed to
@@ -12,10 +12,10 @@ On older versions you saw driver errors instead, such as hostapd *"not
 broadcasting"* or NetworkManager's *"No suitable device found"*.
 
 The same laptop may have worked fine yesterday. What changed is the network
-you're connected to, not apsta.
+you're connected to, not twinfi.
 
-> **Newer apsta handles this on most Intel cards.** If `apsta detect` shows
-> *"Wi-Fi Direct group on its own channel: yes"*, apsta no longer refuses: the
+> **Newer twinfi handles this on most Intel cards.** If `twinfi detect` shows
+> *"Wi-Fi Direct group on its own channel: yes"*, twinfi no longer refuses: the
 > hotspot runs as a Wi-Fi Direct group on a channel of its own, the way
 > Windows' Mobile Hotspot does (see [the Wi-Fi Direct fallback](#the-wi-fi-direct-fallback)).
 > The same goes for networks on radar (DFS) channels 52–144, common on campus
@@ -30,7 +30,7 @@ Two rules of your WiFi card combine.
 Most laptop cards (Intel, Realtek, most MediaTek) have one radio. To be
 connected to WiFi *and* run a hotspot at the same time, both have to sit on
 one channel. If your WiFi is on channel 44, the hotspot has to be on 44 too.
-`apsta detect` shows this as *"The hotspot will use the same channel as your
+`twinfi detect` shows this as *"The hotspot will use the same channel as your
 WiFi connection."*
 
 **2. The card may not be allowed to start a network on that channel.**
@@ -50,10 +50,10 @@ flowchart TD
     B -- "no (most laptops)" --> C["Hotspot must also use channel 44"]
     C --> D{"May the card start a<br/>network on channel 44?"}
     D -- "yes" --> OK2["Hotspot on channel 44 ✔"]
-    D -- "no: marked no IR" --> FAIL["No hotspot ✘<br/>apsta explains and suggests fixes"]
+    D -- "no: marked no IR" --> FAIL["No hotspot ✘<br/>twinfi explains and suggests fixes"]
 ```
 
-The firmware enforces this, and apsta doesn't override it. On Intel cards the
+The firmware enforces this, and twinfi doesn't override it. On Intel cards the
 firmware is often stricter than the law where you are; see
 [fix 4](#fixes) if you want to change that yourself.
 
@@ -68,7 +68,7 @@ Common situations:
 ## Check whether you're affected
 
 ```sh
-apsta detect
+twinfi detect
 ```
 
 shows a warning and a "Hotspot on 5 GHz" row:
@@ -77,7 +77,7 @@ shows a warning and a "Hotspot on 5 GHz" row:
 ✔  Your card can run a hotspot while staying connected to WiFi.
 ⚠  Your WiFi is on 5 GHz channel 44, where this card can't host.
 ⚠  Switch that network to 2.4 GHz, or connect to a 2.4 GHz network, then start.
-⚠  Why: https://github.com/krotrn/apsta/blob/main/docs/5ghz-wifi.md
+⚠  Why: https://github.com/krotrn/twinfi/blob/main/docs/5ghz-wifi.md
 ```
 
 The raw data: `iw dev` shows your WiFi channel, and
@@ -104,14 +104,14 @@ wlo1: AP aa:bb:cc:dd:ee:ff switches to different band (5220 MHz, ...), disconnec
 
 If it moves to a channel your card can't host on, the hotspot can't keep
 running there. Worse, while the hotspot holds the old channel your laptop
-can't follow the phone either, so you'd have no internet at all. apsta
+can't follow the phone either, so you'd have no internet at all. twinfi
 watches for this and steps aside:
 
 ```mermaid
 sequenceDiagram
     participant P as Phone hotspot
     participant L as Laptop WiFi
-    participant W as apsta watcher
+    participant W as twinfi watcher
     Note over P,L: both on 2.4 GHz channel 11, hotspot running
     P->>L: "Moving to 5 GHz channel 44"
     L--xP: disconnects (the hotspot holds channel 11)
@@ -129,23 +129,23 @@ sequenceDiagram
     end
 ```
 
-The watcher runs however you start the hotspot: with `sudo apsta start` or
-the GUI it runs in the background as `apsta-watch.service`; with
-`sudo apsta enable` (or `sudo apsta run` in a terminal) the service itself
-does it. `sudo apsta stop` stops the watcher too. To see what it's doing:
+The watcher runs however you start the hotspot: with `sudo twinfi start` or
+the GUI it runs in the background as `twinfi-watch.service`; with
+`sudo twinfi enable` (or `sudo twinfi run` in a terminal) the service itself
+does it. `sudo twinfi stop` stops the watcher too. To see what it's doing:
 
 ```sh
-journalctl -u apsta-watch    # started with apsta start or the GUI
-journalctl -u apsta          # started with apsta enable
+journalctl -u twinfi-watch    # started with twinfi start or the GUI
+journalctl -u twinfi          # started with twinfi enable
 ```
 
 On cards without the Wi-Fi Direct fallback, while the network stays on such
 a channel you get internet but no hotspot. The lasting fix is to stop the network from switching: set its band to
 2.4 GHz explicitly (below).
 
-On systems without systemd, a hotspot started with `apsta start` isn't
-watched: run `sudo apsta stop` to get your WiFi back, or use
-`sudo apsta enable`.
+On systems without systemd, a hotspot started with `twinfi start` isn't
+watched: run `sudo twinfi stop` to get your WiFi back, or use
+`sudo twinfi enable`.
 
 ## Fixes
 
@@ -159,26 +159,26 @@ Pick whichever suits you:
    - Router: connect to its 2.4 GHz network. If both bands share a name, many
      routers let you split them in their settings.
 
-   Then reconnect and run `sudo apsta start`.
+   Then reconnect and run `sudo twinfi start`.
 
-2. **Get internet another way, then let apsta drop WiFi.** For example, plug
+2. **Get internet another way, then let twinfi drop WiFi.** For example, plug
    the phone in with USB and turn on *USB tethering*, or use ethernet. Then:
 
    ```sh
-   sudo apsta start --allow-disconnect
+   sudo twinfi start --allow-disconnect
    ```
 
-   apsta disconnects the WiFi and hosts on a channel the card allows (for
+   twinfi disconnects the WiFi and hosts on a channel the card allows (for
    example 5 GHz channel 149, which is fast). Internet comes over the cable.
 
 3. **Use a USB WiFi adapter for the hotspot.** It has its own radio, so your
    built-in card can stay on any channel:
 
    ```sh
-   sudo apsta start --interface wlan1
+   sudo twinfi start --interface wlan1
    ```
 
-   `apsta recommend` lists adapters with in-kernel Linux drivers.
+   `twinfi recommend` lists adapters with in-kernel Linux drivers.
 
 4. **Intel cards: let the kernel decide (advanced).** Intel cards keep their
    own copy of the radio rules in firmware (*LAR*, location-aware regulatory)
@@ -212,7 +212,7 @@ Pick whichever suits you:
    ```
 
    Afterwards `iw phy phy0 info` shows no "(no IR)" on the channels your
-   country allows, and `sudo apsta start` works on them with no other change.
+   country allows, and `sudo twinfi start` works on them with no other change.
 
    Before you do this:
 
@@ -224,23 +224,23 @@ Pick whichever suits you:
      Secure Boot on you must enroll a signing key first.
    - **Radar channels (52–144) stay off-limits.** Hosting there needs radar
      detection, which client cards don't do.
-   - apsta doesn't ship or run this patch; it's a change to your system's
+   - twinfi doesn't ship or run this patch; it's a change to your system's
      driver, so it stays your decision.
 
 ## The Wi-Fi Direct fallback
 
 Many cards that pin a normal hotspot to the WiFi's channel can run a *Wi-Fi
 Direct group owner* on a second one (most Intel cards). When the WiFi's
-channel can't host, apsta starts one through NetworkManager's wpa_supplicant
+channel can't host, twinfi starts one through NetworkManager's wpa_supplicant
 (method `p2p`) on a channel the card allows, with your usual name and
 password. The radio switches between the two channels, so the hotspot and
-your WiFi share its speed; that's why apsta still prefers the same channel
+your WiFi share its speed; that's why twinfi still prefers the same channel
 whenever it works.
 
 [wifi-direct.md](wifi-direct.md) explains which cards and distributions
 support it, the trade-offs, and how it works.
 
-## What apsta doesn't work around
+## What twinfi doesn't work around
 
 - **Hosting on the "no IR" channel anyway**: the firmware refuses. Where the
   firmware is stricter than the law, the fix is in the driver
@@ -252,5 +252,5 @@ support it, the trade-offs, and how it works.
 - **Cards without a second channel for Wi-Fi Direct**: there is no other
   way to keep WiFi and host elsewhere.
 
-So on those cards apsta tells you up front and suggests the fixes above,
+So on those cards twinfi tells you up front and suggests the fixes above,
 instead of trying and failing with driver errors.

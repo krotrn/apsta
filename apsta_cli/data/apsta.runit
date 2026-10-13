@@ -1,3 +1,0 @@
-#!/bin/sh
-# apsta hotspot service for runit (/etc/sv/apsta/run).
-exec /usr/bin/apsta run --wait-sta 30 2>&1

@@ -1,7 +1,7 @@
 name: Docs
 
 # Builds the documentation website (README + docs/) and publishes it to
-# GitHub Pages at https://krotrn.github.io/apsta/. Pull requests only build it.
+# GitHub Pages at https://krotrn.github.io/twinfi/. Pull requests only build it.
 
 on:
   push:

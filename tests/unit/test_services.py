@@ -4,16 +4,16 @@ import unittest
 import unittest.mock as mock
 from pathlib import Path
 
-from apsta_cli import state as state_store
-from apsta_cli.config import store
-from apsta_cli.core import paths
-from apsta_cli.core.errors import AlreadyRunning, ApstaError, HardwareError, PermissionDenied, SetupError, UsageError
-from apsta_cli.hw.capability import HardwareCapability
-from apsta_cli.hw.interfaces import StaLink, WifiInterface
-from apsta_cli.net.channels import Channel
-from apsta_cli.services import guard, hotspot, watch
-from apsta_cli.state import HotspotState
 from tests.support import FakeShell, as_root, isolate_paths
+from twinfi_cli import state as state_store
+from twinfi_cli.config import store
+from twinfi_cli.core import paths
+from twinfi_cli.core.errors import AlreadyRunning, HardwareError, PermissionDenied, SetupError, TwinfiError, UsageError
+from twinfi_cli.hw.capability import HardwareCapability
+from twinfi_cli.hw.interfaces import StaLink, WifiInterface
+from twinfi_cli.net.channels import Channel
+from twinfi_cli.services import guard, hotspot, watch
+from twinfi_cli.state import HotspotState
 
 
 def make_state(**kw):
@@ -67,11 +67,11 @@ class ServiceTestCase(unittest.TestCase):
         self.out = mock.patch("sys.stdout").start()
         self.err = mock.patch("sys.stderr").start()
         self.addCleanup(mock.patch.stopall)
-        mock.patch("apsta_cli.services.hotspot.interfaces.client_interfaces", return_value=[IFACE]).start()
-        mock.patch("apsta_cli.services.hotspot.capability.probe", return_value=CAP).start()
-        mock.patch("apsta_cli.services.hotspot.interfaces.sta_link", return_value=StaLink("Home", 2437)).start()
-        mock.patch("apsta_cli.services.hotspot.interfaces.reg_country", return_value="IN").start()
-        mock.patch("apsta_cli.services.hotspot.nm.scan", return_value="").start()
+        mock.patch("twinfi_cli.services.hotspot.interfaces.client_interfaces", return_value=[IFACE]).start()
+        mock.patch("twinfi_cli.services.hotspot.capability.probe", return_value=CAP).start()
+        mock.patch("twinfi_cli.services.hotspot.interfaces.sta_link", return_value=StaLink("Home", 2437)).start()
+        mock.patch("twinfi_cli.services.hotspot.interfaces.reg_country", return_value="IN").start()
+        mock.patch("twinfi_cli.services.hotspot.nm.scan", return_value="").start()
 
 
 class StartTests(ServiceTestCase):
@@ -90,7 +90,7 @@ class StartTests(ServiceTestCase):
         self.assertEqual(result.strategy.name, "b")
 
     def test_all_fail_reports_every_reason(self):
-        with self.assertRaises(ApstaError) as ctx:
+        with self.assertRaises(TwinfiError) as ctx:
             hotspot.start(hotspot.StartOptions(), [FakeStrategy("a", reason="nope"), FakeStrategy("b", error="boom")])
         self.assertEqual(ctx.exception.hints, ["a: nope", "b: boom"])
         self.assertIsNone(state_store.load())
@@ -111,7 +111,7 @@ class StartTests(ServiceTestCase):
         stale = mock.Mock()
         with (
             mock.patch.object(hotspot, "is_alive", return_value=False),
-            mock.patch("apsta_cli.net.strategies.for_state", return_value=stale),
+            mock.patch("twinfi_cli.net.strategies.for_state", return_value=stale),
         ):
             hotspot.start(hotspot.StartOptions(), [FakeStrategy("a")])
         stale.stop.assert_called_once()
@@ -123,12 +123,12 @@ class StartTests(ServiceTestCase):
 
     def test_no_ap_mode(self):
         no_ap = HardwareCapability("wlo1", "phy0", False, True, False, True, 1)
-        with mock.patch("apsta_cli.services.hotspot.capability.probe", return_value=no_ap):
+        with mock.patch("twinfi_cli.services.hotspot.capability.probe", return_value=no_ap):
             with self.assertRaises(HardwareError):
                 hotspot.start(hotspot.StartOptions(), [FakeStrategy("a")])
 
     def test_wait_sta_used_when_requested(self):
-        with mock.patch("apsta_cli.services.hotspot.interfaces.wait_for_sta", return_value=None) as wait:
+        with mock.patch("twinfi_cli.services.hotspot.interfaces.wait_for_sta", return_value=None) as wait:
             result = hotspot.start(hotspot.StartOptions(wait_sta=5), [FakeStrategy("a")])
         wait.assert_called_once_with("wlo1", 5)
         self.assertEqual(result.state.channel, 6)
@@ -137,7 +137,7 @@ class StartTests(ServiceTestCase):
 class InterfaceSelectionTests(ServiceTestCase):
     def test_prefers_connected(self):
         idle = WifiInterface("wlan9", "bb", "phy1", "managed", "UP", None)
-        with mock.patch("apsta_cli.services.hotspot.interfaces.client_interfaces", return_value=[idle, IFACE]):
+        with mock.patch("twinfi_cli.services.hotspot.interfaces.client_interfaces", return_value=[idle, IFACE]):
             self.assertEqual(hotspot.select_interface({"interface": None}, None).name, "wlo1")
 
     def test_configured_missing(self):
@@ -146,7 +146,7 @@ class InterfaceSelectionTests(ServiceTestCase):
 
     def test_override_and_none(self):
         self.assertEqual(hotspot.select_interface({"interface": "zzz"}, "wlo1").name, "wlo1")
-        with mock.patch("apsta_cli.services.hotspot.interfaces.client_interfaces", return_value=[]):
+        with mock.patch("twinfi_cli.services.hotspot.interfaces.client_interfaces", return_value=[]):
             with self.assertRaises(HardwareError):
                 hotspot.select_interface({}, None)
 
@@ -156,7 +156,7 @@ class StopStatusTests(ServiceTestCase):
         self.assertIsNone(hotspot.stop())
         state_store.save(make_state())
         strategy = mock.Mock()
-        with mock.patch("apsta_cli.net.strategies.for_state", return_value=strategy):
+        with mock.patch("twinfi_cli.net.strategies.for_state", return_value=strategy):
             self.assertEqual(hotspot.stop().ssid, "S")
         strategy.stop.assert_called_once()
         self.assertIsNone(state_store.load())
@@ -166,20 +166,20 @@ class StopStatusTests(ServiceTestCase):
         self.assertFalse(hotspot.is_alive(st))
         (paths.SYSFS_NET / "wlo1_ap").mkdir()
         with (
-            mock.patch("apsta_cli.services.hotspot.iface.is_broadcasting", return_value=True),
-            mock.patch("apsta_cli.net.strategies.HostapdStrategy.daemons_running", return_value=True),
+            mock.patch("twinfi_cli.services.hotspot.iface.is_broadcasting", return_value=True),
+            mock.patch("twinfi_cli.net.strategies.HostapdStrategy.daemons_running", return_value=True),
         ):
             self.assertTrue(hotspot.is_alive(st))
             self.assertTrue(hotspot.is_alive(make_state(method="nmcli")))
-        with mock.patch("apsta_cli.services.hotspot.iface.is_broadcasting", return_value=False):
+        with mock.patch("twinfi_cli.services.hotspot.iface.is_broadcasting", return_value=False):
             self.assertFalse(hotspot.is_alive(st))
 
     def test_status_payload(self):
         state_store.save(make_state())
         with (
             mock.patch.object(hotspot, "is_alive", return_value=True),
-            mock.patch("apsta_cli.services.hotspot.clients.list_clients", return_value=[]),
-            mock.patch("apsta_cli.services.hotspot.interfaces.list_wifi_interfaces", return_value=[IFACE]),
+            mock.patch("twinfi_cli.services.hotspot.clients.list_clients", return_value=[]),
+            mock.patch("twinfi_cli.services.hotspot.interfaces.list_wifi_interfaces", return_value=[IFACE]),
         ):
             data = hotspot.status()
             self.assertTrue(data["active"])
@@ -188,11 +188,11 @@ class StopStatusTests(ServiceTestCase):
             self.assertEqual(hotspot.with_running_state("x").ssid, "S")
         with (
             mock.patch.object(hotspot, "is_alive", return_value=False),
-            mock.patch("apsta_cli.services.hotspot.interfaces.list_wifi_interfaces", return_value=[]),
+            mock.patch("twinfi_cli.services.hotspot.interfaces.list_wifi_interfaces", return_value=[]),
         ):
             data = hotspot.status()
             self.assertTrue(data["stale"])
-            with self.assertRaises(ApstaError):
+            with self.assertRaises(TwinfiError):
                 hotspot.with_running_state("x")
 
 
@@ -304,7 +304,7 @@ class WatcherTests(unittest.TestCase):
             calls.append(1)
             if len(calls) == 2:
                 watcher.stop_event.set()
-            raise ApstaError("no radio", hints=["plug it in"])
+            raise TwinfiError("no radio", hints=["plug it in"])
 
         with (
             mock.patch.object(watch.hotspot, "start", side_effect=failing_start),
@@ -365,27 +365,27 @@ if __name__ == "__main__":
 
 class GuardTests(unittest.TestCase):
     def test_watcher_follows_the_method_setting_unless_one_was_given(self):
-        self.assertNotIn("--method", guard.run_argv("/usr/bin/apsta", hotspot.StartOptions()))
-        argv = guard.run_argv("/usr/bin/apsta", hotspot.StartOptions(method="p2p"))
+        self.assertNotIn("--method", guard.run_argv("/usr/bin/twinfi", hotspot.StartOptions()))
+        argv = guard.run_argv("/usr/bin/twinfi", hotspot.StartOptions(method="p2p"))
         self.assertEqual(argv[argv.index("--method") + 1], "p2p")
 
     def setUp(self):
         self.sh = FakeShell()
-        mock.patch("apsta_cli.core.shell.run", self.sh).start()
+        mock.patch("twinfi_cli.core.shell.run", self.sh).start()
         mock.patch.object(guard.supervisor, "get", return_value=mock.Mock(kind="systemd")).start()
         self.addCleanup(mock.patch.stopall)
 
     def test_launch_runs_the_watcher_as_a_transient_unit(self):
-        self.sh.on("systemctl", "is-active", "--quiet", "apsta.service", rc=3)
+        self.sh.on("systemctl", "is-active", "--quiet", "twinfi.service", rc=3)
         opts = hotspot.StartOptions(method="hostapd", allow_disconnect=True, interface="wlo1")
-        self.assertTrue(guard.launch("/usr/bin/apsta", opts))
+        self.assertTrue(guard.launch("/usr/bin/twinfi", opts))
         run = next(c for c in self.sh.calls if c[0] == "systemd-run")
-        self.assertIn("--unit=apsta-watch.service", run)
+        self.assertIn("--unit=twinfi-watch.service", run)
         self.assertIn("--setenv=PYTHONUNBUFFERED=1", run)
         self.assertEqual(
             run[run.index("--") + 1 :],
             [
-                "/usr/bin/apsta",
+                "/usr/bin/twinfi",
                 "run",
                 "--wait-sta",
                 "30",
@@ -399,39 +399,39 @@ class GuardTests(unittest.TestCase):
         self.assertFalse(self.sh.called("systemctl", "stop"))  # would take the new hotspot down
 
     def test_not_launched_when_the_service_watches(self):
-        self.assertFalse(guard.launch("/usr/bin/apsta", hotspot.StartOptions()))
+        self.assertFalse(guard.launch("/usr/bin/twinfi", hotspot.StartOptions()))
         self.assertFalse(self.sh.called("systemd-run"))
 
     def test_not_launched_without_systemd(self):
         guard.supervisor.get.return_value = mock.Mock(kind="pidfile")
-        self.assertFalse(guard.launch("/usr/bin/apsta", hotspot.StartOptions()))
+        self.assertFalse(guard.launch("/usr/bin/twinfi", hotspot.StartOptions()))
         self.assertFalse(guard.stop())
         self.assertEqual(self.sh.calls, [])
 
     def test_launch_failure_is_not_fatal(self):
         self.sh.on("systemctl", "is-active", rc=3).on("systemd-run", rc=1, stderr="no bus")
-        self.assertFalse(guard.launch("/usr/bin/apsta", hotspot.StartOptions()))
+        self.assertFalse(guard.launch("/usr/bin/twinfi", hotspot.StartOptions()))
 
     def test_stop(self):
         self.assertTrue(guard.stop())
-        self.assertTrue(self.sh.called("systemctl", "stop", "apsta-watch.service"))
+        self.assertTrue(self.sh.called("systemctl", "stop", "twinfi-watch.service"))
         self.sh.on("systemctl", "is-active", rc=3)
         self.assertFalse(guard.stop())
 
 
 class AutostartTests(unittest.TestCase):
     def test_systemd(self):
-        from apsta_cli.services import autostart
         from tests.support import FakeShell
+        from twinfi_cli.services import autostart
 
         FakeShell(["systemctl"]).on("systemctl", "is-active", rc=3).install(self)
         self.assertEqual(autostart.info("systemd"), {"init": "systemd", "enabled": True, "running": False})
 
     def test_openrc_and_unknown(self):
-        from apsta_cli.services import autostart
         from tests.support import FakeShell
+        from twinfi_cli.services import autostart
 
-        FakeShell(["rc-update"]).on("rc-update", "show", stdout="  apsta | default\n  sshd | default").install(self)
+        FakeShell(["rc-update"]).on("rc-update", "show", stdout="  twinfi | default\n  sshd | default").install(self)
         self.assertTrue(autostart.info("openrc")["enabled"])
         self.assertIsNone(autostart.info("runit")["enabled"])
         self.assertIn(autostart.detect_init(), ("systemd", "openrc", "runit", "unknown"))
@@ -439,7 +439,7 @@ class AutostartTests(unittest.TestCase):
     def test_detect_init(self):
         from pathlib import Path
 
-        from apsta_cli.services import autostart
+        from twinfi_cli.services import autostart
 
         for present, expected in (
             ({"/run/systemd/system"}, "systemd"),

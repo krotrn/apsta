@@ -1,5 +1,5 @@
 name: Hardware report
-description: Tell us how apsta works on your WiFi card (good or bad)
+description: Tell us how twinfi works on your WiFi card (good or bad)
 labels: [hardware]
 body:
   - type: input
@@ -22,7 +22,7 @@ body:
   - type: textarea
     id: detect
     attributes:
-      label: Output of `apsta detect --json`
+      label: Output of `twinfi detect --json`
       render: json
   - type: textarea
     id: iw

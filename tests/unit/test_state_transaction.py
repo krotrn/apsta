@@ -1,10 +1,10 @@
 import unittest
 import unittest.mock as mock
 
-from apsta_cli import state
-from apsta_cli.core import paths
-from apsta_cli.net.transaction import Transaction
 from tests.support import isolate_paths
+from twinfi_cli import state
+from twinfi_cli.core import paths
+from twinfi_cli.net.transaction import Transaction
 
 
 def sample(**kw):
@@ -77,7 +77,7 @@ class TransactionTests(unittest.TestCase):
 
     def test_failing_undo_does_not_stop_others(self):
         later = mock.Mock()
-        with self.assertLogs("apsta_cli.net.transaction", "WARNING") as logs:
+        with self.assertLogs("twinfi_cli.net.transaction", "WARNING") as logs:
             with Transaction() as tx:
                 tx.on_rollback("first", later)
                 tx.on_rollback("broken", mock.Mock(side_effect=OSError("x")))

@@ -1,36 +1,36 @@
 # Architecture
 
-This document describes how apsta is put together and why. Read it before a
+This document describes how twinfi is put together and why. Read it before a
 non-trivial change.
 
 ## Layers
 
 ```mermaid
 flowchart TD
-    CLI["<b>apsta_cli/cli.py</b><br/>argparse, errors → exit codes"]
-    GUI["<b>apsta_gui</b> (GTK 4 / libadwaita)<br/>a client of the CLI:<br/>--json reads, pkexec writes"]
+    CLI["<b>twinfi_cli/cli.py</b><br/>argparse, errors → exit codes"]
+    GUI["<b>twinfi_gui</b> (GTK 4 / libadwaita)<br/>a client of the CLI:<br/>--json reads, pkexec writes"]
     CMD["<b>cmd/*</b> · present<br/>thin: print results"]
-    SVC["<b>services/</b> · use cases<br/>hotspot.py: start / stop / status, strategy selection<br/>detect.py: what the card can do, which methods are ready<br/>watch.py: apsta run keeps the hotspot healthy<br/>guard.py: runs it behind apsta start<br/>installation.py: how apsta was installed, for update / uninstall"]
+    SVC["<b>services/</b> · use cases<br/>hotspot.py: start / stop / status, strategy selection<br/>detect.py: what the card can do, which methods are ready<br/>watch.py: twinfi run keeps the hotspot healthy<br/>guard.py: runs it behind twinfi start<br/>installation.py: how twinfi was installed, for update / uninstall"]
     CFG["<b>config/</b><br/>model, store, validate<br/>state.py"]
     NET["<b>net/</b><br/>strategies, transaction<br/>hostapd, dnsmasq, nm<br/>firewall, supervisor<br/>iface, subnet, channels, clients<br/>wpa (wpa_supplicant: socket or D-Bus)"]
     HW["<b>hw/</b><br/>combinations, capability<br/>interfaces, usb"]
     CORE["<b>core/</b><br/>shell (argv only), paths, fsutil (atomic)<br/>lock, output, log, errors"]
 
     CLI --> CMD
-    GUI -. "runs apsta" .-> CMD
+    GUI -. "runs twinfi" .-> CMD
     CMD --> SVC
     SVC --> CFG & NET & HW
     CFG & NET & HW --> CORE
 ```
 
-Dependencies only point downwards. `core` imports nothing from apsta.
+Dependencies only point downwards. `core` imports nothing from twinfi.
 Decisions live in `services`; a `cmd` handler only presents results. It may
 still call `config` (settings are edited through `config.model`, which
 validates) and `hw` read-only helpers for display directly.
 
 `hw`, `net` and `config` never decide what the user sees:
 
-- **Failures** raise `ApstaError` subclasses that carry `hints`; `cli.py`
+- **Failures** raise `TwinfiError` subclasses that carry `hints`; `cli.py`
   renders them and maps them to exit codes.
 - **Problems worked around** (a MAC that couldn't be set, a cleanup step that
   failed, a corrupt config file) go to `logging.getLogger(__name__).warning`.
@@ -64,12 +64,12 @@ the next strategy is tried.
 
 ```mermaid
 flowchart TD
-    S(["apsta start"]) --> P["Plan: capability, WiFi channel,<br/>allowed channels, subnet"]
+    S(["twinfi start"]) --> P["Plan: capability, WiFi channel,<br/>allowed channels, subnet"]
     P -- "WiFi's channel can't host, and no<br/>Wi-Fi Direct or --allow-disconnect" --> E(["HardwareError with hints"])
     P --> N{"Next strategy:<br/>hostapd → nmcli → p2p → nmcli-single"}
     N -- "unavailable" --> N
     N --> T["start(ctx, tx): each side effect<br/>registers its undo step"]
-    T -- "all steps OK, hotspot live" --> W["Write /run/apsta/state.json"] --> D(["Running"])
+    T -- "all steps OK, hotspot live" --> W["Write /run/twinfi/state.json"] --> D(["Running"])
     T -- "a step fails" --> R["tx.rollback(): undo in reverse order"] --> N
     N -- "none left" --> F(["Error listing what each strategy hit"])
 ```
@@ -87,7 +87,7 @@ watcher doesn't chase the WiFi's channel.
 
 ### Settings, decisions and notes
 
-Whatever apsta decides on its own, the user can set instead, and whatever it
+Whatever twinfi decides on its own, the user can set instead, and whatever it
 can't follow, it explains:
 
 - **Method**: `--method` for one run, else the profile's `method` setting,
@@ -106,35 +106,35 @@ can't follow, it explains:
   its own (`p2p`: the radio's speed is shared; hostapd and p2p: the
   firewall's caveats).
 
-The notes are stored in `HotspotState.notes`, printed by `apsta start` and
-`apsta status`, exposed as `hotspot.notes` in `status --json` (so the GUI shows
+The notes are stored in `HotspotState.notes`, printed by `twinfi start` and
+`twinfi status`, exposed as `hotspot.notes` in `status --json` (so the GUI shows
 them under *Why it runs this way*), and logged with the `hotspot_started`
-event in `/var/log/apsta.log`. Each is one plain sentence for the user.
+event in `/var/log/twinfi.log`. Each is one plain sentence for the user.
 
 ### Runtime state lives in /run
 
-`state.py` writes `HotspotState` to `/run/apsta/state.json` once the hotspot
+`state.py` writes `HotspotState` to `/run/twinfi/state.json` once the hotspot
 is fully up, with everything `stop` needs: interface names, subnet, firewall
 backend and its undo data, the previous `ip_forward` value, client limits,
 and the notes explaining the choices made at start (below).
 `/run` is a tmpfs, so a crash or reboot can't leave a stale "running" record.
 On start, a recorded hotspot that is no longer alive is cleaned up first.
-Configuration (`/etc/apsta/config.json`, world-readable) and secrets
-(`/etc/apsta/secrets.json`, 0600) are separate and written atomically.
+Configuration (`/etc/twinfi/config.json`, world-readable) and secrets
+(`/etc/twinfi/secrets.json`, 0600) are separate and written atomically.
 
 ### Processes are supervised
 
 `net/supervisor.py` runs hostapd and dnsmasq as transient systemd units
-(`apsta-hostapd.service`, `apsta-dnsmasq.service`, `Restart=on-failure`,
+(`twinfi-hostapd.service`, `twinfi-dnsmasq.service`, `Restart=on-failure`,
 logs in the journal). On non-systemd systems it falls back to pidfiles, and
 checks a pid against `/proc/<pid>/cmdline` before signalling it.
 
 ### The service watches, not just starts
 
-`apsta.service` runs `apsta run --wait-sta 30`. A one-off `apsta start`
+`twinfi.service` runs `twinfi run --wait-sta 30`. A one-off `twinfi start`
 (and so the GUI) launches the same watcher as the transient unit
-`apsta-watch.service` (`services/guard.py`, systemd only), which adopts the
-hotspot that is already up; `apsta stop` stops the watcher before the
+`twinfi-watch.service` (`services/guard.py`, systemd only), which adopts the
+hotspot that is already up; `twinfi stop` stops the watcher before the
 hotspot. `services/watch.py` polls every 5 s and `decide()` (a pure function)
 restarts the hotspot when:
 
@@ -144,17 +144,17 @@ restarts the hotspot when:
   The AP may be what stops NetworkManager reconnecting on another channel.
 
 When the watcher is stopped (SIGTERM) it stops the hotspot, unless
-`/run/apsta/keep-hotspot` exists. `apsta disable` writes that marker while it
+`/run/twinfi/keep-hotspot` exists. `twinfi disable` writes that marker while it
 stops the service (`cmd/service.py: keeping_hotspot()`), so turning off *Start
 automatically* leaves a running hotspot up; on systemd it then launches
-`apsta-watch.service` to keep watching it. The watcher removes the marker as
+`twinfi-watch.service` to keep watching it. The watcher removes the marker as
 it reads it, and `disable` removes it after a synchronous stop, so it never
 outlives that one stop.
 
 ```mermaid
 flowchart TD
     Poll(["every 5 s"]) --> St{"state.json present?"}
-    St -- "no (apsta stop)" --> Exit(["exit"])
+    St -- "no (twinfi stop)" --> Exit(["exit"])
     St -- "yes" --> Alive{"hotspot alive?"}
     Alive -- "no" --> Restart
     Alive -- "yes" --> Same{"hotspot shares the<br/>WiFi's channel?"}
@@ -178,8 +178,8 @@ error until the network moves back. See [5ghz-wifi.md](5ghz-wifi.md) and
 
 `net/firewall.py` chooses firewalld (if running), then iptables, then
 nftables. Each backend's `apply` returns data its `revert` uses, so teardown
-only removes what apsta added. For example, masquerading is removed only from
-zones where apsta enabled it. Its `caveats` name rules outside apsta's that
+only removes what twinfi added. For example, masquerading is removed only from
+zones where twinfi enabled it. Its `caveats` name rules outside twinfi's that
 may still block clients (another nftables chain with `policy drop`); they are
 added to the hotspot's notes.
 
@@ -200,8 +200,8 @@ changelog entry. The keys are documented in [json-output.md](json-output.md).
 
 ## The GUI
 
-`apsta_gui` is a GTK 4 / libadwaita application, and a *client of the CLI*.
-It never imports `apsta_cli` logic (only its version string). That gives one
+`twinfi_gui` is a GTK 4 / libadwaita application, and a *client of the CLI*.
+It never imports `twinfi_cli` logic (only its version string). That gives one
 implementation of every operation, one privilege boundary, and a GUI that
 can't put the system into states the CLI can't explain.
 
@@ -220,13 +220,13 @@ pages/        one class per tab, each builds its widgets and exposes update(data
   settings.py   network settings, profiles, start at boot and login, hardware report
 share.py      Share dialog (QR code + password)
 compat.py     newest libadwaita widget when available, fallback otherwise
-backend.py    runs `apsta … --json` and `pkexec apsta …` (no GTK, unit-tested)
+backend.py    runs `twinfi … --json` and `pkexec twinfi …` (no GTK, unit-tested)
 helpers.py    pure formatting / text logic (no GTK, unit-tested)
 ```
 
 **Data flow.** Every 5 seconds (and after every action) the window runs
-`apsta status --json` in a worker thread and hands the result to each page's
-`update(data)` on the main loop. `apsta detect --json` runs once at startup.
+`twinfi status --json` in a worker thread and hands the result to each page's
+`update(data)` on the main loop. `twinfi detect --json` runs once at startup.
 Pages never block the main loop: subprocesses always run through
 `window.run_async(work, done)`, and widgets are touched only in `done`.
 
@@ -234,26 +234,26 @@ Pages never block the main loop: subprocesses always run through
 sequenceDiagram
     participant W as window.py (main loop)
     participant T as worker thread
-    participant C as apsta CLI
+    participant C as twinfi CLI
     loop every 5 s and after each action
         W->>T: run_async(status)
-        T->>C: apsta status --json
+        T->>C: twinfi status --json
         C-->>T: JSON
         T-->>W: done(data)
         W->>W: page.update(data) for each tab
     end
     W->>T: run_privileged(start)
-    T->>C: pkexec /usr/bin/apsta start (secrets via stdin)
+    T->>C: pkexec /usr/bin/twinfi start (secrets via stdin)
     C-->>T: exit code + message
     T-->>W: toast, then refresh
 ```
 
 **Changes** go through `window.run_privileged(work)`. It shows the spinner,
-runs `pkexec /usr/bin/apsta <args>` in a thread, shows the outcome as a toast
+runs `pkexec /usr/bin/twinfi <args>` in a thread, shows the outcome as a toast
 and refreshes. Only one privileged action runs at a time. Secrets (new
 passwords, the password fetched for Share) travel over stdin and stdout,
-never argv. The polkit action `com.github.apsta.manage` (`auth_admin_keep`)
-names apsta in the prompt and remembers authentication for a few minutes.
+never argv. The polkit action `com.github.twinfi.manage` (`auth_admin_keep`)
+names twinfi in the prompt and remembers authentication for a few minutes.
 
 **System tray.** `libayatana-appindicator` is built on GTK 3 and can't load
 next to GTK 4, so `tray.py` implements the two D-Bus interfaces itself: it
@@ -311,12 +311,12 @@ CI runs the GUI on the newest releases (Arch, Fedora) to catch problems early.
 | ------------------------ | -------------------------------------------------------------------------- |
 | New hotspot method       | subclass `Strategy` in `net/strategies.py`, add to `STRATEGIES`             |
 | New firewall             | class with `name/apply/revert` in `net/firewall.py`, register in `detect()` |
-| New init system          | `ENABLE`/`DISABLE` in `cmd/service.py` + a file in `apsta_cli/data/`        |
+| New init system          | `ENABLE`/`DISABLE` in `cmd/service.py` + a file in `twinfi_cli/data/`        |
 | New USB chipset          | `USB_CHIPSET_DB` in `hw/usb.py`                                             |
 | Card detected wrongly    | add its `iw phy` output to `tests/fixtures/iw/` with a test                 |
 | New command              | parser in `cli.py`, handler in `cmd/`, logic in `services/`                 |
-| GUI: new tab             | class in `apsta_gui/pages/` with `widget` + `update(data, detect)`; register in `window.py` |
-| GUI: widget newer than libadwaita 1.1 | add a helper with a fallback to `apsta_gui/compat.py` |
+| GUI: new tab             | class in `twinfi_gui/pages/` with `widget` + `update(data, detect)`; register in `window.py` |
+| GUI: widget newer than libadwaita 1.1 | add a helper with a fallback to `twinfi_gui/compat.py` |
 | GUI: new action          | a `backend.py` method calling the CLI + `window.run_privileged(...)` |
 
 Shell completion is generated from the argparse tree, so new commands and
@@ -345,6 +345,6 @@ flags are completable without extra work.
 
 Run `make test`, `make coverage`, `make typecheck` or `make gui-smoke`
 (`make check` runs lint, type check and coverage, as CI does). CI enforces
-≥ 94 % coverage of `apsta_cli` and the GUI's non-GTK modules, and mypy
+≥ 94 % coverage of `twinfi_cli` and the GUI's non-GTK modules, and mypy
 (`check_untyped_defs`) over the same code. GTK widget code is covered by the
 smoke test instead.

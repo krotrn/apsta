@@ -7,42 +7,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "apsta"
-version = "0.12.0"
-source = { editable = "." }
-
-[package.optional-dependencies]
-gui = [
-    { name = "qrcode", extra = ["pil"] },
-]
-p2p = [
-    { name = "jeepney" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "coverage", extra = ["toml"] },
-    { name = "jeepney" },
-    { name = "mypy" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "jeepney", marker = "extra == 'p2p'", specifier = ">=0.7" },
-    { name = "qrcode", extras = ["pil"], marker = "extra == 'gui'", specifier = ">=7.4" },
-]
-provides-extras = ["gui", "p2p"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "coverage", extras = ["toml"], specifier = ">=7.16" },
-    { name = "jeepney", specifier = ">=0.7" },
-    { name = "mypy", specifier = ">=2.4" },
-    { name = "ruff", specifier = ">=0.16" },
-]
-
-[[package]]
 name = "ast-serialize"
 version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -660,6 +624,42 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/12/64/da524626d3b9cc40c168a13da8335fe1c51be12c0a63685cc6db7308daae/tomli-2.4.1-cp314-cp314t-win_amd64.whl", hash = "sha256:2c1c351919aca02858f740c6d33adea0c5deea37f9ecca1cc1ef9e884a619d26", size = 121196, upload-time = "2026-03-25T20:22:01.169Z" },
     { url = "https://files.pythonhosted.org/packages/5a/cd/e80b62269fc78fc36c9af5a6b89c835baa8af28ff5ad28c7028d60860320/tomli-2.4.1-cp314-cp314t-win_arm64.whl", hash = "sha256:eab21f45c7f66c13f2a9e0e1535309cee140182a9cdae1e041d02e47291e8396", size = 100393, upload-time = "2026-03-25T20:22:02.137Z" },
     { url = "https://files.pythonhosted.org/packages/7b/61/cceae43728b7de99d9b847560c262873a1f6c98202171fd5ed62640b494b/tomli-2.4.1-py3-none-any.whl", hash = "sha256:0d85819802132122da43cb86656f8d1f8c6587d54ae7dcaf30e90533028b49fe", size = 14583, upload-time = "2026-03-25T20:22:03.012Z" },
+]
+
+[[package]]
+name = "twinfi"
+version = "0.12.0"
+source = { editable = "." }
+
+[package.optional-dependencies]
+gui = [
+    { name = "qrcode", extra = ["pil"] },
+]
+p2p = [
+    { name = "jeepney" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "coverage", extra = ["toml"] },
+    { name = "jeepney" },
+    { name = "mypy" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jeepney", marker = "extra == 'p2p'", specifier = ">=0.7" },
+    { name = "qrcode", extras = ["pil"], marker = "extra == 'gui'", specifier = ">=7.4" },
+]
+provides-extras = ["gui", "p2p"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "coverage", extras = ["toml"], specifier = ">=7.16" },
+    { name = "jeepney", specifier = ">=0.7" },
+    { name = "mypy", specifier = ">=2.4" },
+    { name = "ruff", specifier = ">=0.16" },
 ]
 
 [[package]]

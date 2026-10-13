@@ -3,13 +3,13 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "apsta"
+name = "twinfi"
 version = "0.12.0"
 description = "Run a Wi-Fi hotspot on Linux while staying connected to Wi-Fi (AP+STA)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{ name = "apsta contributors" }]
+authors = [{ name = "twinfi contributors" }]
 maintainers = [{ name = "krotrn" }]
 keywords = [
   "wifi", "wi-fi", "hotspot", "wifi-hotspot", "access-point", "ap-sta", "ap+sta",
@@ -43,7 +43,7 @@ dependencies = []
 # The GUI also needs PyGObject + GTK4 + libadwaita from the distribution.
 gui = ["qrcode[pil]>=7.4"]  # distro packages: Ubuntu 22.04 ships 7.3
 # Wi-Fi Direct hotspots on distributions whose wpa_supplicant has no control
-# socket (Fedora, openSUSE, Alpine, Void): apsta talks to it over D-Bus.
+# socket (Fedora, openSUSE, Alpine, Void): twinfi talks to it over D-Bus.
 p2p = ["jeepney>=0.7"]
 
 # Development tools (PEP 735): `uv sync` installs them automatically;
@@ -52,24 +52,25 @@ p2p = ["jeepney>=0.7"]
 dev = ["coverage[toml]>=7.16", "ruff>=0.16", "mypy>=2.4", "jeepney>=0.7"]
 
 [project.urls]
-Homepage = "https://krotrn.github.io/apsta/"
-Documentation = "https://krotrn.github.io/apsta/"
-Source = "https://github.com/krotrn/apsta"
-Issues = "https://github.com/krotrn/apsta/issues"
-Changelog = "https://github.com/krotrn/apsta/blob/main/CHANGELOG.md"
+Homepage = "https://krotrn.github.io/twinfi/"
+Documentation = "https://krotrn.github.io/twinfi/"
+Source = "https://github.com/krotrn/twinfi"
+Issues = "https://github.com/krotrn/twinfi/issues"
+Changelog = "https://github.com/krotrn/twinfi/blob/main/CHANGELOG.md"
 
 [project.scripts]
-apsta = "apsta_cli.cli:run"
+twinfi = "twinfi_cli.cli:run"
+apsta = "twinfi_cli.cli:run_legacy"  # the name until 0.13; prints a reminder
 
 [project.gui-scripts]
-apsta-gtk = "apsta_gui.app:main"
+twinfi-gtk = "twinfi_gui.app:main"
 
 [tool.setuptools.packages.find]
-include = ["apsta_cli*", "apsta_gui*"]
+include = ["twinfi_cli*", "twinfi_gui*"]
 
 [tool.setuptools.package-data]
-apsta_cli = ["data/*"]
-apsta_gui = ["data/*.desktop", "data/*.metainfo.xml", "data/icons/hicolor/*/apps/*.svg"]
+twinfi_cli = ["data/*"]
+twinfi_gui = ["data/*.desktop", "data/*.metainfo.xml", "data/icons/hicolor/*/apps/*.svg"]
 
 # ── Tooling ───────────────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ ignore = [
 python_version = "3.10"
 # The GUI's GTK modules need PyGObject from the distribution; its non-GTK
 # logic (unit-tested like the CLI) is checked.
-files = ["apsta_cli", "apsta_gui/backend.py", "apsta_gui/helpers.py"]
+files = ["twinfi_cli", "twinfi_gui/backend.py", "twinfi_gui/helpers.py"]
 check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
@@ -104,17 +105,17 @@ ignore_missing_imports = true
 
 [tool.coverage.run]
 branch = true
-source = ["apsta_cli", "apsta_gui"]
+source = ["twinfi_cli", "twinfi_gui"]
 # GTK widget code needs a display, and the tray needs PyGObject and a D-Bus
 # session; scripts/gui_smoke.py exercises both in the CI "gui" job.
 omit = [
   "*/__main__.py",
-  "apsta_gui/app.py",
-  "apsta_gui/compat.py",
-  "apsta_gui/share.py",
-  "apsta_gui/tray.py",
-  "apsta_gui/window.py",
-  "apsta_gui/pages/*",
+  "twinfi_gui/app.py",
+  "twinfi_gui/compat.py",
+  "twinfi_gui/share.py",
+  "twinfi_gui/tray.py",
+  "twinfi_gui/window.py",
+  "twinfi_gui/pages/*",
 ]
 
 [tool.coverage.report]

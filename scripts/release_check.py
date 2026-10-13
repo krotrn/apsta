@@ -17,11 +17,11 @@ from release_notes import section  # noqa: E402
 
 SOURCES = {
     "pyproject.toml": r'^version\s*=\s*"([^"]+)"',
-    "apsta_cli/__init__.py": r'__version__\s*=\s*"([^"]+)"',
+    "twinfi_cli/__init__.py": r'__version__\s*=\s*"([^"]+)"',
     "packaging/arch/PKGBUILD": r"^pkgver=(\S+)",
-    "uv.lock": r'^name = "apsta"\nversion = "([^"]+)"',
-    "debian/changelog": r"^apsta \(([^)-]+)",
-    "apsta_gui/data/com.github.apsta.Gtk.metainfo.xml": r'<release version="([^"]+)"',
+    "uv.lock": r'^name = "twinfi"\nversion = "([^"]+)"',
+    "debian/changelog": r"^\S+ \(([^)-]+)",  # entries before 0.13 say apsta
+    "twinfi_gui/data/com.github.twinfi.Gtk.metainfo.xml": r'<release version="([^"]+)"',
 }
 
 

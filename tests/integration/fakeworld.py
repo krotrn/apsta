@@ -2,8 +2,8 @@
 
 Each fake tool (iw, ip, nmcli, hostapd, ...) is a small executable that calls
 ``main(<tool>)`` here. They share state through ``world.json`` in
-``$APSTA_FAKE_ROOT`` and mirror interfaces into the fake sysfs that apsta reads,
-so apsta runs its real code paths — subprocesses, files, daemons, pidfiles —
+``$TWINFI_FAKE_ROOT`` and mirror interfaces into the fake sysfs that twinfi reads,
+so twinfi runs its real code paths — subprocesses, files, daemons, pidfiles —
 without root or WiFi hardware.
 """
 
@@ -18,7 +18,7 @@ from pathlib import Path
 
 TOOLS = ("iw", "ip", "nmcli", "hostapd", "dnsmasq", "hostapd_cli", "iptables", "tc", "lspci", "lsusb")
 
-ROOT = Path(os.environ.get("APSTA_FAKE_ROOT", "."))
+ROOT = Path(os.environ.get("TWINFI_FAKE_ROOT", "."))
 WORLD = ROOT / "world.json"
 SYSFS = ROOT / "sys" / "class" / "net"
 

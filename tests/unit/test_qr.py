@@ -4,10 +4,10 @@ import unittest
 import unittest.mock as mock
 from types import SimpleNamespace
 
-from apsta_cli.cmd import qr
-from apsta_cli.config import model, store
-from apsta_cli.core.errors import ApstaError
 from tests.support import as_root, isolate_paths
+from twinfi_cli.cmd import qr
+from twinfi_cli.config import model, store
+from twinfi_cli.core.errors import TwinfiError
 
 
 class ShareStringTests(unittest.TestCase):
@@ -69,7 +69,7 @@ class QrCommandTests(unittest.TestCase):
         self.assertIn("QR payload: WIFI:T:WPA;", self.written())
 
     def test_no_password_yet(self):
-        with self.assertRaises(ApstaError):
+        with self.assertRaises(TwinfiError):
             qr.cmd_qr(SimpleNamespace())
 
 

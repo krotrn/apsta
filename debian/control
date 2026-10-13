@@ -1,4 +1,4 @@
-Source: apsta
+Source: twinfi
 Section: net
 Priority: optional
 Maintainer: krotrn <krotrn.ks@gmail.com>
@@ -10,11 +10,14 @@ Build-Depends:
  python3-setuptools,
  python3-wheel
 Standards-Version: 4.6.2
-Homepage: https://github.com/krotrn/apsta
+Homepage: https://github.com/krotrn/twinfi
 Rules-Requires-Root: no
 
-Package: apsta
+Package: twinfi
 Architecture: all
+# twinfi was called apsta until 0.13; the files moved to this package.
+Replaces: apsta (<< ${binary:Version})
+Breaks: apsta (<< ${binary:Version})
 Depends:
  ${python3:Depends},
  ${misc:Depends},
@@ -37,9 +40,19 @@ Recommends:
  pkexec | policykit-1,
  librsvg2-common
 Description: Smart AP+STA Wi-Fi hotspot manager for Linux
- apsta lets you broadcast a Wi-Fi hotspot while staying connected to your
+ twinfi lets you broadcast a Wi-Fi hotspot while staying connected to your
  existing Wi-Fi network simultaneously, without dropping your connection.
  .
  Includes:
-  - apsta        — CLI hotspot manager
-  - apsta-gtk    — GTK4/Libadwaita GUI (GNOME, KDE, Xfce, any GTK4 desktop)
+  - twinfi        — CLI hotspot manager
+  - twinfi-gtk    — GTK4/Libadwaita GUI (GNOME, KDE, Xfce, any GTK4 desktop)
+
+Package: apsta
+Architecture: all
+Section: oldlibs
+Depends:
+ twinfi,
+ ${misc:Depends}
+Description: transitional package for twinfi
+ apsta is now called twinfi. This package moves existing installs over and
+ can be removed safely.

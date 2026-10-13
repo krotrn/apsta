@@ -7,7 +7,7 @@ import unittest.mock as mock
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Union
 
-from apsta_cli.core import paths, shell
+from twinfi_cli.core import paths, shell
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -17,7 +17,7 @@ def fixture(name: str) -> str:
 
 
 def isolate_paths(testcase, root: Optional[Path] = None) -> Path:
-    """Point every apsta path into a fresh temp dir for the duration of the test."""
+    """Point every twinfi path into a fresh temp dir for the duration of the test."""
     if root is None:
         tmp = tempfile.TemporaryDirectory()
         testcase.addCleanup(tmp.cleanup)
@@ -41,7 +41,9 @@ def isolate_paths(testcase, root: Optional[Path] = None) -> Path:
         "WPA_CTRL_DIR": run / "wpa_supplicant",
         "NM_RUNTIME_KEYFILE_DIR": run / "NetworkManager",
         "NM_RUNTIME_CONF_DIR": run / "NetworkManager-conf.d",
-        "LOG_PATH": root / "apsta.log",
+        "LOG_PATH": root / "twinfi.log",
+        "LEGACY_CONFIG_DIR": root / "etc-apsta",
+        "LEGACY_RUN_DIR": root / "run-apsta",
         "SYSFS_NET": root / "sys" / "class" / "net",
         "IP_FORWARD": root / "ip_forward",
     }
@@ -51,8 +53,26 @@ def isolate_paths(testcase, root: Optional[Path] = None) -> Path:
         patcher = mock.patch.object(paths, name, value)
         patcher.start()
         testcase.addCleanup(patcher.stop)
+    # The apsta migration runs before every root command; keep it off the real system.
+    from twinfi_cli import legacy
+    from twinfi_cli.services import installation
+
+    old = root / "legacy"
+    for name, value in {
+        "SYSTEMD_LOCAL_UNIT": old / "apsta.service",
+        "SYSTEMD_WANTS_LINK": old / "wants" / "apsta.service",
+        "OPENRC_SCRIPT": old / "init.d" / "apsta",
+        "RUNIT_DIR": old / "sv" / "apsta",
+        "STRAY_FILES": (old / "apsta-sleep",),
+    }.items():
+        patcher = mock.patch.object(legacy, name, value)
+        patcher.start()
+        testcase.addCleanup(patcher.stop)
+    patcher = mock.patch.object(installation, "PACMAN_CONF", old / "pacman.conf")
+    patcher.start()
+    testcase.addCleanup(patcher.stop)
     # Never reach the real system bus (a developer's wpa_supplicant) from tests.
-    patcher = mock.patch("apsta_cli.net.wpa.dbus_available", return_value=False)
+    patcher = mock.patch("twinfi_cli.net.wpa.dbus_available", return_value=False)
     patcher.start()
     testcase.addCleanup(patcher.stop)
     return root
@@ -87,8 +107,8 @@ class FakeShell:
 
     def install(self, testcase) -> FakeShell:
         for target, value in (
-            ("apsta_cli.core.shell.run", self),
-            ("apsta_cli.core.shell.which", lambda name: f"/usr/bin/{name}" if name in self.tools else None),
+            ("twinfi_cli.core.shell.run", self),
+            ("twinfi_cli.core.shell.which", lambda name: f"/usr/bin/{name}" if name in self.tools else None),
         ):
             patcher = mock.patch(target, value)
             patcher.start()
@@ -250,8 +270,8 @@ class FakeBus:
 
     def install(self, testcase) -> FakeBus:
         for target, value in (
-            ("apsta_cli.net.wpa._connect", lambda: self),
-            ("apsta_cli.net.wpa.dbus_available", lambda: True),
+            ("twinfi_cli.net.wpa._connect", lambda: self),
+            ("twinfi_cli.net.wpa.dbus_available", lambda: True),
         ):
             patcher = mock.patch(target, value)
             patcher.start()

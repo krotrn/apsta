@@ -1,0 +1,25 @@
+post_install() {
+  # Moves an apsta install's /etc/apsta and boot service (apsta is twinfi's old name).
+  if [ -d /etc/apsta ]; then
+    twinfi config >/dev/null 2>&1 || true
+  fi
+  echo "==> Run 'twinfi detect' to check your card, then 'sudo twinfi start'."
+  echo "==> Start at boot and recover after sleep: sudo twinfi enable"
+}
+
+pre_upgrade() {
+  # Stop a hotspot started by the old version while its code is still installed.
+  twinfi stop >/dev/null 2>&1 || true
+}
+
+post_upgrade() {
+  # Loading the config as root moves plaintext passwords out of the
+  # world-readable config.json into the root-only secrets.json.
+  if [ -f /etc/twinfi/config.json ]; then
+    twinfi config >/dev/null 2>&1 || true
+  fi
+}
+
+pre_remove() {
+  twinfi stop >/dev/null 2>&1 || true
+}

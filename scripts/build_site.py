@@ -14,19 +14,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "site-src"
-REPO_BLOB = "https://github.com/krotrn/apsta/blob/main/"
+REPO_BLOB = "https://github.com/krotrn/twinfi/blob/main/"
 
 # path in site-src -> (title, description)
 PAGES = {
     "index.md": (
-        "apsta: Linux Wi-Fi hotspot that keeps your Wi-Fi connected",
+        "twinfi: Linux Wi-Fi hotspot that keeps your Wi-Fi connected",
         "Run a Wi-Fi hotspot on Linux while staying connected to Wi-Fi (AP+STA). "
         "CLI and GTK 4 app for NetworkManager, hostapd and dnsmasq on Ubuntu, Fedora and Arch.",
     ),
     "how-it-works.md": (
         "How AP+STA works: a hotspot and a Wi-Fi connection on one card",
         "Why sharing Wi-Fi from a Linux laptop is harder than it looks, which problems "
-        "you may hit, and how apsta handles each one. No networking background needed.",
+        "you may hit, and how twinfi handles each one. No networking background needed.",
     ),
     "5ghz-wifi.md": (
         "Linux hotspot won't start on 5 GHz: DFS and no-IR channels explained",
@@ -35,16 +35,16 @@ PAGES = {
     ),
     "wifi-direct.md": (
         "Wi-Fi Direct hotspot on Linux with wpa_supplicant",
-        "How apsta runs the hotspot as a Wi-Fi Direct group on its own channel when "
+        "How twinfi runs the hotspot as a Wi-Fi Direct group on its own channel when "
         "your Wi-Fi's channel can't host one, and which cards and distributions support it.",
     ),
     "json-output.md": (
-        "apsta JSON output for scripts",
-        "Keys and exit codes of apsta status, detect, config, clients and start --json.",
+        "twinfi JSON output for scripts",
+        "Keys and exit codes of twinfi status, detect, config, clients and start --json.",
     ),
     "ARCHITECTURE.md": (
-        "apsta architecture",
-        "How apsta is put together: capability detection, hotspot methods, rollback, "
+        "twinfi architecture",
+        "How twinfi is put together: capability detection, hotspot methods, rollback, "
         "the watcher, firewall backends and the GTK app.",
     ),
 }
@@ -67,7 +67,7 @@ def main() -> int:
     (OUT / "index.md").write_text(home_page(), encoding="utf-8")
     shutil.copy(ROOT / "llms.txt", OUT / "llms.txt")
     (OUT / "assets").mkdir()
-    shutil.copy(ROOT / "apsta_gui/data/icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg", OUT / "assets/icon.svg")
+    shutil.copy(ROOT / "twinfi_gui/data/icons/hicolor/scalable/apps/com.github.twinfi.Gtk.svg", OUT / "assets/icon.svg")
     for name, (title, description) in PAGES.items():
         page = OUT / name
         page.write_text(front_matter(title, description) + page.read_text(encoding="utf-8"), encoding="utf-8")

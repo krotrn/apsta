@@ -48,11 +48,11 @@ jobs:
       - name: Install and smoke test
         run: |
           pacman -U --noconfirm packaging/arch/out/*.pkg.tar.zst
-          apsta --version
-          apsta completion bash > /dev/null
-          test -f /usr/lib/systemd/system/apsta.service
-          test -f /usr/share/polkit-1/actions/com.github.apsta.policy
-          test -f /usr/share/icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg
+          twinfi --version
+          twinfi completion bash > /dev/null
+          test -f /usr/lib/systemd/system/twinfi.service
+          test -f /usr/share/polkit-1/actions/com.github.twinfi.policy
+          test -f /usr/share/icons/hicolor/scalable/apps/com.github.twinfi.Gtk.svg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -63,7 +63,7 @@ jobs:
           path: |
             packaging/arch/out/*.pkg.tar.zst
             packaging/arch/out/PKGBUILD
-            packaging/arch/out/apsta.install
+            packaging/arch/out/twinfi.install
             packaging/arch/out/.SRCINFO
 
   deb:
@@ -122,10 +122,10 @@ jobs:
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y ./deb/*.deb
-          apsta --version
-          apsta completion bash > /dev/null
-          apsta config --json > /dev/null
-          test -f /usr/lib/systemd/system/apsta.service
-          test -f /usr/share/polkit-1/actions/com.github.apsta.policy
-          test -f /usr/share/icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg
-          python3 -c "import apsta_gui.backend, apsta_gui.helpers"
+          twinfi --version
+          twinfi completion bash > /dev/null
+          twinfi config --json > /dev/null
+          test -f /usr/lib/systemd/system/twinfi.service
+          test -f /usr/share/polkit-1/actions/com.github.twinfi.policy
+          test -f /usr/share/icons/hicolor/scalable/apps/com.github.twinfi.Gtk.svg
+          python3 -c "import twinfi_gui.backend, twinfi_gui.helpers"

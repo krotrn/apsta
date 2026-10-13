@@ -7,18 +7,19 @@ import unittest.mock as mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from apsta_cli import __version__, cli
-from apsta_cli.core import paths, shell
-from apsta_cli.core.errors import SetupError
-from apsta_cli.services import installation
-from apsta_cli.services.installation import Installation, Release
 from tests.support import FakeShell, as_root, isolate_paths
+from twinfi_cli import __version__, cli
+from twinfi_cli.core import paths, shell
+from twinfi_cli.core.errors import SetupError
+from twinfi_cli.services import installation
+from twinfi_cli.services.installation import Installation, Release
 
 NEWER = "99.0.0"
 SUMS = f"""\
-{"a" * 64}  apsta-{NEWER}-1-any.pkg.tar.zst
-{"b" * 64}  apsta-{NEWER}.tar.gz
-{"c" * 64}  apsta_{NEWER}-1_all.deb
+{"d" * 64}  apsta-{NEWER}.tar.gz
+{"a" * 64}  twinfi-{NEWER}-1-any.pkg.tar.zst
+{"b" * 64}  twinfi-{NEWER}.tar.gz
+{"c" * 64}  twinfi_{NEWER}-1_all.deb
 """
 
 
@@ -34,14 +35,14 @@ class DetectTests(unittest.TestCase):
         self.sh = FakeShell(tools=["dpkg", "pacman"]).install(self)
         self.sh.on("dpkg", rc=1).on("pacman", rc=1)
 
-    def test_install_sh_lives_in_prefix_lib_apsta(self):
-        inst = installation.detect(Path("/opt/x/lib/apsta"))
+    def test_install_sh_lives_in_prefix_lib_twinfi(self):
+        inst = installation.detect(Path("/opt/x/lib/twinfi"))
         self.assertEqual((inst.method, inst.prefix), ("source", Path("/opt/x")))
 
     def test_package_managers_are_asked_who_owns_the_module(self):
         self.sh.on("dpkg", "-S", rc=0)
         self.assertEqual(installation.detect(Path("/usr/lib/python3/dist-packages")).method, "deb")
-        self.assertTrue(self.sh.called("dpkg", "-S", "/usr/lib/python3/dist-packages/apsta_cli/__init__.py"))
+        self.assertTrue(self.sh.called("dpkg", "-S", "/usr/lib/python3/dist-packages/twinfi_cli/__init__.py"))
         self.sh.on("dpkg", "-S", rc=1).on("pacman", "-Qo", rc=0)
         self.assertEqual(installation.detect(Path("/usr/lib/python3.14/site-packages")).method, "pacman")
 
@@ -57,7 +58,7 @@ class ReleaseTests(unittest.TestCase):
         with mock.patch.object(installation, "_download", return_value=SUMS.encode()):
             release = installation.latest_release()
         self.assertEqual(release.version, NEWER)
-        self.assertEqual(release.asset("_all.deb"), f"apsta_{NEWER}-1_all.deb")
+        self.assertEqual(release.asset("_all.deb"), f"twinfi_{NEWER}-1_all.deb")
 
     def test_versions_compare_numerically(self):
         self.assertTrue(installation.is_newer("0.12.0", "0.11.10"))
@@ -75,7 +76,7 @@ class ReleaseTests(unittest.TestCase):
     def test_fetch_source_extracts_the_tag(self):
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-            info = tarfile.TarInfo("apsta-1.0/install.sh")
+            info = tarfile.TarInfo("twinfi-1.0/install.sh")
             info.size = 3
             tar.addfile(info, io.BytesIO(b"#!\n"))
         with (
@@ -92,7 +93,7 @@ class ReleaseTests(unittest.TestCase):
 
 class PacmanConfTests(unittest.TestCase):
     CONF = "[options]\nHoldPkg = pacman\n\n[core]\nInclude = /etc/pacman.d/mirrorlist\n"
-    REPO = "\n[apsta]\nSigLevel = Optional TrustAll\nServer = https://github.com/krotrn/apsta/releases/download/arch-repo\n"
+    REPO = "\n[twinfi]\nSigLevel = Optional TrustAll\nServer = https://github.com/krotrn/twinfi/releases/download/arch-repo\n"
 
     def test_removes_the_appended_section(self):
         self.assertEqual(installation.without_pacman_repo(self.CONF + self.REPO), self.CONF)
@@ -100,9 +101,14 @@ class PacmanConfTests(unittest.TestCase):
     def test_keeps_what_follows_it(self):
         text = self.CONF + self.REPO + "\n#[custom]\n#Server = file:///home/custompkgs\n\n[extra]\nInclude = x\n"
         result = installation.without_pacman_repo(text)
-        self.assertNotIn("apsta", result)
+        self.assertNotIn("twinfi", result)
         self.assertIn("#[custom]\n#Server = file:///home/custompkgs\n", result)
         self.assertIn("[extra]\nInclude = x\n", result)
+
+    def test_removes_the_section_from_before_the_rename(self):
+        self.assertEqual(
+            installation.without_pacman_repo(self.CONF + self.REPO.replace("[twinfi]", "[apsta]")), self.CONF
+        )
 
     def test_unchanged_without_the_section(self):
         self.assertEqual(installation.without_pacman_repo(self.CONF), self.CONF)
@@ -113,11 +119,11 @@ class UpdateTests(unittest.TestCase):
         isolate_paths(self)
         as_root(self)
         self.sh = FakeShell().install(self)
-        self.sh.on("/usr/bin/apsta", "--version", stdout=f"apsta {NEWER}\n")
+        self.sh.on("/usr/bin/twinfi", "--version", stdout=f"twinfi {NEWER}\n")
         self.visible = mock.patch.object(shell, "run_visible", return_value=shell.Result([], 0, "", "")).start()
         self.addCleanup(mock.patch.stopall)
         mock.patch.object(installation, "_download", return_value=SUMS.encode()).start()
-        mock.patch("apsta_cli.cmd.install.apsta_binary", return_value="/usr/bin/apsta").start()
+        mock.patch("twinfi_cli.cmd.install.twinfi_binary", return_value="/usr/bin/twinfi").start()
 
     def installed(self, method, root=Path("/usr/lib/python3/dist-packages")):
         mock.patch.object(installation, "detect", return_value=Installation(method, root)).start()
@@ -135,7 +141,7 @@ class UpdateTests(unittest.TestCase):
     def test_up_to_date(self):
         self.installed("pacman")
         with mock.patch.object(
-            installation, "_download", return_value=f"{'b' * 64}  apsta-{__version__}.tar.gz".encode()
+            installation, "_download", return_value=f"{'b' * 64}  twinfi-{__version__}.tar.gz".encode()
         ):
             code, out, _ = run_cli("update")
         self.assertEqual(code, 0)
@@ -146,33 +152,33 @@ class UpdateTests(unittest.TestCase):
         self.installed("pacman")
         code, out, _ = run_cli("upgrade")
         self.assertEqual(code, 0)
-        self.assertEqual(self.commands(), [["pacman", "-Sy", "--needed", "--noconfirm", "apsta"]])
-        self.assertIn(f"apsta {NEWER} installed", out)
+        self.assertEqual(self.commands(), [["pacman", "-Sy", "--needed", "--noconfirm", "twinfi"]])
+        self.assertIn(f"twinfi {NEWER} installed", out)
 
     def test_deb_from_the_ppa(self):
         self.installed("deb")
         self.sh.on("apt-cache", "policy", stdout="500 https://ppa.launchpadcontent.net/krotrn/apsta/ubuntu noble/main")
         run_cli("update")
-        self.assertEqual(self.commands()[-1], ["apt-get", "install", "-y", "--only-upgrade", "apsta"])
+        self.assertEqual(self.commands()[-1], ["apt-get", "install", "-y", "--only-upgrade", "twinfi"])
 
     def test_deb_from_the_release_is_verified(self):
         self.installed("deb")
-        with mock.patch.object(installation, "download_asset", return_value=Path("/tmp/x/apsta.deb")) as download:
+        with mock.patch.object(installation, "download_asset", return_value=Path("/tmp/x/twinfi.deb")) as download:
             run_cli("update")
-        self.assertEqual(download.call_args.args[1], f"apsta_{NEWER}-1_all.deb")
-        self.assertEqual(self.commands(), [["apt-get", "install", "-y", "/tmp/x/apsta.deb"]])
+        self.assertEqual(download.call_args.args[1], f"twinfi_{NEWER}-1_all.deb")
+        self.assertEqual(self.commands(), [["apt-get", "install", "-y", "/tmp/x/twinfi.deb"]])
 
     def test_package_source_behind_the_release(self):
         self.installed("pacman")
-        self.sh.on("/usr/bin/apsta", "--version", stdout="apsta 0.0.1\n")
+        self.sh.on("/usr/bin/twinfi", "--version", stdout="twinfi 0.0.1\n")
         _, out, err = run_cli("update")
-        self.assertIn("still has apsta 0.0.1", out + err)
+        self.assertIn("still has twinfi 0.0.1", out + err)
 
     def test_source_reruns_install_sh_with_the_same_prefix(self):
-        self.installed("source", Path("/opt/x/lib/apsta"))
-        with mock.patch.object(installation, "fetch_source", return_value=Path("/tmp/s/apsta")):
+        self.installed("source", Path("/opt/x/lib/twinfi"))
+        with mock.patch.object(installation, "fetch_source", return_value=Path("/tmp/s/twinfi")):
             run_cli("update")
-        self.assertEqual(self.commands(), [["bash", "/tmp/s/apsta/install.sh"]])
+        self.assertEqual(self.commands(), [["bash", "/tmp/s/twinfi/install.sh"]])
         self.assertEqual(self.visible.call_args.kwargs["env"], {"PREFIX": "/opt/x"})
 
     def test_needs_root(self):
@@ -188,15 +194,15 @@ class UninstallTests(unittest.TestCase):
         self.sh = FakeShell().install(self)
         self.visible = mock.patch.object(shell, "run_visible", return_value=shell.Result([], 0, "", "")).start()
         self.addCleanup(mock.patch.stopall)
-        mock.patch.object(installation, "EXTRA_FILES", (root / "bash_completion.d" / "apsta",)).start()
-        self.disable = mock.patch("apsta_cli.cmd.install.disable_boot_service").start()
-        self.present = mock.patch("apsta_cli.cmd.install.boot_service_present", return_value=False).start()
+        mock.patch.object(installation, "EXTRA_FILES", (root / "bash_completion.d" / "twinfi",)).start()
+        self.disable = mock.patch("twinfi_cli.cmd.install.disable_boot_service").start()
+        self.present = mock.patch("twinfi_cli.cmd.install.boot_service_present", return_value=False).start()
         self.conf = root / "pacman.conf"
         mock.patch.object(installation, "PACMAN_CONF", self.conf).start()
         paths.CONFIG_DIR.mkdir(parents=True)
         paths.CONFIG_PATH.write_text("{}")
         paths.LOG_PATH.write_text("log\n")
-        mock.patch("apsta_cli.core.log._stopped", False).start()  # uninstall stops logging for the process
+        mock.patch("twinfi_cli.core.log._stopped", False).start()  # uninstall stops logging for the process
 
     def installed(self, method, root=Path("/usr/lib/python3/dist-packages")):
         mock.patch.object(installation, "detect", return_value=Installation(method, root)).start()
@@ -219,7 +225,7 @@ class UninstallTests(unittest.TestCase):
         self.conf.write_text(PacmanConfTests.CONF + PacmanConfTests.REPO)
         code, out, _ = run_cli("uninstall", "--yes")
         self.assertEqual(code, 0)
-        self.assertEqual(self.visible.call_args.args[0], ["pacman", "-Rns", "--noconfirm", "apsta"])
+        self.assertEqual(self.visible.call_args.args[0], ["pacman", "-Rns", "--noconfirm", "twinfi"])
         self.assertEqual(self.conf.read_text(), PacmanConfTests.CONF)
         self.assertFalse(paths.CONFIG_DIR.exists())
         self.assertFalse(paths.LOG_PATH.exists())
@@ -229,7 +235,7 @@ class UninstallTests(unittest.TestCase):
         self.installed("deb")
         code, out, _ = run_cli("uninstall", "-y", "--keep-config")
         self.assertEqual(code, 0)
-        self.assertEqual(self.visible.call_args.args[0], ["apt-get", "purge", "-y", "apsta"])
+        self.assertEqual(self.visible.call_args.args[0], ["apt-get", "purge", "-y", "twinfi"])
         self.assertTrue(paths.CONFIG_PATH.exists())
         self.assertFalse(paths.LOG_PATH.exists())
 
@@ -242,7 +248,7 @@ class UninstallTests(unittest.TestCase):
 
     def test_source_runs_a_copy_of_install_sh(self):
         with tempfile.TemporaryDirectory() as tmp:
-            lib = Path(tmp) / "lib" / "apsta"
+            lib = Path(tmp) / "lib" / "twinfi"
             lib.mkdir(parents=True)
             (lib / "install.sh").write_text("#!/bin/bash\n")
             self.installed("source", lib)

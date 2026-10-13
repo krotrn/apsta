@@ -20,7 +20,7 @@ class GetScriptTests(unittest.TestCase):
             f.write(os_release)
             f.flush()
             env = {k: v for k, v in os.environ.items() if k not in ("DISPLAY", "WAYLAND_DISPLAY")}
-            env["APSTA_OS_RELEASE"] = f.name
+            env["TWINFI_OS_RELEASE"] = f.name
             if display:
                 env["WAYLAND_DISPLAY"] = "wayland-0"
             result = subprocess.run(
@@ -31,27 +31,27 @@ class GetScriptTests(unittest.TestCase):
 
     def test_arch_uses_the_pacman_repository(self):
         commands = self.dry_run("ID=endeavouros\nID_LIKE=arch\n")
-        self.assertEqual(commands[-1], "sudo pacman -Sy --needed --noconfirm apsta hostapd dnsmasq")
+        self.assertEqual(commands[-1], "sudo pacman -Sy --needed --noconfirm twinfi hostapd dnsmasq")
 
     def test_ubuntu_derivatives_use_the_ppa(self):
         commands = self.dry_run('ID=linuxmint\nID_LIKE="ubuntu debian"\n')
         self.assertIn("sudo add-apt-repository -y ppa:krotrn/apsta", commands)
-        self.assertEqual(commands[-1], "sudo apt-get install -y apsta")
+        self.assertEqual(commands[-1], "sudo apt-get install -y twinfi")
 
     def test_debian_uses_the_release_deb(self):
         commands = self.dry_run("ID=debian\n")
-        self.assertIn("download and verify apsta_VERSION-1_all.deb", commands)
+        self.assertIn("download and verify twinfi_VERSION-1_all.deb", commands)
 
     def test_other_distributions_install_from_source_with_their_dependencies(self):
         commands = self.dry_run('ID="opensuse-tumbleweed"\nID_LIKE="opensuse suse"\n')
         self.assertEqual(commands[0], "sudo zypper --non-interactive install python3 NetworkManager iw iproute2")
-        self.assertEqual(commands[-1], "sudo bash apsta-VERSION/install.sh")
+        self.assertEqual(commands[-1], "sudo bash twinfi-VERSION/install.sh")
 
     def test_source_flag_skips_packages(self):
         commands = self.dry_run("ID=arch\n", "--source")
         self.assertEqual(commands[0], "sudo pacman -Sy --needed --noconfirm python networkmanager iw iproute2")
-        self.assertNotIn("apsta", commands[0].split())
-        self.assertEqual(commands[-1], "sudo bash apsta-VERSION/install.sh")
+        self.assertNotIn("twinfi", commands[0].split())
+        self.assertEqual(commands[-1], "sudo bash twinfi-VERSION/install.sh")
 
     def test_desktop_libraries_follow_the_session(self):
         self.assertNotIn("gtk4", " ".join(self.dry_run("ID=arch\n")))

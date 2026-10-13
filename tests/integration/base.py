@@ -1,4 +1,4 @@
-"""Base class: a fresh fake world + fake toolchain per test, apsta run in-process as root."""
+"""Base class: a fresh fake world + fake toolchain per test, twinfi run in-process as root."""
 
 import io
 import json
@@ -10,10 +10,10 @@ import unittest.mock as mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from apsta_cli import cli
-from apsta_cli import state as state_store
 from tests.integration import fakeworld
 from tests.support import as_root, fixture, isolate_paths
+from twinfi_cli import cli
+from twinfi_cli import state as state_store
 
 HOME_24GHZ = {"ssid": "Home", "freq": 2437}
 
@@ -31,7 +31,11 @@ class FakeWorldTestCase(unittest.TestCase):
         fakeworld.install_tools(self.root / "bin")
         isolate_paths(self, self.root)  # fake sysfs lives inside the world root
         as_root(self)
-        env = {"APSTA_PATH": str(self.root / "bin"), "APSTA_FAKE_ROOT": str(self.root), "APSTA_SUPERVISOR": "pidfile"}
+        env = {
+            "TWINFI_PATH": str(self.root / "bin"),
+            "TWINFI_FAKE_ROOT": str(self.root),
+            "TWINFI_SUPERVISOR": "pidfile",
+        }
         patcher = mock.patch.dict(os.environ, env)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -46,7 +50,7 @@ class FakeWorldTestCase(unittest.TestCase):
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
-    def apsta(self, *argv, stdin=None):
+    def twinfi(self, *argv, stdin=None):
         """Run the real CLI; returns (exit_code, stdout, stderr)."""
         out, err = io.StringIO(), io.StringIO()
         stdin_patch = mock.patch("sys.stdin", io.StringIO(stdin)) if stdin is not None else mock.MagicMock()
@@ -54,8 +58,8 @@ class FakeWorldTestCase(unittest.TestCase):
             code = cli.main(list(argv))
         return code, out.getvalue(), err.getvalue()
 
-    def apsta_json(self, *argv):
-        code, out, err = self.apsta(*argv)
+    def twinfi_json(self, *argv):
+        code, out, err = self.twinfi(*argv)
         self.assertEqual(code, 0, err)
         return json.loads(out)
 

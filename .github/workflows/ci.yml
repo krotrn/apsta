@@ -49,7 +49,7 @@ jobs:
       - name: Shell scripts (POSIX sh)
         uses: docker://koalaman/shellcheck:v0.11.0
         with:
-          args: -s sh get.sh apsta_cli/data/apsta-sleep apsta_cli/data/apsta.runit
+          args: -s sh get.sh twinfi_cli/data/twinfi-sleep twinfi_cli/data/twinfi.runit
 
       - name: Shell scripts (bash)
         uses: docker://koalaman/shellcheck:v0.11.0
@@ -214,17 +214,17 @@ jobs:
       - name: Wheel installs and ships its data files
         run: |
           python -m pip install dist/*.whl
-          apsta --version
-          apsta completion bash > /dev/null
+          twinfi --version
+          twinfi completion bash > /dev/null
           python - <<'PY'
           import pathlib
 
-          import apsta_cli
-          import apsta_gui
+          import twinfi_cli
+          import twinfi_gui
 
           for package, names in (
-              (apsta_cli, ["apsta.service", "apsta-sleep", "apsta.openrc", "apsta.runit", "com.github.apsta.policy"]),
-              (apsta_gui, ["com.github.apsta.Gtk.desktop", "com.github.apsta.Gtk.metainfo.xml", "icons/hicolor/scalable/apps/com.github.apsta.Gtk.svg"]),
+              (twinfi_cli, ["twinfi.service", "twinfi-sleep", "twinfi.openrc", "twinfi.runit", "com.github.twinfi.policy"]),
+              (twinfi_gui, ["com.github.twinfi.Gtk.desktop", "com.github.twinfi.Gtk.metainfo.xml", "icons/hicolor/scalable/apps/com.github.twinfi.Gtk.svg"]),
           ):
               data = pathlib.Path(package.__file__).parent / "data"
               for name in names:

@@ -1,1 +1,0 @@
-"""apsta GTK package."""
