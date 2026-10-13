@@ -19,8 +19,11 @@ up the right way for it, keeps it healthy, and cleans up completely when you
 stop it.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/krotrn/twinfi/main/docs/screenshots/hotspot.png" alt="twinfi desktop app: hotspot running while Wi-Fi stays connected" width="300">
+  <img src="https://raw.githubusercontent.com/krotrn/twinfi/main/docs/screenshots/detect.gif" alt="twinfi detect in a terminal: the Wi-Fi card can run a hotspot while staying connected to Wi-Fi" width="760">
 </p>
+
+<details>
+<summary>The same output as text</summary>
 
 ```
 $ twinfi detect
@@ -43,6 +46,12 @@ Verdict
   ✔  The hotspot will use the same channel as your WiFi connection.
   →  Next: sudo twinfi start
 ```
+
+</details>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/krotrn/twinfi/main/docs/screenshots/hotspot.png" alt="twinfi desktop app: hotspot running while Wi-Fi stays connected" width="300">
+</p>
 
 ## Features
 
