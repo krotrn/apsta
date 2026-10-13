@@ -1,14 +1,14 @@
 import unittest
 import unittest.mock as mock
 
-from apsta_cli.core import paths
-from apsta_cli.core.errors import SetupError, UsageError
-from apsta_cli.hw.capability import HardwareCapability
-from apsta_cli.hw.interfaces import WifiInterface
-from apsta_cli.net import strategies
-from apsta_cli.net.channels import Channel
-from apsta_cli.net.transaction import Transaction
 from tests.support import FakeShell, FakeWpaSupplicant, isolate_paths
+from twinfi_cli.core import paths
+from twinfi_cli.core.errors import SetupError, UsageError
+from twinfi_cli.hw.capability import HardwareCapability
+from twinfi_cli.hw.interfaces import WifiInterface
+from twinfi_cli.net import strategies
+from twinfi_cli.net.channels import Channel
+from twinfi_cli.net.transaction import Transaction
 
 
 def ctx(ap_sta=True, supports_ap=True, sta_ssid="Home", allow=False):
@@ -105,7 +105,7 @@ class AvailabilityTests(unittest.TestCase):
         self.assertIn("wpa_supplicant", strategies.P2pStrategy().unavailable(c))
         FakeWpaSupplicant(paths.WPA_CTRL_DIR / "p2p-dev-wlo1").install(self)
         self.assertIsNone(strategies.P2pStrategy().unavailable(c))
-        with mock.patch("apsta_cli.core.shell.which", return_value=None):
+        with mock.patch("twinfi_cli.core.shell.which", return_value=None):
             self.assertEqual(strategies.P2pStrategy().unavailable(c), "dnsmasq not installed")
         c.allowed_macs = ["aa:bb:cc:dd:ee:ff"]
         self.assertIn("allowed_macs needs hostapd", strategies.P2pStrategy().unavailable(c))
@@ -130,7 +130,7 @@ class HostapdStrategyTests(unittest.TestCase):
     def setUp(self):
         isolate_paths(self)
         self.sup = FakeSup()
-        patcher = mock.patch("apsta_cli.net.supervisor.get", return_value=self.sup)
+        patcher = mock.patch("twinfi_cli.net.supervisor.get", return_value=self.sup)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -148,7 +148,7 @@ class HostapdStrategyTests(unittest.TestCase):
         self.assertEqual(oct(paths.HOSTAPD_CONF.stat().st_mode & 0o777), "0o600")
         self.assertIn("listen-address=10.42.42.1", paths.DNSMASQ_CONF.read_text())
         self.assertTrue(sh.called("nmcli", "device", "set", "wlo1_ap", "managed", "no"))
-        nm_conf = paths.NM_RUNTIME_CONF_DIR / "90-apsta-unmanaged.conf"
+        nm_conf = paths.NM_RUNTIME_CONF_DIR / "90-twinfi-unmanaged.conf"
         self.assertIn("interface-name:wlo1_ap", nm_conf.read_text())
         self.assertLess(
             sh.calls.index(["nmcli", "general", "reload", "conf"]),
@@ -180,7 +180,7 @@ class HostapdStrategyTests(unittest.TestCase):
 
     def test_hostapd_not_coming_up_rolls_back(self):
         ap_mode_shell(self, ap_up=False)
-        with mock.patch("apsta_cli.net.hostapd.wait_enabled", return_value=False):
+        with mock.patch("twinfi_cli.net.hostapd.wait_enabled", return_value=False):
             with self.assertRaises(SetupError) as raised:
                 with Transaction() as tx:
                     strategies.HostapdStrategy().start(ctx(), tx)
@@ -203,16 +203,16 @@ class NmStrategyTests(unittest.TestCase):
         with Transaction() as tx:
             state = strategies.NmVirtualStrategy().start(ctx(), tx)
             tx.commit()
-        keyfile = paths.NM_RUNTIME_KEYFILE_DIR / "apsta-hotspot.nmconnection"
+        keyfile = paths.NM_RUNTIME_KEYFILE_DIR / "twinfi-hotspot.nmconnection"
         self.assertIn("interface-name=wlo1_ap", keyfile.read_text())
         self.assertIn("cloned-mac-address=02:", keyfile.read_text())
         self.assertEqual(oct(keyfile.stat().st_mode & 0o777), "0o600")
         self.assertFalse(any("secret123" in " ".join(c) for c in sh.calls))  # never on a command line
-        self.assertEqual(state.connection_id, "apsta-hotspot")
+        self.assertEqual(state.connection_id, "twinfi-hotspot")
         self.assertEqual(state.sta_ssid_at_start, "Home")
 
         strategies.NmVirtualStrategy().stop(state)
-        self.assertTrue(sh.called("nmcli", "connection", "delete", "id", "apsta-hotspot"))
+        self.assertTrue(sh.called("nmcli", "connection", "delete", "id", "twinfi-hotspot"))
         self.assertFalse(keyfile.exists())
         self.assertFalse((paths.SYSFS_NET / "wlo1_ap").exists())
 
@@ -222,7 +222,7 @@ class NmStrategyTests(unittest.TestCase):
         with self.assertRaises(SetupError):
             with Transaction() as tx:
                 strategies.NmVirtualStrategy().start(ctx(), tx)
-        self.assertTrue(sh.called("nmcli", "connection", "delete", "id", "apsta-hotspot"))
+        self.assertTrue(sh.called("nmcli", "connection", "delete", "id", "twinfi-hotspot"))
         self.assertFalse((paths.SYSFS_NET / "wlo1_ap").exists())
 
     def test_single_uses_base_interface(self):
@@ -238,7 +238,7 @@ class NmStrategyTests(unittest.TestCase):
 
     def test_not_ap_after_activation(self):
         ap_mode_shell(self, ap_up=False)
-        with mock.patch("apsta_cli.net.iface.wait_for_broadcast", return_value=False):
+        with mock.patch("twinfi_cli.net.iface.wait_for_broadcast", return_value=False):
             with self.assertRaises(SetupError):
                 with Transaction() as tx:
                     strategies.NmVirtualStrategy().start(ctx(), tx)

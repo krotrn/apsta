@@ -25,25 +25,25 @@ rm -rf "$out"
 mkdir -p "$out"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-git -C "$root" archive --prefix="apsta-$upver/" HEAD | tar -x -C "$work"
+git -C "$root" archive --prefix="twinfi-$upver/" HEAD | tar -x -C "$work"
 
 case $mode in
     binary)
-        (cd "$work/apsta-$upver" && dpkg-buildpackage -us -uc -b)
+        (cd "$work/twinfi-$upver" && dpkg-buildpackage -us -uc -b)
         cp "$work"/*.deb "$out/"
         ;;
     source)
         # Upstream tarball = the tree minus debian/, so quilt sees no stray changes.
-        git -C "$root" archive --prefix="apsta-$upver/" -o "$work/apsta_$upver.orig.tar.gz" HEAD -- . ':(exclude)debian'
-        (cd "$work/apsta-$upver" && dpkg-buildpackage -S -sa -us -uc)
+        git -C "$root" archive --prefix="twinfi-$upver/" -o "$work/twinfi_$upver.orig.tar.gz" HEAD -- . ':(exclude)debian'
+        (cd "$work/twinfi-$upver" && dpkg-buildpackage -S -sa -us -uc)
         if [[ -n ${DEBSIGN_KEY:-} ]]; then
             signer=(gpg --batch --pinentry-mode loopback)
             if [[ -n ${DEBSIGN_PASSPHRASE_FILE:-} ]]; then
                 signer+=(--passphrase-file "$DEBSIGN_PASSPHRASE_FILE")
             fi
-            debsign -p"${signer[*]}" -k"$DEBSIGN_KEY" "$work"/apsta_*_source.changes
+            debsign -p"${signer[*]}" -k"$DEBSIGN_KEY" "$work"/twinfi_*_source.changes
         fi
-        cp "$work"/apsta_* "$out/"
+        cp "$work"/twinfi_* "$out/"
         ;;
     *)
         echo "unknown mode: $mode" >&2

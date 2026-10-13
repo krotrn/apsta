@@ -1,10 +1,10 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: apsta
+Upstream-Name: twinfi
 Upstream-Contact: krotrn <krotrn.ks@gmail.com>
-Source: https://github.com/krotrn/apsta
+Source: https://github.com/krotrn/twinfi
 
 Files: *
-Copyright: 2026, apsta contributors
+Copyright: 2026, twinfi contributors
 License: MIT
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal

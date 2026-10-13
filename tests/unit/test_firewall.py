@@ -1,9 +1,9 @@
 import unittest
 
-from apsta_cli.core import paths
-from apsta_cli.core.errors import SetupError
-from apsta_cli.net import firewall
 from tests.support import FakeShell, isolate_paths
+from twinfi_cli.core import paths
+from twinfi_cli.core.errors import SetupError
+from twinfi_cli.net import firewall
 
 AP, NET = "wlo1_ap", "192.168.42.0/24"
 
@@ -39,7 +39,7 @@ class IptablesTests(unittest.TestCase):
         nat = firewall.IptablesBackend.rules(AP, NET)[0]
         self.assertEqual(nat[:2], ("nat", "POSTROUTING"))
         self.assertNotIn("-o", nat[2])
-        self.assertIn("apsta", nat[2])
+        self.assertIn("twinfi", nat[2])
 
     def test_apply_inserts_at_top_and_revert_deletes(self):
         sh = FakeShell(["iptables"]).install(self)
@@ -116,10 +116,10 @@ class NftablesTests(unittest.TestCase):
         loaded = sh.inputs[sh.calls.index(["nft", "-f", "-"])]
         self.assertIn(f"ip saddr {NET}", loaded)
         firewall.revert(AP, NET, record)
-        self.assertTrue(sh.called("nft", "delete", "table", "ip", "apsta"))
+        self.assertTrue(sh.called("nft", "delete", "table", "ip", "twinfi"))
 
     def test_no_note_when_forwarding_is_allowed(self):
-        FakeShell(["nft"]).install(self).on("nft", "list", "ruleset", stdout="table ip apsta {\n}")
+        FakeShell(["nft"]).install(self).on("nft", "list", "ruleset", stdout="table ip twinfi {\n}")
         self.assertEqual(firewall.caveats(AP, firewall.apply(AP, NET)), [])
 
     def test_no_backend(self):

@@ -12,14 +12,14 @@ body:
   - type: input
     id: version
     attributes:
-      label: apsta version and distribution
-      placeholder: "apsta 0.7.0, Ubuntu 24.04"
+      label: twinfi version and distribution
+      placeholder: "twinfi 0.7.0, Ubuntu 24.04"
     validations:
       required: true
   - type: textarea
     id: detect
     attributes:
-      label: Output of `apsta detect --json`
+      label: Output of `twinfi detect --json`
       render: json
     validations:
       required: true
@@ -32,5 +32,5 @@ body:
     id: logs
     attributes:
       label: Debug output
-      description: Run the failing command with `APSTA_DEBUG=1`, and add `journalctl -u apsta -u apsta-hostapd -n 100` if relevant. Remove passwords.
+      description: Run the failing command with `TWINFI_DEBUG=1`, and add `journalctl -u twinfi -u twinfi-hostapd -n 100` if relevant. Remove passwords.
       render: text

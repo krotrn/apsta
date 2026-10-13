@@ -1,11 +1,11 @@
 import unittest
 
-from apsta_cli.core import paths
-from apsta_cli.core.errors import SetupError, UsageError
-from apsta_cli.net import clients
-from apsta_cli.net.clients import Client
-from apsta_cli.state import HotspotState
 from tests.support import FakeShell, isolate_paths
+from twinfi_cli.core import paths
+from twinfi_cli.core.errors import SetupError, UsageError
+from twinfi_cli.net import clients
+from twinfi_cli.net.clients import Client
+from twinfi_cli.state import HotspotState
 
 PHONE = "aa:bb:cc:dd:ee:ff"
 LAPTOP = "11:22:33:44:55:66"

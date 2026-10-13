@@ -3,9 +3,9 @@
 import ipaddress
 import unittest
 
-from apsta_cli.core.errors import SetupError
-from apsta_cli.net import dnsmasq, hostapd, nm, subnet
-from apsta_cli.net.channels import Channel
+from twinfi_cli.core.errors import SetupError
+from twinfi_cli.net import dnsmasq, hostapd, nm, subnet
+from twinfi_cli.net.channels import Channel
 
 
 def conf(**kw):
@@ -15,7 +15,7 @@ def conf(**kw):
         password="secret123",
         channel=Channel(6, "bg"),
         country="IN",
-        ctrl_dir="/run/apsta/hostapd",
+        ctrl_dir="/run/twinfi/hostapd",
     )
     base.update(kw)
     return hostapd.HostapdConfig(**base)
@@ -24,7 +24,7 @@ def conf(**kw):
 class HostapdTests(unittest.TestCase):
     def test_render_essentials(self):
         text = hostapd.render(conf())
-        self.assertIn("ctrl_interface=/run/apsta/hostapd\n", text)
+        self.assertIn("ctrl_interface=/run/twinfi/hostapd\n", text)
         self.assertIn("ssid2=" + "Café; #1".encode().hex() + "\n", text)
         self.assertIn("hw_mode=g\n", text)
         self.assertIn("ieee80211n=1\n", text)
@@ -46,9 +46,9 @@ class HostapdTests(unittest.TestCase):
         self.assertNotIn("accept_mac_file", text)
 
     def test_hidden_and_allowlist(self):
-        text = hostapd.render(conf(hidden=True, accept_file="/run/apsta/hostapd.accept"))
+        text = hostapd.render(conf(hidden=True, accept_file="/run/twinfi/hostapd.accept"))
         self.assertIn("ignore_broadcast_ssid=1\n", text)
-        self.assertIn("macaddr_acl=1\naccept_mac_file=/run/apsta/hostapd.accept\n", text)
+        self.assertIn("macaddr_acl=1\naccept_mac_file=/run/twinfi/hostapd.accept\n", text)
         self.assertEqual(
             hostapd.render_accept(["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"]), "aa:bb:cc:dd:ee:ff\n11:22:33:44:55:66\n"
         )
@@ -87,7 +87,7 @@ class KeyfileTests(unittest.TestCase):
             cloned_mac="02:00:00:00:00:01",
             connection_uuid="u-1",
         )
-        self.assertIn("id=apsta-hotspot\n", text)
+        self.assertIn("id=twinfi-hotspot\n", text)
         self.assertIn("uuid=u-1\n", text)
         self.assertIn("interface-name=wlo1_ap\n", text)
         self.assertIn("ssid=72;105;59;\n", text)

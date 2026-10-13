@@ -4,14 +4,14 @@ Commands that support `--json` print a single JSON document on stdout. The GUI
 is built on this output, and scripts can use it too.
 
 **Stability:** keys may be added in any release. Renaming or removing a key is
-a breaking change and is listed in the [changelog](https://github.com/krotrn/apsta/blob/main/CHANGELOG.md). Ignore
+a breaking change and is listed in the [changelog](https://github.com/krotrn/twinfi/blob/main/CHANGELOG.md). Ignore
 keys you don't know. Errors go to stderr with a non-zero exit code (see
 [Exit codes](#exit-codes)).
 
 Values marked *root* are only present, or only accurate, when run with root
 privileges.
 
-## `apsta status --json`
+## `twinfi status --json`
 
 Current hotspot, connected devices and configuration. Works without root.
 
@@ -70,12 +70,12 @@ Current hotspot, connected devices and configuration. Works without root.
 | `autostart`   | `init` is `systemd`, `openrc`, `runit` or `unknown`. `enabled`/`running` are `null` when unknown. |
 | `config`      | The active profile's settings (no password). `interface: null` means automatic; `channel` and `method` may be `auto`. |
 
-`apsta status --check` prints nothing and exits `0` if the hotspot is running,
+`twinfi status --check` prints nothing and exits `0` if the hotspot is running,
 `3` if not.
 
-## `apsta detect --json`
+## `twinfi detect --json`
 
-What the WiFi hardware can do and which method apsta would use.
+What the WiFi hardware can do and which method twinfi would use.
 
 ```json
 {
@@ -101,7 +101,7 @@ What the WiFi hardware can do and which method apsta would use.
     "level": "ok",
     "mode": "ap+sta",
     "messages": ["Your card can run a hotspot while staying connected to WiFi."],
-    "next": "sudo apsta start"
+    "next": "sudo twinfi start"
   }
 }
 ```
@@ -114,7 +114,7 @@ What the WiFi hardware can do and which method apsta would use.
 | `methods`      | `"ready"`, or what's missing (e.g. `"needs hostapd, dnsmasq"`). `p2p` is listed only on cards that support it. |
 | `verdict.mode` | `ap+sta` (keeps WiFi), `single` (hotspot drops WiFi) or `unsupported`. `level` is `ok`, `warn` or `error`. `warnings` (optional) explains a `warn`, e.g. the WiFi is on a channel this card can't host on. |
 
-## `apsta config --json`
+## `twinfi config --json`
 
 The active profile's settings.
 
@@ -129,11 +129,11 @@ The active profile's settings.
 
 `password` is included only with `--show-password`, which requires root.
 
-## `apsta clients --json`
+## `twinfi clients --json`
 
 The same list as `clients` in `status --json`.
 
-## `apsta start --json`
+## `twinfi start --json`
 
 ```json
 {"hotspot": { "...": "same object as status.hotspot" }, "method": "hostapd"}

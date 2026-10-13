@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **apsta is now called twinfi.** The command, the desktop app, the
+  packages and the settings directory (`/etc/twinfi`) use the new name, and
+  environment variables start with `TWINFI_`. The `apsta` command still works
+  for now: it runs twinfi and prints a reminder.
+- The first `sudo twinfi` command after the update moves `/etc/apsta` to
+  `/etc/twinfi`, replaces a boot service set up by `apsta enable` (systemd
+  units are enabled under the new name; OpenRC and runit ask you to run
+  `sudo twinfi enable`) and renames an `[apsta]` section in `pacman.conf`.
+- Moving over, by install route:
+  - Ubuntu PPA: `sudo apt upgrade`. The `apsta` package becomes a
+    transitional package that installs twinfi; remove it whenever you like.
+  - Arch pacman repository: `sudo pacman -Syu` replaces apsta with twinfi.
+  - Release `.deb`: `sudo apsta update` installs twinfi.
+  - pipx: `sudo pipx uninstall --global apsta && sudo pipx install --global twinfi`.
+  - pip: `pip install --upgrade apsta` installs twinfi (the last `apsta`
+    release on PyPI depends on it); use the `twinfi` command afterwards.
+  - `install.sh` or anything else: run `get.sh` again, which removes the
+    apsta install it replaces.
+- A hotspot started by apsta can't be stopped by twinfi; stop it before
+  updating, or restart the computer.
+
+### Fixed
+
+- The boot service failed at every start until settings had been saved once:
+  its sandbox made `/etc` read-only and skipped the settings directory when it
+  didn't exist yet. systemd now creates `/etc/twinfi` for it.
+
 ## [0.12.0] - 2026-10-10
 
 ### Added

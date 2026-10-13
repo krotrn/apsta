@@ -1,6 +1,6 @@
 # Wi-Fi Direct hotspots (method `p2p`)
 
-This page explains how apsta keeps a hotspot running when your WiFi is on a
+This page explains how twinfi keeps a hotspot running when your WiFi is on a
 channel the card can't host on, which distributions and cards support it, and
 how the code works. It is meant for users who want to know whether it works
 on their machine, and for contributors who want to change or extend it.
@@ -21,7 +21,7 @@ Some channels can't host a hotspot:
 | 6 GHz | Linux drivers don't allow AP mode there | Wi-Fi 6E routers |
 
 When your WiFi is on one of those, a one-channel hotspot is impossible.
-Before this feature apsta could only explain why and suggest switching
+Before this feature twinfi could only explain why and suggest switching
 networks; [5ghz-wifi.md](5ghz-wifi.md) has the details.
 
 ## The solution: a channel of its own
@@ -32,13 +32,13 @@ two channels many times a second. Windows' Mobile Hotspot works this way,
 which is why it doesn't have the problem.
 
 To phones and laptops a group owner looks like a normal WPA2 network: they
-see its name, type the password (or scan `apsta qr`) and get an address. They
+see its name, type the password (or scan `twinfi qr`) and get an address. They
 don't need to support Wi-Fi Direct.
 
 ```
 $ iw dev | grep -E 'Interface|ssid|channel'
         Interface p2p-wlo1-0
-                ssid apsta-hotspot
+                ssid twinfi-hotspot
                 channel 6 (2437 MHz), width: 20 MHz       ← the hotspot
         Interface wlo1
                 ssid NIT-Student
@@ -47,7 +47,7 @@ $ iw dev | grep -E 'Interface|ssid|channel'
 
 ## Does it work on my machine?
 
-Run `apsta detect`. With support you'll see:
+Run `twinfi detect`. With support you'll see:
 
 ```
      ✔  Wi-Fi Direct group on its own channel   yes
@@ -56,7 +56,7 @@ Methods
      p2p      ready
 ```
 
-Three things have to be true. `apsta detect` checks all of them.
+Three things have to be true. `twinfi detect` checks all of them.
 
 ### 1. The card and driver
 
@@ -76,12 +76,12 @@ valid interface combinations:
 | -------- | ------ |
 | Intel AX201 (driver `iwlmvm`) | **Tested**: works (Arch, kernel 7.2) |
 | Other Intel Wi-Fi 5/6/6E cards using `iwlmvm` (7260 … AX211) | Expected to work: same driver, same combination |
-| Intel Wi-Fi 7 (`iwlmld`), Realtek, MediaTek, Qualcomm | Unknown. Please report `apsta detect --json` |
+| Intel Wi-Fi 7 (`iwlmld`), Realtek, MediaTek, Qualcomm | Unknown. Please report `twinfi detect --json` |
 
 ### 2. wpa_supplicant with Wi-Fi Direct
 
-NetworkManager uses wpa_supplicant for WiFi, and apsta asks that same
-wpa_supplicant to create the group. apsta can reach it in two ways (details
+NetworkManager uses wpa_supplicant for WiFi, and twinfi asks that same
+wpa_supplicant to create the group. twinfi can reach it in two ways (details
 [below](#two-ways-to-reach-wpa_supplicant)):
 
 - the **control socket** `/run/wpa_supplicant/p2p-dev-<interface>`, which
@@ -117,32 +117,32 @@ distribution above packages it:
 | ------------ | ------- | ------- |
 | Fedora 41, 42 | `python3-jeepney` | 0.8.0 |
 | openSUSE Tumbleweed | `python313-jeepney` | 0.9.0 |
-| openSUSE Leap 15.6 | `python311-jeepney` (apsta needs Python ≥ 3.10; `python3-jeepney` is for Python 3.6) | 0.8.0 |
+| openSUSE Leap 15.6 | `python311-jeepney` (twinfi needs Python ≥ 3.10; `python3-jeepney` is for Python 3.6) | 0.8.0 |
 | Alpine 3.24 | `py3-jeepney` | 0.9.0 |
 | Void | `python3-jeepney` | 0.9.0 |
 | Ubuntu 22.04, 24.04 | `python3-jeepney` | 0.7.1, 0.8.0 |
 | Debian 12, 13 | `python3-jeepney` | 0.8.0, 0.9.0 |
 | Arch | `python-jeepney` | 0.9.0 |
 
-apsta's packages pull it in where they can: the `.deb` recommends
+twinfi's packages pull it in where they can: the `.deb` recommends
 `python3-jeepney`, Arch lists `python-jeepney` as optional, and with pip it's
-`pip install "apsta[p2p]"`. On Debian, Ubuntu and Arch the control socket
+`pip install "twinfi[p2p]"`. On Debian, Ubuntu and Arch the control socket
 already works, so jeepney is only a fallback there.
 
 ### 3. dnsmasq
 
-The group only carries WiFi frames. apsta hands out addresses with dnsmasq
+The group only carries WiFi frames. twinfi hands out addresses with dnsmasq
 and shares your connection with NAT, exactly as in hostapd mode. Install
 `dnsmasq` (most packages recommend it).
 
-## When apsta uses it
+## When twinfi uses it
 
 The other methods are tried first. A hotspot on the WiFi's own channel uses
 the radio fully, so it's faster when it works.
 
 ```mermaid
 flowchart TD
-    S(["sudo apsta start"]) --> C{"Can WiFi's channel<br/>host a hotspot?"}
+    S(["sudo twinfi start"]) --> C{"Can WiFi's channel<br/>host a hotspot?"}
     C -- "yes" --> H["hostapd, then nmcli<br/>(same channel, full speed)"]
     C -- "no: DFS, no IR, 6 GHz" --> P{"p2p available?<br/>card + wpa_supplicant + dnsmasq"}
     P -- "yes" --> G["p2p: Wi-Fi Direct group<br/>on a channel the card allows"]
@@ -151,8 +151,8 @@ flowchart TD
     D -- "no" --> E(["Explains the channel problem<br/>and why p2p wasn't possible"])
 ```
 
-You can also choose it: `sudo apsta config --set method=p2p` (or *Settings →
-Method → Wi-Fi Direct* in the app; `apsta start --method p2p` for one run).
+You can also choose it: `sudo twinfi config --set method=p2p` (or *Settings →
+Method → Wi-Fi Direct* in the app; `twinfi start --method p2p` for one run).
 Then your `band` and `channel` settings are always followed. With
 `channel=auto` and WiFi already on that band, the group stays on the WiFi's
 channel at full speed and simply keeps it if the WiFi moves later.
@@ -162,7 +162,7 @@ The channel for the group comes from the same planner as hostapd mode: your
 (2.4 GHz) or 36–48 and 149–165 (5 GHz), and only channels the card may start
 a network on. Intel cards often block 36–48 but allow 149–165, so with
 `band=a` the group usually lands on 149–165. If a setting can't be followed,
-the notes in `apsta status` and the app say why.
+the notes in `twinfi status` and the app say why.
 
 Once it runs, the [watcher](5ghz-wifi.md#when-the-network-switches-band-while-the-hotspot-is-running)
 only checks that the group is still alive. It doesn't restart the hotspot when
@@ -173,10 +173,10 @@ your WiFi changes channel, because the group never had to follow it.
 - **Speed is shared.** While the two channels differ, the radio splits its
   time between them. Expect roughly half the throughput on each side and a
   few extra milliseconds of latency.
-- **No allowlist or blocking.** `allowed_macs` and `apsta clients disconnect
-  --block` use hostapd's access-list commands, which apsta doesn't have for
+- **No allowlist or blocking.** `allowed_macs` and `twinfi clients disconnect
+  --block` use hostapd's access-list commands, which twinfi doesn't have for
   a wpa_supplicant group. Listing and kicking clients work. With `allowed_macs` set,
-  apsta won't use `p2p`: it never runs a hotspot that ignores your allowlist.
+  twinfi won't use `p2p`: it never runs a hotspot that ignores your allowlist.
 - **Hidden networks** (`hidden=yes`) set `ignore_broadcast_ssid` on the group
   but haven't been tested on hardware yet.
 
@@ -186,7 +186,7 @@ your WiFi changes channel, because the group never had to follow it.
 
 ```mermaid
 sequenceDiagram
-    participant A as apsta
+    participant A as twinfi
     participant W as wpa_supplicant (NetworkManager's)
     participant K as kernel / driver
     A->>W: add a persistent group network<br/>(name, password, mode = group owner)
@@ -195,13 +195,13 @@ sequenceDiagram
     W->>K: create p2p-wlo1-0, start beaconing
     A->>K: poll `iw dev` until a new P2P-GO interface has an SSID
     A->>K: address, dnsmasq, NAT (same code as hostapd mode)
-    Note over A,K: hotspot running; state saved in /run/apsta/state.json
+    Note over A,K: hotspot running; state saved in /run/twinfi/state.json
     A->>W: stop: remove the group, forget the network<br/>and wpa_supplicant's copy of it
 ```
 
 Why a *persistent* group? A plain `P2P_GROUP_ADD` invents its own name
 (`DIRECT-xy`) and password. A persistent group is started from a network
-block that apsta writes, so it can use your hotspot's name and password:
+block that twinfi writes, so it can use your hotspot's name and password:
 
 | Setting | Value | Meaning |
 | ------- | ----- | ------- |
@@ -215,18 +215,18 @@ block that apsta writes, so it can use your hotspot's name and password:
 **wpa_supplicant keeps a copy.** When a persistent group starts,
 wpa_supplicant stores its own record of it, so the group could be resumed
 later (one record per name, reused on later starts). With NetworkManager it
-only lives in memory, but it holds the password. On `stop` apsta removes every
+only lives in memory, but it holds the password. On `stop` twinfi removes every
 persistent group with the hotspot's name, not just the network it added. You
 can see them with `sudo wpa_cli -p /run/wpa_supplicant -i p2p-dev-wlo1
 list_networks` (flag `[P2P-PERSISTENT]`).
 
 If any step fails, everything done so far is undone in reverse order (the
 transaction pattern described in [ARCHITECTURE.md](ARCHITECTURE.md)), and
-apsta moves on to the next method or explains what went wrong.
+twinfi moves on to the next method or explains what went wrong.
 
 ### Two ways to reach wpa_supplicant
 
-Both do the same four things. apsta prefers the socket when it exists and
+Both do the same four things. twinfi prefers the socket when it exists and
 records which one it used, so `stop` cleans up the same way.
 
 | Step | Control socket command | D-Bus method (`fi.w1.wpa_supplicant1.Interface.P2PDevice`) |
@@ -239,8 +239,8 @@ records which one it used, so `stop` cleans up the same way.
 | Forget the network(s) | `REMOVE_NETWORK <id>` | `RemovePersistentGroup(path)` |
 
 **The control socket** is a Unix datagram socket that takes plain-text
-commands, the same ones `wpa_cli` sends. apsta binds a temporary socket of
-its own in `/run/apsta` (wpa_supplicant replies to that address), sends one
+commands, the same ones `wpa_cli` sends. twinfi binds a temporary socket of
+its own in `/run/twinfi` (wpa_supplicant replies to that address), sends one
 command, and reads `OK`, `FAIL` or data. Note that `wpa_cli` exits 0 even when
 the reply is `FAIL`, so scripts must check its output, not its exit code.
 
@@ -252,18 +252,18 @@ come from wpa_supplicant's `dbus_new_handlers_p2p.c`. Two details matter:
 - The P2P device itself (`p2p-dev-wlo1`) isn't on D-Bus. Calls go to the
   WiFi interface's object, and wpa_supplicant forwards them.
 - wpa_supplicant turns byte arrays into hex and puts quotes around strings,
-  except for keys like `key_mgmt`. apsta therefore sends the name as bytes
+  except for keys like `key_mgmt`. twinfi therefore sends the name as bytes
   and the password as a string, which gives the same settings as the socket.
 
 **Why not `wpa_cli` or `busctl`?** Both take the password as a command-line
 argument, which any user on the machine can read from `ps` while it runs.
-apsta never puts passwords on a command line.
+twinfi never puts passwords on a command line.
 
 ## Troubleshooting
 
 ```sh
-apsta detect                          # is p2p "ready", and if not, why?
-APSTA_DEBUG=1 sudo apsta start        # every step, including each wpa_supplicant call
+twinfi detect                          # is p2p "ready", and if not, why?
+TWINFI_DEBUG=1 sudo twinfi start        # every step, including each wpa_supplicant call
 journalctl -u wpa_supplicant          # wpa_supplicant's side (Fedora/openSUSE: -u wpa_supplicant.service)
 ```
 
@@ -278,12 +278,12 @@ give wpa_supplicant a socket:
 
 **"needs wpa_supplicant (NetworkManager may be using iwd)"**: check with
 `NetworkManager --print-config | grep backend`. iwd has no Wi-Fi Direct
-support that apsta can use.
+support that twinfi can use.
 
-**Testing one backend on purpose**: `APSTA_WPA_BACKEND=dbus` (or `socket`)
-forces it, e.g. `sudo APSTA_WPA_BACKEND=dbus apsta start --method p2p`.
+**Testing one backend on purpose**: `TWINFI_WPA_BACKEND=dbus` (or `socket`)
+forces it, e.g. `sudo TWINFI_WPA_BACKEND=dbus twinfi start --method p2p`.
 
-**Doing it by hand**: these are the commands apsta's socket backend sends.
+**Doing it by hand**: these are the commands twinfi's socket backend sends.
 They're useful to check whether a card supports this before reporting a bug.
 Disconnect any phone first, and use your own name and password.
 
@@ -305,11 +305,11 @@ $W list_networks                        # remove wpa_supplicant's copy too: $W r
 
 | File | What's there |
 | ---- | ------------ |
-| `apsta_cli/hw/combinations.py` | `go_own_channel()`: reads the P2P-GO combination |
-| `apsta_cli/net/wpa.py` | `ControlSocket` and `DBus` backends, `connect()` picks one |
-| `apsta_cli/net/strategies.py` | `P2pStrategy`: start/stop, and `share_connection()` shared with hostapd |
-| `apsta_cli/services/hotspot.py` | `build_context()`: lets p2p take over when the WiFi's channel can't host |
-| `apsta_cli/services/detect.py` | the `p2p` method status (`methods()`); `cmd/detect.py` shows the "Wi-Fi Direct" row |
+| `twinfi_cli/hw/combinations.py` | `go_own_channel()`: reads the P2P-GO combination |
+| `twinfi_cli/net/wpa.py` | `ControlSocket` and `DBus` backends, `connect()` picks one |
+| `twinfi_cli/net/strategies.py` | `P2pStrategy`: start/stop, and `share_connection()` shared with hostapd |
+| `twinfi_cli/services/hotspot.py` | `build_context()`: lets p2p take over when the WiFi's channel can't host |
+| `twinfi_cli/services/detect.py` | the `p2p` method status (`methods()`); `cmd/detect.py` shows the "Wi-Fi Direct" row |
 
 Tests run without root, WiFi hardware or a real wpa_supplicant:
 
@@ -319,15 +319,15 @@ Tests run without root, WiFi hardware or a real wpa_supplicant:
 - `tests/unit/test_wpa.py` checks every command and D-Bus message, and that
   the messages serialise.
 - `tests/integration/test_lifecycle.py` (`WifiDirectTests`,
-  `WifiDirectOverDBusTests`) runs `apsta start` and `stop` through the CLI
+  `WifiDirectOverDBusTests`) runs `twinfi start` and `stop` through the CLI
   while the WiFi is on DFS channel 128, over both backends.
 
 The D-Bus tests skip themselves when jeepney isn't installed; `make dev`
 installs it.
 
-**Help wanted**: run `apsta detect --json` and, if it says `p2p` is ready,
-`sudo apsta start --method p2p` on hardware or distributions not marked
+**Help wanted**: run `twinfi detect --json` and, if it says `p2p` is ready,
+`sudo twinfi start --method p2p` on hardware or distributions not marked
 tested above, and
-[open an issue](https://github.com/krotrn/apsta/issues) with the result.
+[open an issue](https://github.com/krotrn/twinfi/issues) with the result.
 Reports from Fedora and openSUSE (the D-Bus path) and from non-Intel cards are
 the most useful.

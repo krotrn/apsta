@@ -1,7 +1,7 @@
 import unittest
 
-from apsta_cli.hw import capability, combinations, interfaces
 from tests.support import FakeShell, fixture, isolate_paths
+from twinfi_cli.hw import capability, combinations, interfaces
 
 
 class CombinationParsingTests(unittest.TestCase):

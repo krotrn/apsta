@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{# Page titles in scripts/build_site.py already name apsta; don't append the site name. #}
+{# Page titles in scripts/build_site.py already name twinfi; don't append the site name. #}
 {% block htmltitle %}
   {% if page.meta and page.meta.title %}
     <title>{{ page.meta.title }}</title>
@@ -17,24 +17,24 @@
   <meta property="og:title" content="{{ title }}">
   <meta property="og:description" content="{{ description }}">
   <meta property="og:url" content="{{ page.canonical_url }}">
-  <meta property="og:image" content="https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/hotspot.png">
+  <meta property="og:image" content="https://raw.githubusercontent.com/krotrn/twinfi/main/docs/screenshots/hotspot.png">
   <meta name="twitter:card" content="summary_large_image">
   {% if page.is_homepage %}
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    "name": "apsta",
-    "alternateName": "Hotspot (apsta)",
+    "name": "twinfi",
+    "alternateName": "Hotspot (twinfi)",
     "description": "{{ config.site_description | trim }}",
     "applicationCategory": "UtilitiesApplication",
     "applicationSubCategory": "Networking",
     "operatingSystem": "Linux",
     "url": "{{ config.site_url }}",
-    "downloadUrl": "https://github.com/krotrn/apsta/releases/latest",
-    "codeRepository": "https://github.com/krotrn/apsta",
+    "downloadUrl": "https://github.com/krotrn/twinfi/releases/latest",
+    "codeRepository": "https://github.com/krotrn/twinfi",
     "license": "https://opensource.org/licenses/MIT",
-    "screenshot": "https://raw.githubusercontent.com/krotrn/apsta/main/docs/screenshots/hotspot.png",
+    "screenshot": "https://raw.githubusercontent.com/krotrn/twinfi/main/docs/screenshots/hotspot.png",
     "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
     "author": {"@type": "Person", "name": "krotrn", "url": "https://github.com/krotrn"}
   }

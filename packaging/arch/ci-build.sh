@@ -15,7 +15,7 @@ out="$here/out"
 
 rm -rf "$out"
 mkdir -p "$out"
-cp "$here/PKGBUILD" "$here/apsta.install" "$out/"
+cp "$here/PKGBUILD" "$here/twinfi.install" "$out/"
 cd "$out"
 
 # shellcheck source=/dev/null
@@ -33,8 +33,8 @@ case $mode in
     local)
         # archive from the repo root: inside a subdirectory git archives only that subtree
         root=$(git -C "$here" rev-parse --show-toplevel)
-        git -C "$root" archive --prefix="apsta-$pkgver/" -o "$out/apsta-$pkgver.tar.gz" HEAD
-        sed -i "s|^source=.*|source=(\"apsta-$pkgver.tar.gz\")|" PKGBUILD
+        git -C "$root" archive --prefix="twinfi-$pkgver/" -o "$out/twinfi-$pkgver.tar.gz" HEAD
+        sed -i "s|^source=.*|source=(\"twinfi-$pkgver.tar.gz\")|" PKGBUILD
         ;;
     *)
         echo "unknown mode: $mode" >&2

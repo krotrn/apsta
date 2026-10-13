@@ -10,11 +10,11 @@ import unittest.mock as mock
 from pathlib import Path
 from types import SimpleNamespace
 
-from apsta_cli.cmd import config as config_cmd
-from apsta_cli.cmd import hotspot as hotspot_cmd
-from apsta_cli.core.errors import UsageError
-from apsta_cli.net import iface, supervisor
 from tests.support import FakeShell, as_root, isolate_paths
+from twinfi_cli.cmd import config as config_cmd
+from twinfi_cli.cmd import hotspot as hotspot_cmd
+from twinfi_cli.core.errors import UsageError
+from twinfi_cli.net import iface, supervisor
 
 
 class RunCommandTests(unittest.TestCase):
@@ -155,7 +155,7 @@ class InterfaceTests(unittest.TestCase):
             self.assertFalse(iface.wait_for_broadcast("wlo1_ap", timeout=0.01))
 
     def test_nm_wait_until_available(self):
-        from apsta_cli.net import nm
+        from twinfi_cli.net import nm
 
         states = iter(["10 (unmanaged)", "20 (unavailable)", "30 (disconnected)"])
         FakeShell().on("nmcli", fn=lambda argv: nm.shell.Result(argv, 0, next(states), "")).install(self)
@@ -165,7 +165,7 @@ class InterfaceTests(unittest.TestCase):
         self.assertFalse(nm.wait_until_available("wlo1_ap", timeout=0.01))
 
     def test_hostapd_wait_enabled(self):
-        from apsta_cli.net import hostapd
+        from twinfi_cli.net import hostapd
 
         self.assertEqual(hostapd.parse_state("phy=phy0\nstate=ENABLED\nfreq=2462"), "ENABLED")
         self.assertIsNone(hostapd.parse_state("Failed to connect to hostapd"))
@@ -178,7 +178,7 @@ class InterfaceTests(unittest.TestCase):
         root = isolate_paths(self)
         (root / "sys/class/net/wlo1_ap").mkdir(parents=True)
         sh = FakeShell().on("ip", "link", "set", "wlo1_ap", "address", rc=2, stderr="busy").install(self)
-        with self.assertLogs("apsta_cli.net.iface", "WARNING") as logs:
+        with self.assertLogs("twinfi_cli.net.iface", "WARNING") as logs:
             name, mac = iface.create_virtual_ap("wlo1")
         self.assertEqual(name, "wlo1_ap")
         self.assertTrue(mac.startswith("02:"))
@@ -186,11 +186,11 @@ class InterfaceTests(unittest.TestCase):
         self.assertIn("separate MAC", logs.output[0])
 
 
-HOOK = Path(__file__).resolve().parents[2] / "apsta_cli" / "data" / "apsta-sleep"
+HOOK = Path(__file__).resolve().parents[2] / "twinfi_cli" / "data" / "twinfi-sleep"
 
 
 class SleepHookTests(unittest.TestCase):
-    """The systemd/pm-utils sleep hook, run with fake apsta/systemctl/systemd-run."""
+    """The systemd/pm-utils sleep hook, run with fake twinfi/systemctl/systemd-run."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -201,42 +201,42 @@ class SleepHookTests(unittest.TestCase):
         self.log = self.root / "calls.log"
         self.run_dir = self.root / "run"
         self.run_dir.mkdir()
-        for name in ("apsta", "systemctl", "systemd-run"):
+        for name in ("twinfi", "systemctl", "systemd-run"):
             tool = self.bin / name
             tool.write_text(
                 f'#!/bin/sh\necho "{name} $*" >> "{self.log}"\n'
                 f'case "{name} $*" in\n'
-                f'  "systemctl is-active --quiet apsta.service") exit ${{SERVICE_ACTIVE:-1}} ;;\n'
-                f'  "apsta status --check") exit ${{HOTSPOT_UP:-3}} ;;\n'
+                f'  "systemctl is-active --quiet twinfi.service") exit ${{SERVICE_ACTIVE:-1}} ;;\n'
+                f'  "twinfi status --check") exit ${{HOTSPOT_UP:-3}} ;;\n'
                 "esac\nexit 0\n"
             )
             tool.chmod(0o755)
 
     def hook(self, *args, **env):
-        full_env = {"PATH": f"{self.bin}:/usr/bin:/bin", "APSTA_RUN_DIR": str(self.run_dir), **env}
+        full_env = {"PATH": f"{self.bin}:/usr/bin:/bin", "TWINFI_RUN_DIR": str(self.run_dir), **env}
         result = subprocess.run(["sh", str(HOOK), *args], env=full_env, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         return self.log.read_text().splitlines() if self.log.exists() else []
 
     def test_does_nothing_when_the_service_manages_the_hotspot(self):
         calls = self.hook("pre", "suspend", SERVICE_ACTIVE="0", HOTSPOT_UP="0")
-        self.assertEqual(calls, ["systemctl is-active --quiet apsta.service"])
+        self.assertEqual(calls, ["systemctl is-active --quiet twinfi.service"])
 
     def test_stops_before_sleep_and_restarts_after(self):
         calls = self.hook("pre", "suspend", HOTSPOT_UP="0")
-        self.assertIn("apsta stop", calls)
+        self.assertIn("twinfi stop", calls)
         self.assertTrue((self.run_dir / "resume-pending").exists())
         calls = self.hook("post", "suspend")
-        self.assertIn("systemd-run --no-block --collect --unit=apsta-resume", calls[-1])
+        self.assertIn("systemd-run --no-block --collect --unit=twinfi-resume", calls[-1])
         self.assertIn("start --wait-sta 30", calls[-1])
         self.assertFalse((self.run_dir / "resume-pending").exists())
 
     def test_nothing_to_do_when_hotspot_was_off(self):
-        self.assertNotIn("apsta stop", self.hook("pre", "suspend"))
+        self.assertNotIn("twinfi stop", self.hook("pre", "suspend"))
         self.assertFalse(any("start" in c for c in self.hook("post", "suspend")))
 
     def test_pm_utils_arguments_and_unknown_ones(self):
-        self.assertIn("apsta stop", self.hook("suspend", HOTSPOT_UP="0"))
+        self.assertIn("twinfi stop", self.hook("suspend", HOTSPOT_UP="0"))
         self.assertTrue(any("start" in c for c in self.hook("resume")))
         self.hook("bogus")  # must exit 0 without breaking the sleep sequence
 

@@ -1,7 +1,7 @@
 # `iw phy <phy> info` fixtures
 
 Real or representative driver output used by the capability parser tests.
-Contributions welcome: if `apsta detect` gets your card wrong, add its
+Contributions welcome: if `twinfi detect` gets your card wrong, add its
 `iw phy phy0 info` output here with a test describing the expected result.
 
 | File | Card / driver | Expected |

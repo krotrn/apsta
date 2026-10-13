@@ -1,9 +1,9 @@
 #!/bin/sh
-# Install apsta with one command, the best way for this distribution:
+# Install twinfi with one command, the best way for this distribution:
 #
-#   curl -fsSL https://raw.githubusercontent.com/krotrn/apsta/main/get.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/krotrn/twinfi/main/get.sh | sh
 #
-# Arch and derivatives: the apsta pacman repository.
+# Arch and derivatives: the twinfi pacman repository.
 # Ubuntu and derivatives: the PPA (the release .deb when the PPA has no build).
 # Debian and derivatives: the release .deb, checked against SHA256SUMS.
 # Everything else, and whenever no package is available: dependencies from
@@ -17,13 +17,13 @@
 #   --source     install from source even where a package exists
 #   --dry-run    print the commands instead of running them
 #
-# Running it again updates apsta.
+# Running it again updates twinfi.
 set -eu
 
-REPO=krotrn/apsta
+REPO=krotrn/twinfi
 LATEST="https://github.com/$REPO/releases/latest/download"
 ARCH_REPO="https://github.com/$REPO/releases/download/arch-repo"
-OS_RELEASE=${APSTA_OS_RELEASE:-/etc/os-release}  # tests point this at fixtures
+OS_RELEASE=${TWINFI_OS_RELEASE:-/etc/os-release}  # tests point this at fixtures
 
 DRY_RUN=0
 SOURCE=0
@@ -108,21 +108,31 @@ want_gui() {
 # main() then installs from source with the distribution's dependencies.
 
 install_arch() {
-    if ! grep -q '^\[apsta\]' /etc/pacman.conf 2>/dev/null; then
+    # twinfi was called apsta until 0.13; its repository serves both names.
+    if grep -q '^\[apsta\]$' /etc/pacman.conf 2>/dev/null && ! grep -q '^\[twinfi\]' /etc/pacman.conf; then
+        say "→" "Renaming the [apsta] repository in /etc/pacman.conf to [twinfi]"
+        as_root sed -i 's/^\[apsta\]$/[twinfi]/' /etc/pacman.conf
+    elif ! grep -q '^\[twinfi\]' /etc/pacman.conf 2>/dev/null; then
         # A repository pacman can't reach would break every later `pacman -Sy`.
-        if [ "$DRY_RUN" = 0 ] && ! fetch "$ARCH_REPO/apsta.db" /dev/null; then
-            say "!" "The apsta pacman repository isn't reachable"
+        if [ "$DRY_RUN" = 0 ] && ! fetch "$ARCH_REPO/twinfi.db" /dev/null; then
+            say "!" "The twinfi pacman repository isn't reachable"
             return 1
         fi
-        say "→" "Adding the apsta repository to /etc/pacman.conf"
+        say "→" "Adding the twinfi repository to /etc/pacman.conf"
         if [ "$DRY_RUN" = 1 ]; then
-            echo "+ append [apsta] to /etc/pacman.conf"
+            echo "+ append [twinfi] to /etc/pacman.conf"
         else
-            printf '\n[apsta]\nSigLevel = Optional TrustAll\nServer = %s\n' "$ARCH_REPO" |
+            printf '\n[twinfi]\nSigLevel = Optional TrustAll\nServer = %s\n' "$ARCH_REPO" |
                 $SUDO tee -a /etc/pacman.conf >/dev/null
         fi
     fi
-    set -- apsta hostapd dnsmasq
+    # twinfi conflicts with apsta, which pacman won't resolve with --noconfirm.
+    # Removing apsta also stops a hotspot it started; its settings stay for twinfi.
+    if pacman -Q apsta >/dev/null 2>&1; then
+        say "→" "Removing apsta (twinfi's old name) to install twinfi in its place"
+        as_root pacman -R --noconfirm apsta
+    fi
+    set -- twinfi hostapd dnsmasq
     want_gui && set -- "$@" python-gobject gtk4 libadwaita python-qrcode python-pillow
     as_root pacman -Sy --needed --noconfirm "$@"
 }
@@ -132,7 +142,7 @@ install_ubuntu() {
         as_root apt-get update
         as_root apt-get install -y software-properties-common || true
     fi
-    if as_root add-apt-repository -y ppa:krotrn/apsta && as_root apt-get install -y apsta; then
+    if as_root add-apt-repository -y ppa:krotrn/apsta && as_root apt-get install -y twinfi; then
         return
     fi
     say "!" "The PPA has no package for this release; trying the release .deb"
@@ -140,7 +150,7 @@ install_ubuntu() {
 }
 
 install_deb() {  # the latest release's .deb, verified against SHA256SUMS
-    deb=$(release_asset '_all\.deb$' apsta_VERSION-1_all.deb) || return 1
+    deb=$(release_asset '^twinfi_.*_all\.deb$' twinfi_VERSION-1_all.deb) || return 1
     if [ -z "$deb" ]; then
         say "!" "The latest release has no .deb"
         return 1
@@ -207,21 +217,21 @@ source_deps() {  # source_deps <family>: install.sh's dependencies from the dist
 
 source_install() {  # install.sh from the latest release's tag, into /usr/local
     if [ "$DRY_RUN" = 0 ] && ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null; then
-        die "apsta needs Python 3.10 or newer."
+        die "twinfi needs Python 3.10 or newer."
     fi
-    sdist=$(release_asset '^apsta-[0-9.]+\.tar\.gz$' apsta-VERSION.tar.gz) || die "Could not reach the latest release on GitHub."
-    version=${sdist#apsta-}
+    sdist=$(release_asset '^twinfi-[0-9.]+\.tar\.gz$' twinfi-VERSION.tar.gz) || die "Could not reach the latest release on GitHub."
+    version=${sdist#twinfi-}
     version=${version%.tar.gz}
     [ -n "$version" ] || die "Could not find the latest release."
     if [ "$DRY_RUN" = 1 ]; then
         echo "+ download https://github.com/$REPO/archive/refs/tags/v$version.tar.gz"
-        as_root bash "apsta-$version/install.sh"
+        as_root bash "twinfi-$version/install.sh"
         return
     fi
     fetch "https://github.com/$REPO/archive/refs/tags/v$version.tar.gz" "$TMP/src.tar.gz" ||
-        die "Could not download apsta $version."
+        die "Could not download twinfi $version."
     tar -xzf "$TMP/src.tar.gz" -C "$TMP"
-    as_root bash "$TMP/apsta-$version/install.sh"
+    as_root bash "$TMP/twinfi-$version/install.sh"
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -238,7 +248,7 @@ main() {
         esac
     done
 
-    [ "$(uname -s)" = Linux ] || [ "$DRY_RUN" = 1 ] || die "apsta runs on Linux only."
+    [ "$(uname -s)" = Linux ] || [ "$DRY_RUN" = 1 ] || die "twinfi runs on Linux only."
     if [ "$(id -u)" -ne 0 ]; then
         if command -v sudo >/dev/null 2>&1 || [ "$DRY_RUN" = 1 ]; then
             SUDO=sudo
@@ -256,7 +266,7 @@ main() {
     distro=$(family)
     [ "$DRY_RUN" = 1 ] || tmpdir
     if want_gui; then gui_note="with the desktop app"; else gui_note="command line only"; fi
-    say "→" "Installing apsta for ${PRETTY_NAME:-$distro} ($gui_note)"
+    say "→" "Installing twinfi for ${PRETTY_NAME:-$distro} ($gui_note)"
 
     case $SOURCE/$distro in
         0/arch) install_arch ;;
@@ -272,18 +282,18 @@ main() {
     }
 
     [ "$DRY_RUN" = 1 ] && return
-    if ! command -v apsta >/dev/null 2>&1; then
-        die "apsta was installed but isn't on PATH; open a new terminal."
+    if ! command -v twinfi >/dev/null 2>&1; then
+        die "twinfi was installed but isn't on PATH; open a new terminal."
     fi
     if ! nmcli -t -f RUNNING general 2>/dev/null | grep -q running; then
-        say "!" "NetworkManager isn't running; apsta needs it (e.g. sudo systemctl enable --now NetworkManager)."
+        say "!" "NetworkManager isn't running; twinfi needs it (e.g. sudo systemctl enable --now NetworkManager)."
     fi
     echo
-    say "✔" "apsta $(apsta --version 2>/dev/null | awk '{print $NF}') installed. Checking your Wi-Fi card:"
+    say "✔" "twinfi $(twinfi --version 2>/dev/null | awk '{print $NF}') installed. Checking your Wi-Fi card:"
     echo
-    apsta detect || true
+    twinfi detect || true
     echo
-    say "→" "Start a hotspot with: sudo apsta start"
+    say "→" "Start a hotspot with: sudo twinfi start"
 }
 
 main "$@"

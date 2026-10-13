@@ -10,9 +10,9 @@ import unittest
 import unittest.mock as mock
 from pathlib import Path
 
-from apsta_cli.core import fsutil, lock, log, output, paths, shell
-from apsta_cli.core.errors import ApstaError, SetupError
 from tests.support import as_root, isolate_paths
+from twinfi_cli.core import fsutil, lock, log, output, paths, shell
+from twinfi_cli.core.errors import SetupError, TwinfiError
 
 
 class ShellTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class ShellTests(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "$(echo hi); rm -rf /")
 
     def test_missing_command(self):
-        result = shell.run(["apsta-definitely-missing-tool"])
+        result = shell.run(["twinfi-definitely-missing-tool"])
         self.assertEqual(result.returncode, 127)
         self.assertIn("not found", result.message())
 
@@ -43,7 +43,7 @@ class ShellTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.stdout.strip(), "parent")
         self.assertLess(time.monotonic() - started, 3)
-        self.assertEqual(shell.run(["apsta-missing-tool"], daemonizes=True).returncode, 127)
+        self.assertEqual(shell.run(["twinfi-missing-tool"], daemonizes=True).returncode, 127)
         self.assertEqual(
             shell.run([sys.executable, "-c", "import time; time.sleep(3)"], daemonizes=True, timeout=0.2).returncode,
             124,
@@ -60,7 +60,7 @@ class ShellTests(unittest.TestCase):
             tool = Path(td) / "fancytool"
             tool.write_text("#!/bin/sh\necho fake\n")
             tool.chmod(0o755)
-            with mock.patch.dict(os.environ, {"APSTA_PATH": td}):
+            with mock.patch.dict(os.environ, {"TWINFI_PATH": td}):
                 self.assertEqual(shell.which("fancytool"), str(tool))
                 self.assertIsNone(shell.which("ls"))
                 self.assertEqual(shell.out(["fancytool"]), "fake")
@@ -85,7 +85,7 @@ class FsUtilTests(unittest.TestCase):
             self.assertEqual(os.listdir(td), [])
 
     def test_remove_missing_is_fine(self):
-        fsutil.remove(Path("/nonexistent/apsta/file"))
+        fsutil.remove(Path("/nonexistent/twinfi/file"))
 
 
 class LogTests(unittest.TestCase):
@@ -101,7 +101,7 @@ class LogTests(unittest.TestCase):
     def test_unprivileged_does_not_write(self):
         isolate_paths(self)
         with mock.patch("os.geteuid", return_value=1000), mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("APSTA_LOG_PATH", None)
+            os.environ.pop("TWINFI_LOG_PATH", None)
             log.event("INFO", "unit")
         self.assertFalse(paths.LOG_PATH.exists())
 
@@ -114,9 +114,9 @@ class LogTests(unittest.TestCase):
         self.assertIn("after-rotate", paths.LOG_PATH.read_text())
 
     def test_debug_flag(self):
-        with mock.patch.dict(os.environ, {"APSTA_DEBUG": "yes"}):
+        with mock.patch.dict(os.environ, {"TWINFI_DEBUG": "yes"}):
             self.assertTrue(log.debug_enabled())
-        with mock.patch.dict(os.environ, {"APSTA_DEBUG": "0"}):
+        with mock.patch.dict(os.environ, {"TWINFI_DEBUG": "0"}):
             self.assertFalse(log.debug_enabled())
 
 
@@ -147,7 +147,7 @@ class OutputTests(unittest.TestCase):
             output.head("H")
             output.detail("d")
             output.blank()
-            with mock.patch.dict(os.environ, {"APSTA_DEBUG": "1"}):
+            with mock.patch.dict(os.environ, {"TWINFI_DEBUG": "1"}):
                 output.dbg("debugging", k=1)
         self.assertTrue(out.write.called)
         self.assertTrue(errs.write.called)
@@ -183,7 +183,7 @@ class LockTests(unittest.TestCase):
         )
         self.addCleanup(lambda: (holder.kill(), holder.wait(), holder.stdout.close()))
         holder.stdout.readline()
-        with self.assertRaises(ApstaError):
+        with self.assertRaises(TwinfiError):
             with lock.command_lock("test", wait_seconds=0.2):
                 pass
 
@@ -195,7 +195,7 @@ if __name__ == "__main__":
 class LibraryMessagesTests(unittest.TestCase):
     def setUp(self):
         isolate_paths(self)
-        logger = logging.getLogger("apsta_cli")
+        logger = logging.getLogger("twinfi_cli")
         saved = logger.handlers[:], logger.level, logger.propagate
         self.addCleanup(self._restore, logger, *saved)
 
@@ -209,8 +209,8 @@ class LibraryMessagesTests(unittest.TestCase):
         output.show_library_messages()
         output.show_library_messages()  # idempotent: one handler, one line per record
         with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
-            logging.getLogger("apsta_cli.net.iface").warning("Could not set a MAC on %s", "wlo1_ap")
-            logging.getLogger("apsta_cli.net.iface").info("not shown")
+            logging.getLogger("twinfi_cli.net.iface").warning("Could not set a MAC on %s", "wlo1_ap")
+            logging.getLogger("twinfi_cli.net.iface").info("not shown")
         self.assertEqual(err.getvalue().count("Could not set a MAC on wlo1_ap"), 1)
         self.assertNotIn("not shown", err.getvalue())
 

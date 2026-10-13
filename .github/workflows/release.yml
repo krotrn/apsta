@@ -75,7 +75,13 @@ jobs:
       - name: Gather release files
         run: |
           mkdir release
-          cp artifacts/python-dist/* artifacts/deb-package/*.deb artifacts/arch-package/*.pkg.tar.zst release/
+          # The PPA carries the transitional apsta package; release users install twinfi directly.
+          cp artifacts/python-dist/* artifacts/deb-package/twinfi_*.deb artifacts/arch-package/*.pkg.tar.zst release/
+          # `apsta update` (twinfi's name until 0.13) finds the latest version from an
+          # apsta-X.Y.Z.tar.gz; keep one in every release until those installs have moved.
+          for sdist in release/twinfi-*.tar.gz; do
+            cp "$sdist" "release/apsta-${sdist#release/twinfi-}"
+          done
           (cd release && sha256sum -- * > SHA256SUMS)
           ls -l release
 
@@ -98,7 +104,7 @@ jobs:
     timeout-minutes: 10
     environment:
       name: pypi
-      url: https://pypi.org/project/apsta/${{ needs.verify.outputs.version }}/
+      url: https://pypi.org/project/twinfi/${{ needs.verify.outputs.version }}/
     permissions:
       id-token: write  # trusted publishing; no API token stored in the repo
     steps:
@@ -139,7 +145,7 @@ jobs:
             gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
           else
             gh release create "$GITHUB_REF_NAME" release/* --verify-tag \
-              --title "apsta $VERSION" --notes-file notes.md
+              --title "twinfi $VERSION" --notes-file notes.md
           fi
 
   arch-repo:
@@ -175,7 +181,7 @@ jobs:
       - name: Build repository database
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          rm -f repo/PKGBUILD repo/apsta.install repo/.SRCINFO
+          rm -f repo/PKGBUILD repo/twinfi.install repo/.SRCINFO
           if [[ -n $GPG_PRIVATE_KEY ]]; then
             printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
             GPG_KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ {print $10; exit}')
@@ -191,7 +197,7 @@ jobs:
           if ! gh release view "$REPO_RELEASE" "${gh_repo[@]}" >/dev/null 2>&1; then
             gh release create "$REPO_RELEASE" "${gh_repo[@]}" --latest=false \
               --title "Arch Linux repository" \
-              --notes "pacman repository for apsta. Setup instructions: see README (Arch Linux)."
+              --notes "pacman repository for twinfi. Setup instructions: see README (Arch Linux)."
           fi
           cd repo
           gh release upload "$REPO_RELEASE" ./* --clobber "${gh_repo[@]}"
@@ -231,15 +237,15 @@ jobs:
           ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
           export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes"
 
-          git clone ssh://aur@aur.archlinux.org/apsta.git aur
-          cp arch/PKGBUILD arch/apsta.install arch/.SRCINFO aur/
+          git clone ssh://aur@aur.archlinux.org/twinfi.git aur
+          cp arch/PKGBUILD arch/twinfi.install arch/.SRCINFO aur/
           cd aur
           # Commit as the PKGBUILD maintainer ("# Maintainer: name <email>").
           maintainer=$(sed -n 's/^# Maintainer: //p' PKGBUILD)
           email=${maintainer##*<}
           git config user.name "${maintainer% <*}"
           git config user.email "${email%>}"
-          git add PKGBUILD apsta.install .SRCINFO
+          git add PKGBUILD twinfi.install .SRCINFO
           if git diff --cached --quiet; then
             echo "AUR already up to date"
           else

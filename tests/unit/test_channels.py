@@ -1,8 +1,8 @@
 import unittest
 
-from apsta_cli.core.errors import HardwareError
-from apsta_cli.net import channels
-from apsta_cli.net.channels import Channel
+from twinfi_cli.core.errors import HardwareError
+from twinfi_cli.net import channels
+from twinfi_cli.net.channels import Channel
 
 
 class FrequencyTests(unittest.TestCase):

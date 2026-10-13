@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ] && command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+
+# Loading the config as root moves plaintext passwords out of the
+# world-readable config.json into the root-only secrets.json.
+# It also moves an apsta install's /etc/apsta and boot service (apsta is twinfi's old name).
+if [ "$1" = "configure" ] && { [ -f /etc/twinfi/config.json ] || [ -d /etc/apsta ]; } && command -v twinfi >/dev/null 2>&1; then
+    twinfi config >/dev/null 2>&1 || true
+fi
+
+#DEBHELPER#
+
+exit 0

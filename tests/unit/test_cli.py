@@ -5,16 +5,16 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 
-from apsta_cli import cli
-from apsta_cli.cmd import completion, detect, service, usb
-from apsta_cli.core import paths
-from apsta_cli.core.shell import Result as shell_result
-from apsta_cli.hw import capability
-from apsta_cli.hw.capability import HardwareCapability
-from apsta_cli.hw.interfaces import WifiInterface
-from apsta_cli.hw.usb import USB_CHIPSET_DB, UsbWifiDevice
-from apsta_cli.services import detect as detect_service
 from tests.support import FakeShell, as_root, isolate_paths
+from twinfi_cli import cli
+from twinfi_cli.cmd import completion, detect, service, usb
+from twinfi_cli.core import paths
+from twinfi_cli.core.shell import Result as shell_result
+from twinfi_cli.hw import capability
+from twinfi_cli.hw.capability import HardwareCapability
+from twinfi_cli.hw.interfaces import WifiInterface
+from twinfi_cli.hw.usb import USB_CHIPSET_DB, UsbWifiDevice
+from twinfi_cli.services import detect as detect_service
 
 
 def run_cli(*argv):
@@ -28,7 +28,7 @@ class CliTests(unittest.TestCase):
     def test_no_command_prints_help(self):
         code, out, _ = run_cli()
         self.assertEqual(code, 0)
-        self.assertIn("usage: apsta", out)
+        self.assertIn("usage: twinfi", out)
 
     def test_missing_tools(self):
         FakeShell([]).install(self)
@@ -64,8 +64,8 @@ class CompletionTests(unittest.TestCase):
             code, out, _ = run_cli("completion", shell_name)
             self.assertEqual(code, 0)
             self.assertIn("recommend", out)
-        self.assertIn("complete -F _apsta apsta", run_cli("completion", "bash")[1])
-        self.assertIn("#compdef apsta", run_cli("completion", "zsh")[1])
+        self.assertIn("complete -F _twinfi twinfi", run_cli("completion", "bash")[1])
+        self.assertIn("#compdef twinfi", run_cli("completion", "zsh")[1])
 
     def test_profile_names_for_the_scripts(self):
         isolate_paths(self)
@@ -73,7 +73,7 @@ class CompletionTests(unittest.TestCase):
         paths.CONFIG_PATH.write_text('{"active_profile": "home", "profiles": {"work": {}, "home": {}}}')
         self.assertEqual(run_cli("completion", "--profile-names")[:2], (0, "home\nwork\n"))
         for shell_name in ("bash", "zsh", "fish"):
-            self.assertIn("apsta completion --profile-names", run_cli("completion", shell_name)[1])
+            self.assertIn("twinfi completion --profile-names", run_cli("completion", shell_name)[1])
 
     def test_profile_actions_exist(self):
         spec = completion.spec(cli.build_parser())
@@ -134,7 +134,7 @@ class DetectVerdictTests(unittest.TestCase):
 
     def test_no_interfaces(self):
         with mock.patch.object(detect_service.interfaces, "client_interfaces", return_value=[]):
-            from apsta_cli.core.errors import HardwareError
+            from twinfi_cli.core.errors import HardwareError
 
             with self.assertRaises(HardwareError):
                 detect.cmd_detect(SimpleNamespace(json=False))
@@ -222,7 +222,7 @@ class UsbCommandTests(unittest.TestCase):
 
     def test_scan_sysfs(self):
         root = isolate_paths(self)
-        from apsta_cli.hw import usb as hwusb
+        from twinfi_cli.hw import usb as hwusb
 
         dev = root / "usb" / "1-2"
         (dev / "1-2:1.0" / "net" / "wlx00").mkdir(parents=True)
@@ -272,7 +272,7 @@ class ServiceCommandTests(unittest.TestCase):
     def enable(self, init):
         with (
             mock.patch.object(service, "detect_init", return_value=init),
-            mock.patch.object(service, "apsta_binary", return_value="/opt/apsta/bin/apsta"),
+            mock.patch.object(service, "twinfi_binary", return_value="/opt/twinfi/bin/twinfi"),
         ):
             return service.cmd_enable(SimpleNamespace())
 
@@ -283,9 +283,9 @@ class ServiceCommandTests(unittest.TestCase):
     def test_systemd_local_install(self):
         self.assertEqual(self.enable("systemd"), 0)
         unit = service.SYSTEMD_LOCAL_UNIT.read_text()
-        self.assertIn("ExecStart=/opt/apsta/bin/apsta run --wait-sta 30", unit)
-        self.assertTrue(self.sh.called("systemctl", "enable", "--now", "apsta.service"))
-        self.assertIn("/opt/apsta/bin/apsta", service.SLEEP_HOOK.read_text())
+        self.assertIn("ExecStart=/opt/twinfi/bin/twinfi run --wait-sta 30", unit)
+        self.assertTrue(self.sh.called("systemctl", "enable", "--now", "twinfi.service"))
+        self.assertIn("/opt/twinfi/bin/twinfi", service.SLEEP_HOOK.read_text())
         self.disable("systemd")
         self.assertFalse(service.SYSTEMD_LOCAL_UNIT.exists())
 
@@ -299,7 +299,7 @@ class ServiceCommandTests(unittest.TestCase):
             mock.patch.object(service.hotspot, "current", return_value=object() if running else None),
             mock.patch.object(service.guard, "active", return_value=False),
             mock.patch.object(service.guard, "launch", return_value=True) as launch,
-            mock.patch.object(service, "apsta_binary", return_value="/usr/bin/apsta"),
+            mock.patch.object(service, "twinfi_binary", return_value="/usr/bin/twinfi"),
         ):
             self.disable(init)
             self.assertFalse(paths.KEEP_MARKER.exists())
@@ -308,7 +308,7 @@ class ServiceCommandTests(unittest.TestCase):
     def test_disable_keeps_the_running_hotspot(self):
         seen, launch = self.keeping("systemd")
         self.assertEqual(seen, [True])
-        launch.assert_called_once()  # the watcher `apsta start` uses takes over
+        launch.assert_called_once()  # the watcher `twinfi start` uses takes over
 
     def test_disable_without_a_hotspot_just_stops_the_service(self):
         seen, launch = self.keeping("systemd", running=False)
@@ -326,7 +326,7 @@ class ServiceCommandTests(unittest.TestCase):
         service.SYSTEMD_PACKAGED_UNIT.write_text("x")
         with (
             mock.patch.object(service, "detect_init", return_value="systemd"),
-            mock.patch.object(service, "apsta_binary", return_value=service.PACKAGED_BINARY),
+            mock.patch.object(service, "twinfi_binary", return_value=service.PACKAGED_BINARY),
         ):
             service.cmd_enable(SimpleNamespace())
         self.assertFalse(service.SYSTEMD_LOCAL_UNIT.exists())
@@ -334,8 +334,8 @@ class ServiceCommandTests(unittest.TestCase):
     def test_openrc(self):
         service.PM_SLEEP_HOOK.parent.mkdir(parents=True, exist_ok=True)
         self.enable("openrc")
-        self.assertIn('command="/opt/apsta/bin/apsta"', service.OPENRC_SCRIPT.read_text())
-        self.assertTrue(self.sh.called("rc-update", "add", "apsta", "default"))
+        self.assertIn('command="/opt/twinfi/bin/twinfi"', service.OPENRC_SCRIPT.read_text())
+        self.assertTrue(self.sh.called("rc-update", "add", "twinfi", "default"))
         self.assertTrue(service.PM_SLEEP_HOOK.exists())
         self.disable("openrc")
         self.assertFalse(service.OPENRC_SCRIPT.exists())
@@ -344,30 +344,30 @@ class ServiceCommandTests(unittest.TestCase):
     def test_runit(self):
         (self.root / "runsvdir").mkdir()
         self.enable("runit")
-        self.assertTrue((self.root / "runsvdir" / "apsta").is_symlink())
+        self.assertTrue((self.root / "runsvdir" / "twinfi").is_symlink())
         self.disable("runit")
-        self.assertFalse((self.root / "runsvdir" / "apsta").exists())
+        self.assertFalse((self.root / "runsvdir" / "twinfi").exists())
 
     def test_runit_without_service_dir(self):
-        from apsta_cli.core.errors import ApstaError
+        from twinfi_cli.core.errors import TwinfiError
 
-        with self.assertRaises(ApstaError):
+        with self.assertRaises(TwinfiError):
             self.enable("runit")
 
     def test_unknown_init(self):
-        from apsta_cli.core.errors import ApstaError
+        from twinfi_cli.core.errors import TwinfiError
 
-        with self.assertRaises(ApstaError):
+        with self.assertRaises(TwinfiError):
             self.enable("unknown")
         self.assertEqual(self.disable("unknown"), 0)
 
     def test_helpers(self):
         self.assertIn(service.detect_init(), ("systemd", "openrc", "runit", "unknown"))
-        self.assertIn("[Service]", service.data_file("apsta.service"))
-        with mock.patch("sys.argv", ["/x/y/apsta"]), mock.patch("os.access", return_value=True):
-            self.assertEqual(service.apsta_binary(), "/x/y/apsta")
+        self.assertIn("[Service]", service.data_file("twinfi.service"))
+        with mock.patch("sys.argv", ["/x/y/twinfi"]), mock.patch("os.access", return_value=True):
+            self.assertEqual(service.twinfi_binary(), "/x/y/twinfi")
         with mock.patch("sys.argv", ["python -m"]):
-            self.assertEqual(service.apsta_binary(), service.PACKAGED_BINARY)
+            self.assertEqual(service.twinfi_binary(), service.PACKAGED_BINARY)
 
 
 if __name__ == "__main__":

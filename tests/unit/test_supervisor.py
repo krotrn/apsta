@@ -5,9 +5,9 @@ import unittest
 import unittest.mock as mock
 from pathlib import Path
 
-from apsta_cli.core.errors import SetupError
-from apsta_cli.net import supervisor
 from tests.support import FakeShell
+from twinfi_cli.core.errors import SetupError
+from twinfi_cli.net import supervisor
 
 DAEMON = """#!{python}
 import os, sys, time
@@ -66,12 +66,12 @@ class SystemdSupervisorTests(unittest.TestCase):
         sup = supervisor.SystemdSupervisor()
         sup.start(d)
         run = sh.matching("systemd-run")[0]
-        self.assertIn("--unit=apsta-hostapd.service", run)
+        self.assertIn("--unit=twinfi-hostapd.service", run)
         self.assertEqual(run[-2:], ["hostapd", "/run/c"])
         self.assertFalse(sup.running(d))
         self.assertEqual(sup.logs(d), "line1\nline2")
         sup.stop(d)
-        self.assertTrue(sh.called("systemctl", "stop", "apsta-hostapd.service"))
+        self.assertTrue(sh.called("systemctl", "stop", "twinfi-hostapd.service"))
 
     def test_get(self):
         self.assertIsInstance(supervisor.get("systemd"), supervisor.SystemdSupervisor)
@@ -80,7 +80,7 @@ class SystemdSupervisorTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {}, clear=False):
             import os
 
-            os.environ.pop("APSTA_SUPERVISOR", None)
+            os.environ.pop("TWINFI_SUPERVISOR", None)
             self.assertIsInstance(supervisor.get(), supervisor.PidfileSupervisor)
 
 

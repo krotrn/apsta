@@ -34,7 +34,7 @@ typecheck: _require-dev
 
 # Same shellcheck/actionlint versions as CI (needs Docker).
 lint-ci:
-	docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 -s sh get.sh apsta_cli/data/apsta-sleep apsta_cli/data/apsta.runit
+	docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 -s sh get.sh twinfi_cli/data/twinfi-sleep twinfi_cli/data/twinfi.runit
 	docker run --rm -v "$(CURDIR):/mnt:ro" -w /mnt koalaman/shellcheck:v0.11.0 install.sh scripts/hardware_check.sh packaging/arch/ci-build.sh packaging/arch/ci-repo.sh packaging/deb/ci-build.sh
 	docker run --rm -v "$(CURDIR):/repo" -w /repo rhysd/actionlint:1.7.12
 
@@ -45,9 +45,9 @@ fmt: _require-dev
 check: lint typecheck coverage
 
 # Run the desktop app from this checkout. The system Python provides the GTK
-# bindings (PyGObject); the app calls the `apsta` from .venv when it exists.
+# bindings (PyGObject); the app calls the `twinfi` from .venv when it exists.
 gui:
-	PATH="$(CURDIR)/.venv/bin:$$PATH" /usr/bin/python3 apsta_gtk.py
+	PATH="$(CURDIR)/.venv/bin:$$PATH" /usr/bin/python3 twinfi_gtk.py
 
 # Builds every GUI view on a headless display and saves screenshots.
 gui-smoke:

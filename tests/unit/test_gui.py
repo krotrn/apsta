@@ -8,9 +8,9 @@ import unittest
 import unittest.mock as mock
 from pathlib import Path
 
-from apsta_gui import backend, helpers
+from twinfi_gui import backend, helpers
 
-GUI_DIR = Path(__file__).resolve().parents[2] / "apsta_gui"
+GUI_DIR = Path(__file__).resolve().parents[2] / "twinfi_gui"
 
 
 def completed(rc=0, out="", err=""):
@@ -83,8 +83,8 @@ class HelperTests(unittest.TestCase):
 
     def test_login_entry(self):
         path = helpers.login_entry_path({"XDG_CONFIG_HOME": "/cfg"})
-        self.assertEqual(path, Path("/cfg/autostart/com.github.apsta.Gtk.desktop"))
-        self.assertIn("Exec=/x/apsta-gtk --background\n", helpers.login_entry("/x/apsta-gtk"))
+        self.assertEqual(path, Path("/cfg/autostart/com.github.twinfi.Gtk.desktop"))
+        self.assertIn("Exec=/x/twinfi-gtk --background\n", helpers.login_entry("/x/twinfi-gtk"))
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "autostart" / "a.desktop"
             helpers.set_login_start(True, path)
@@ -138,13 +138,13 @@ class HelperTests(unittest.TestCase):
 
 class BackendTests(unittest.TestCase):
     def setUp(self):
-        self.b = backend.ApstaBackend("/usr/bin/apsta")
+        self.b = backend.TwinfiBackend("/usr/bin/twinfi")
 
-    def test_privileged_runs_apsta_directly(self):
+    def test_privileged_runs_twinfi_directly(self):
         with mock.patch.object(backend.subprocess, "run", return_value=completed()) as run:
             self.assertTrue(self.b.start(allow_disconnect=True).ok)
         argv = run.call_args[0][0]
-        self.assertEqual(argv[:3], ["pkexec", "/usr/bin/apsta", "start"])
+        self.assertEqual(argv[:3], ["pkexec", "/usr/bin/twinfi", "start"])
         self.assertIn("--allow-disconnect", argv)
 
     def test_password_goes_over_stdin(self):
@@ -222,7 +222,7 @@ class BackendTests(unittest.TestCase):
             ):
                 call()
                 self.assertEqual(run.call_args[0][0][2:], tail)
-        self.assertFalse(backend.ApstaBackend("/nonexistent/apsta").available())
+        self.assertFalse(backend.TwinfiBackend("/nonexistent/twinfi").available())
 
 
 # libadwaita 1.0 / GTK 4.6 is the floor (Ubuntu & Pop!_OS 22.04, Linux Mint 21).
@@ -285,7 +285,7 @@ class PortabilityTests(unittest.TestCase):
     def test_metainfo_matches_app_id_and_version(self):
         import xml.etree.ElementTree as ET
 
-        from apsta_cli import __version__
+        from twinfi_cli import __version__
 
         root = ET.parse(GUI_DIR / "data" / f"{helpers.APP_ID}.metainfo.xml").getroot()
         self.assertEqual(root.findtext("id"), helpers.APP_ID)

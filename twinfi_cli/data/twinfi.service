@@ -1,0 +1,32 @@
+# twinfi hotspot service. `twinfi run` starts the hotspot and then supervises it:
+# it restarts the hotspot after suspend/resume or a driver reset, and moves it
+# when the WiFi connection changes channel on single-channel cards.
+[Unit]
+Description=twinfi WiFi hotspot (AP+STA)
+Documentation=https://github.com/krotrn/twinfi
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+# --wait-sta: give the WiFi connection time to associate so the hotspot can
+# share its channel instead of guessing one and blocking the reconnect.
+ExecStart=/usr/bin/twinfi run --wait-sta 30
+# Log line by line, not in blocks when Python's output buffer fills.
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+# Hardening that leaves what twinfi needs: network admin, /etc/twinfi (password
+# generation), /run, and starting transient units over D-Bus.
+# ConfigurationDirectory creates /etc/twinfi when missing and keeps it writable;
+# ReadWritePaths=-/etc/twinfi skipped a missing one, so a first start failed.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+ConfigurationDirectory=twinfi
+
+[Install]
+WantedBy=multi-user.target

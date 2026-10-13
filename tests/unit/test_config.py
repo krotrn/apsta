@@ -3,10 +3,10 @@ import os
 import stat
 import unittest
 
-from apsta_cli.config import model, store, validate
-from apsta_cli.core import paths
-from apsta_cli.core.errors import UsageError
 from tests.support import as_root, isolate_paths
+from twinfi_cli.config import model, store, validate
+from twinfi_cli.core import paths
+from twinfi_cli.core.errors import UsageError
 
 
 class ValidateTests(unittest.TestCase):
@@ -156,7 +156,7 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(store.load()["password"], "hunter2hunter2")
 
     def test_missing_files_give_defaults(self):
-        self.assertEqual(store.load()["ssid"], "apsta-hotspot")
+        self.assertEqual(store.load()["ssid"], "twinfi-hotspot")
 
     def test_legacy_config_migrated_as_root(self):
         as_root(self)
@@ -173,9 +173,9 @@ class StoreTests(unittest.TestCase):
         as_root(self)
         paths.CONFIG_DIR.mkdir(parents=True)
         paths.CONFIG_PATH.write_text("{not json")
-        with self.assertLogs("apsta_cli.config.store", "WARNING") as logs:
+        with self.assertLogs("twinfi_cli.config.store", "WARNING") as logs:
             cfg = store.load()
-        self.assertEqual(cfg["ssid"], "apsta-hotspot")
+        self.assertEqual(cfg["ssid"], "twinfi-hotspot")
         self.assertIn("corrupted; using defaults", logs.output[0])
         backups = list(paths.CONFIG_DIR.glob("config.json.corrupt-*"))
         self.assertEqual(len(backups), 1)
@@ -184,7 +184,7 @@ class StoreTests(unittest.TestCase):
     def test_corrupt_secrets(self):
         paths.CONFIG_DIR.mkdir(parents=True)
         paths.SECRETS_PATH.write_text("[[[")
-        with self.assertLogs("apsta_cli.config.store", "WARNING"):
+        with self.assertLogs("twinfi_cli.config.store", "WARNING"):
             self.assertIsNone(store.load()["password"])
 
     @unittest.skipIf(os.geteuid() == 0, "root can read any file")
