@@ -1,8 +1,9 @@
 # The last release of "apsta" on PyPI: an empty package that installs twinfi,
 # so `pip install --upgrade apsta` moves existing installs to the new name.
-# Publish it once, by hand, after twinfi 0.13.0 is on PyPI:
+# Published by hand as 0.13.0, after twinfi 0.13.0 was on PyPI. To publish a
+# new version (bump `version` first), with a PyPI token scoped to apsta:
 #
-#   cd packaging/pypi-apsta && python -m build && twine upload dist/*
+#   cd packaging/pypi-apsta && uv build && uvx twine upload dist/*
 [build-system]
 requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
