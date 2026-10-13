@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-13
+
 ### Changed
 
 - **apsta is now called twinfi.** The command, the desktop app, the
