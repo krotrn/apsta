@@ -13,4 +13,5 @@ override_dh_auto_install:
 execute_after_dh_auto_install:
 	python3 -m twinfi_cli completion bash | install -Dm644 /dev/stdin debian/twinfi/usr/share/bash-completion/completions/twinfi
 	python3 -m twinfi_cli completion zsh | install -Dm644 /dev/stdin debian/twinfi/usr/share/zsh/vendor-completions/_twinfi
+	install -Dm644 packaging/zsh/_apsta -t debian/twinfi/usr/share/zsh/vendor-completions/
 	python3 -m twinfi_cli completion fish | install -Dm644 /dev/stdin debian/twinfi/usr/share/fish/vendor_completions.d/twinfi.fish

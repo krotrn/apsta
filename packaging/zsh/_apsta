@@ -1,0 +1,5 @@
+#compdef apsta
+# apsta is twinfi's old name and still runs it. Shipping this file also makes
+# an upgrade from apsta change zsh's completion file count, so zsh rebuilds
+# its ~/.zcompdump cache and picks up _twinfi.
+_twinfi "$@"

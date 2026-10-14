@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- zsh completion for `twinfi` works after upgrading from apsta. The Arch and
+  Debian packages now also ship `_apsta`, which completes the `apsta` command
+  and makes zsh rebuild its stale completion cache. Before, swapping `_apsta`
+  for `_twinfi` kept zsh's file count the same, so it never noticed. On 0.13.0
+  or 0.13.1, `rm ~/.zcompdump*` and opening a new shell fixes it right away.
+
 ## [0.13.1] - 2026-10-14
 
 ### Security

@@ -59,6 +59,7 @@ package() {
   install -Dm644 twinfi_gui/data/icons/hicolor/symbolic/apps/com.github.twinfi.Gtk-symbolic.svg -t "$pkgdir/usr/share/icons/hicolor/symbolic/apps/"
   python -m twinfi_cli completion bash | install -Dm644 /dev/stdin "$pkgdir/usr/share/bash-completion/completions/twinfi"
   python -m twinfi_cli completion zsh | install -Dm644 /dev/stdin "$pkgdir/usr/share/zsh/site-functions/_twinfi"
+  install -Dm644 packaging/zsh/_apsta -t "$pkgdir/usr/share/zsh/site-functions/"
   python -m twinfi_cli completion fish | install -Dm644 /dev/stdin "$pkgdir/usr/share/fish/vendor_completions.d/twinfi.fish"
   install -Dm644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname/"
 }
