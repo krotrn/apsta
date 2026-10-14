@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import re
 import shutil
 import tarfile
@@ -120,11 +121,12 @@ def fetch_source(version: str, dest: Path) -> Path:
         if hasattr(tarfile, "data_filter"):
             tar.extractall(dest, filter="data")
         else:  # Python without the extraction filters (before 3.10.12)
-            root = dest.resolve()
+            safe = []
             for member in tar.getmembers():
-                if not (member.isfile() or member.isdir()) or not (root / member.name).resolve().is_relative_to(root):
+                if not (member.isfile() or member.isdir()) or os.path.isabs(member.name) or ".." in member.name:
                     raise SetupError(f"The twinfi {version} source has an unsafe entry: {member.name}")
-            tar.extractall(dest)  # noqa: S202 - every member checked above
+                safe.append(member)
+            tar.extractall(dest, members=safe)  # noqa: S202 - only the members checked above
     tree = dest / f"twinfi-{version}"
     if not (tree / "install.sh").is_file():
         raise SetupError(f"The twinfi {version} source has no install.sh.")
