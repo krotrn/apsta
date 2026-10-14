@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-10-14
+
 ### Fixed
 
 - zsh completion for `twinfi` works after upgrading from apsta. The Arch and
