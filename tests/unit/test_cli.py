@@ -77,7 +77,7 @@ class CompletionTests(unittest.TestCase):
 
     def test_profile_actions_exist(self):
         spec = completion.spec(cli.build_parser())
-        self.assertTrue(set(completion.PROFILE_ACTIONS) <= set(spec["profile"][2]))
+        self.assertLessEqual(set(completion.PROFILE_ACTIONS), set(spec["profile"][2]))
 
     def test_shell_required(self):
         code, _, err = run_cli("completion")

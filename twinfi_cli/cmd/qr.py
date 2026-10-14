@@ -51,7 +51,7 @@ def cmd_qr(args) -> int:
     code = render_qr(payload)
     if code is None:
         output.warn("Install python-qrcode (Arch) or python3-qrcode (Debian/Ubuntu) to show a QR code.")
-        output.info(f"QR payload: {payload}")
+        output.reveal_secret("QR payload", payload)
     else:
         print(code, end="")
         output.info("Point a phone camera at the code to join.")

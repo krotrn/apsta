@@ -289,9 +289,9 @@ def check_tray(app: Adw.Application) -> None:
         )
         pump(0.5)
 
-    _revision, (_root, _props, children) = call(
+    _root, _props, children = call(
         "/MenuBar", "com.canonical.dbusmenu", "GetLayout", GLib.Variant("(iias)", (0, -1, []))
-    )
+    )[1]
     labels = {props.get("label"): item_id for item_id, props, _ in children if "label" in props}
     assert "Stop Hotspot" in labels and "Quit" in labels, labels
     submenus = {props.get("label"): sub for _, props, sub in children if sub}

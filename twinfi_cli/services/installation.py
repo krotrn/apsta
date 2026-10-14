@@ -120,7 +120,11 @@ def fetch_source(version: str, dest: Path) -> Path:
         if hasattr(tarfile, "data_filter"):
             tar.extractall(dest, filter="data")
         else:  # Python without the extraction filters (before 3.10.12)
-            tar.extractall(dest)  # noqa: S202 - GitHub's archive of our own tag
+            root = dest.resolve()
+            for member in tar.getmembers():
+                if not (member.isfile() or member.isdir()) or not (root / member.name).resolve().is_relative_to(root):
+                    raise SetupError(f"The twinfi {version} source has an unsafe entry: {member.name}")
+            tar.extractall(dest)  # noqa: S202 - every member checked above
     tree = dest / f"twinfi-{version}"
     if not (tree / "install.sh").is_file():
         raise SetupError(f"The twinfi {version} source has no install.sh.")

@@ -135,8 +135,9 @@ def choose_channel(
     allowed = channels.allowed_channels(cap.ap_frequencies)
     band, wanted = config["band"], config.get("channel")
     problem = None
+    shared: Optional[channels.ChannelPlan] = None
     try:
-        plan = channels.plan(sta_channel, cap.same_channel_required, band, wanted, (), allowed)
+        shared = channels.plan(sta_channel, cap.same_channel_required, band, wanted, (), allowed)
     except HardwareError as exc:
         if not (allow_disconnect or cap.p2p_go_own_channel or method in OWN_CHANNEL_METHODS):
             raise
@@ -161,6 +162,8 @@ def choose_channel(
         else:
             plan = channels.ChannelPlan(tied, "the same as your WiFi's, so the radio doesn't have to switch")
     else:
+        assert shared is not None  # tied implies the shared plan succeeded
+        plan = shared
         notes.extend(_sharing_notes(cap, tied, band, wanted))
     notes.extend(plan.notes)  # what couldn't be followed, before what was done instead
     notes.append(f"Channel {plan.channel.number} ({plan.channel.label}): {plan.reason}.")
