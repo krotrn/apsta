@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-14
+
+### Security
+
+- `twinfi qr` no longer writes the hotspot password to `/var/log/twinfi.log`.
+  Without python-qrcode installed it printed the QR text, which contains the
+  password, and also logged it. The log is readable only by root. If you ran
+  `twinfi qr` that way, delete the `QR payload` lines from the log, or change
+  the password with `sudo twinfi config --generate-password`.
+- `twinfi update` on Python older than 3.10.12 now refuses a source archive
+  containing links or paths outside the folder it unpacks into.
+
 ## [0.13.0] - 2026-10-13
 
 ### Changed
